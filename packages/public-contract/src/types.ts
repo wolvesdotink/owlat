@@ -11,6 +11,8 @@
 export * from './deliveryStatus';
 export * from './domainSetup';
 export * from './errorReasons';
+export * from './sendLimits';
+export * from './sendList';
 export * from './topicList';
 export * from './webhookEvents';
 // ── Shared envelopes and values ─────────────────────────────────────────────
@@ -458,8 +460,19 @@ export interface TransactionalSendStatus {
 	failedAt: string | null;
 	/** `hard` or `soft` once a bounce was reported, otherwise `null`. */
 	bounceType: 'hard' | 'soft' | null;
+	/**
+	 * Who a bounce was about, as the `email.bounced` webhook names it:
+	 * `recipient` (the address was refused) or `sender` (the receiver refused
+	 * the sending IP or domain; the address is not blocklisted). `null` without
+	 * a bounce, and for a bounce recorded before servers stored the cause.
+	 */
+	bounceCause: 'recipient' | 'sender' | null;
 	/** Stable code of the failure (for example `MTA_UNREACHABLE`); `null` unless `failed`. */
 	errorCode: string | null;
-	/** Human-readable reason of the failure; `null` unless `failed`. */
+	/**
+	 * Why it did not arrive: the reason of the failure when `failed`, the
+	 * receiving server's diagnostic text when `bounced` (`null` if the report
+	 * carried none), otherwise `null`.
+	 */
 	errorMessage: string | null;
 }

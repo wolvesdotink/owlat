@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.owlat.sdk.Owlat;
 import com.owlat.sdk.OwlatConfig;
 import com.owlat.sdk.internal.JsonMapper;
+import com.owlat.sdk.model.CursorPaginatedResponse;
 import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.CreateContactParams;
@@ -11,12 +12,15 @@ import com.owlat.sdk.model.contact.UpdateContactParams;
 import com.owlat.sdk.model.domain.SendingDomainRecord;
 import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
+import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.status.SendingHoldLift;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.topic.Topic;
+import com.owlat.sdk.model.transactional.ListTransactionalSendsParams;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
+import com.owlat.sdk.model.transactional.TransactionalSendStatus;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -211,9 +215,44 @@ class ResourceHttpTest {
     }
 
     @Test
+    void transactionalListGetsTheRootWithItsFilters() {
+        responseBody = "{\"data\":[],\"pagination\":{\"limit\":10,\"cursor\":\"c2\",\"isDone\":false}}";
+        CursorPaginatedResponse<TransactionalSendStatus> page = client().transactional().list(
+                ListTransactionalSendsParams.builder().email("ada+reset@example.com").limit(10).cursor("c1").build());
+        assertEquals("GET", method);
+        assertEquals("/api/v1/transactional", rawPath);
+        assertEquals("email=ada%2Breset%40example.com&limit=10&cursor=c1", query);
+        assertEquals("c2", page.getPagination().getCursor());
+        assertFalse(page.getPagination().isDone());
+    }
+
+    @Test
+    void transactionalListWithoutParamsSendsNoQuery() {
+        responseBody = "{\"data\":[],\"pagination\":{\"limit\":25,\"cursor\":null,\"isDone\":true}}";
+        client().transactional().list();
+        assertEquals("/api/v1/transactional", rawPath);
+        assertNull(query);
+    }
+
+    @Test
     void transactionalGetUrlEncodesTheId() {
         client().transactional().get("a/b?c");
         assertEquals("/api/v1/transactional/a%2Fb%3Fc", rawPath);
+    }
+
+    // ── limits ──────────────────────────────────────────────────────────────
+
+    @Test
+    void limitsGetReadsTheLimitsRouteAndADailyCapThatIsOff() {
+        responseBody = "{\"data\":{\"dailySends\":{\"isEnabled\":false,\"limit\":50000,\"used\":null,"
+                + "\"remaining\":null,\"resetsAt\":null},"
+                + "\"recipientSends\":{\"isEnabled\":true,\"limit\":5,\"windowSeconds\":3600}}}";
+        SendLimits limits = client().limits().get();
+        assertEquals("GET", method);
+        assertEquals("/api/v1/limits", rawPath);
+        assertFalse(limits.getDailySends().isEnabled());
+        assertNull(limits.getDailySends().getRemaining());
+        assertEquals(3600, limits.getRecipientSends().getWindowSeconds());
     }
 
     // ── domains ─────────────────────────────────────────────────────────────

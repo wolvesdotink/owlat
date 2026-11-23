@@ -62,6 +62,7 @@ describe('built-in tool registry conformance', () => {
 			'getCampaignStats',
 			'getEmailStats',
 			'getDeliveryHealth',
+			'getTransactionalSends',
 			'draftEmailReply',
 			'draftCampaignCopy',
 		]);
@@ -85,13 +86,18 @@ describe('built-in tool registry conformance', () => {
 			'getCampaignStats',
 			'getEmailStats',
 			'getDeliveryHealth',
+			'getTransactionalSends',
 		]) {
 			expect(byName.get(readTool)?.spend).toBeNull();
 		}
 	});
 
-	it('scrubs the output of every built-in and gates the knowledge search and the mail answer', () => {
-		const flags: Record<string, string> = { searchKnowledge: 'ai.knowledge', askMailbox: 'ai' };
+	it('scrubs the output of every built-in and gates the knowledge search, the mail answer and the send log', () => {
+		const flags: Record<string, string> = {
+			searchKnowledge: 'ai.knowledge',
+			askMailbox: 'ai',
+			getTransactionalSends: 'transactional',
+		};
 		for (const module of TOOL_MODULES) {
 			expect(module.scrubOutput).toBe(true);
 			expect(module.flag).toBe(flags[module.name]);
@@ -265,8 +271,8 @@ describe('withHostScrub', () => {
 const READER = { canReadInbox: true };
 
 describe('buildAssistantTools', () => {
-	it('assembles exactly the built-in set, in order, with ai and ai.knowledge on', async () => {
-		const runQuery = vi.fn(async () => ({ ai: true, 'ai.knowledge': true }));
+	it('assembles exactly the built-in set, in order, with ai, ai.knowledge and transactional on', async () => {
+		const runQuery = vi.fn(async () => ({ ai: true, 'ai.knowledge': true, transactional: true }));
 		const ctx = { runQuery } as unknown as ActionCtx;
 		const set = await buildAssistantTools(ctx, READER);
 		expect(Object.keys(set)).toEqual([
@@ -277,6 +283,7 @@ describe('buildAssistantTools', () => {
 			'getCampaignStats',
 			'getEmailStats',
 			'getDeliveryHealth',
+			'getTransactionalSends',
 			'draftEmailReply',
 			'draftCampaignCopy',
 		]);

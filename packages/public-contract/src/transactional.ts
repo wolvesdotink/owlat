@@ -139,10 +139,15 @@ export const transactionalSendStatusSchema = z.strictObject({
 	complainedAt: timestamp('drew a spam complaint'),
 	failedAt: timestamp('failed for good'),
 	bounceType: z.enum(['hard', 'soft']).nullable(),
+	bounceCause: z.enum(['recipient', 'sender']).nullable().meta({
+		description:
+			'Who a bounce was about, as the email.bounced webhook names it: recipient (the address was refused) or sender (the receiver refused the sending IP or domain; the address is not blocklisted). Null without a bounce, and for a bounce recorded before servers stored the cause.',
+	}),
 	errorCode: z.string().nullable().meta({
 		description: 'Stable code of the failure, for example MTA_UNREACHABLE. Null unless failed.',
 	}),
 	errorMessage: z.string().nullable().meta({
-		description: 'Human-readable reason of the failure. Null unless failed.',
+		description:
+			"Why it did not arrive: the reason of the failure when failed, the receiving server's diagnostic text when bounced (null if the report carried none). Null otherwise.",
 	}),
 });

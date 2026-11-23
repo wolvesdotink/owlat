@@ -24,10 +24,11 @@ import {
 } from '../contacts/api';
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
-import { getTransactionalSend } from '../transactional/sendStatusHttp';
+import { getTransactionalSend, listTransactionalSends } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
 import { listDomains } from './domainsHttp';
+import { getLimits } from './limitsHttp';
 import { getOpenApiDocument } from './openApiHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
@@ -109,6 +110,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: handleCors,
 	});
 
+	// Limits API
+	http.route({
+		path: '/api/v1/limits',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
 	// Topics API: the list, and a single prefix for all topic sub-paths
 	http.route({
 		path: '/api/v1/topics',
@@ -177,6 +185,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: sendTransactional,
 	});
 
+	// GET /api/v1/transactional - List sends, by recipient, status or window
+	http.route({
+		path: '/api/v1/transactional',
+		method: 'GET',
+		handler: listTransactionalSends,
+	});
+
 	// GET /api/v1/transactional/{sendId} - Delivery status of one send
 	http.route({
 		pathPrefix: '/api/v1/transactional/',
@@ -200,6 +215,15 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/domains',
 		method: 'GET',
 		handler: listDomains,
+	});
+
+	// ============ LIMITS API ENDPOINTS ============
+
+	// GET /api/v1/limits - The send limits of this key, and what is left
+	http.route({
+		path: '/api/v1/limits',
+		method: 'GET',
+		handler: getLimits,
 	});
 
 	// ============ TOPICS API ENDPOINTS ============

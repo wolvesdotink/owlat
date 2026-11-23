@@ -5,9 +5,10 @@
  */
 
 import { z } from 'zod';
-import { apiErrorResponseSchema, paginationMetaSchema } from './common';
+import { apiErrorResponseSchema, cursorPaginationMetaSchema, paginationMetaSchema } from './common';
 import { OPERATION_EXAMPLES, type OperationExample } from './examples';
 import {
+	ANY_KEY,
 	KEYED_ERROR_STATUSES,
 	PUBLIC_OPERATIONS,
 	reasonsAt,
@@ -95,7 +96,8 @@ function withoutSafeIntegerBounds(node: unknown): unknown {
 function successBody(operation: PublicOperation): JsonObject {
 	const { name, paginated } = operation.success;
 	const data = paginated ? { type: 'array', items: ref(name) } : ref(name);
-	const properties: JsonObject = paginated ? { data, pagination: ref('PaginationMeta') } : { data };
+	const pagination = paginated === 'cursor' ? 'CursorPaginationMeta' : 'PaginationMeta';
+	const properties: JsonObject = paginated ? { data, pagination: ref(pagination) } : { data };
 	return {
 		type: 'object',
 		properties,
@@ -229,14 +231,18 @@ function operationObject(operation: PublicOperation): JsonObject {
 				}
 			: {}),
 	};
-	const errorStatuses = [
-		...new Set([...(keyed ? KEYED_ERROR_STATUSES : []), ...operation.errors]),
-	].sort((a, b) => a - b);
+	// A key without a scope to lack has no 403 to receive.
+	const keyedStatuses = KEYED_ERROR_STATUSES.filter(
+		(status) => status !== 403 || operation.scope !== ANY_KEY
+	);
+	const errorStatuses = [...new Set([...(keyed ? keyedStatuses : []), ...operation.errors])].sort(
+		(a, b) => a - b
+	);
 	return {
 		operationId: operation.operationId,
 		tags: [operation.tag],
 		summary: operation.summary,
-		security: keyed ? [{ apiKey: [operation.scope] }] : [],
+		security: keyed ? [{ apiKey: operation.scope === ANY_KEY ? [] : [operation.scope] }] : [],
 		...(parameters.length ? { parameters } : {}),
 		...(operation.request
 			? {
@@ -311,6 +317,7 @@ export function buildOpenApiDocument(
 	const responses = componentSchemas(
 		[
 			['ApiErrorResponse', apiErrorResponseSchema],
+			['CursorPaginationMeta', cursorPaginationMetaSchema],
 			['PaginationMeta', paginationMetaSchema],
 			['SendingDomainSetup', sendingDomainSetupSchema],
 			['SendingHoldLift', sendingHoldLiftSchema],
@@ -344,7 +351,7 @@ export function buildOpenApiDocument(
 					type: 'http',
 					scheme: 'bearer',
 					description:
-						'An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs.',
+						'An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs; one that lists none takes any key.',
 				},
 			},
 			schemas: sortKeys({ ...requests, ...responses }),

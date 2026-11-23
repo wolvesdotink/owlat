@@ -3,6 +3,7 @@ export * from './common';
 export * from './contacts';
 export * from './domains';
 export * from './events';
+export * from './limits';
 export * from './status';
 export * from './topics';
 export * from './transactional';

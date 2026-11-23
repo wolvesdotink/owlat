@@ -12,6 +12,7 @@ import com.owlat.sdk.Owlat;
 import com.owlat.sdk.OwlatConfig;
 import com.owlat.sdk.RequestOptions;
 import com.owlat.sdk.internal.JsonMapper;
+import com.owlat.sdk.model.CursorPaginatedResponse;
 import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.Contact;
@@ -21,12 +22,14 @@ import com.owlat.sdk.model.contact.UpdateContactParams;
 import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.event.SendEventResponse;
+import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.AddToTopicResponse;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicResponse;
 import com.owlat.sdk.model.topic.Topic;
+import com.owlat.sdk.model.transactional.ListTransactionalSendsParams;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.owlat.sdk.model.transactional.SendTransactionalResponse;
 import com.owlat.sdk.model.transactional.TransactionalAttachment;
@@ -126,6 +129,17 @@ class OpenApiContractTest {
                                 .url("https://owlat.example/terms.pdf").build())
                         .build(), RequestOptions.idempotencyKey("order-1001-confirmation")),
                 type(SendTransactionalResponse.class), false));
+        calls.put("listTransactionalSends", new Call(
+                owlat -> owlat.transactional().list(ListTransactionalSendsParams.builder()
+                        .email("ada@example.com")
+                        .since("2026-11-01T00:00:00.000Z")
+                        .until("2026-11-02T00:00:00.000Z")
+                        .limit(25)
+                        .cursor("c1")
+                        .build()),
+                mapper -> mapper.getTypeFactory().constructParametricType(
+                        CursorPaginatedResponse.class, TransactionalSendStatus.class),
+                true));
         calls.put("getTransactionalSend", new Call(
                 owlat -> owlat.transactional().get("k57s3nd00000000000000000000000"),
                 type(TransactionalSendStatus.class), false));
@@ -140,6 +154,7 @@ class OpenApiContractTest {
         calls.put("removeContactFromTopic", new Call(
                 owlat -> owlat.topics().removeContact(new RemoveFromTopicParams(TOPIC_ID, "ada@example.com")),
                 type(RemoveFromTopicResponse.class), false));
+        calls.put("getLimits", new Call(owlat -> owlat.limits().get(), type(SendLimits.class), false));
         calls.put("getStatus", new Call(owlat -> owlat.status().get(), type(DeliveryStatus.class), false));
         calls.put("listDomains", new Call(
                 owlat -> owlat.domains().list(),

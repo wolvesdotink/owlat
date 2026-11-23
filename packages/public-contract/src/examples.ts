@@ -11,6 +11,7 @@
 import type { PublicOperationId } from './operations';
 import type {
 	AddContactToTopicRequest,
+	CursorPaginatedResponse,
 	AddToTopicResponse,
 	ApiResponse,
 	Contact,
@@ -25,6 +26,7 @@ import type {
 	SendTransactionalRequest,
 	SendTransactionalResponse,
 	SendingDomainSetup,
+	SendLimits,
 	Topic,
 	TransactionalSendStatus,
 	UpdateContactRequest,
@@ -121,6 +123,33 @@ export const OPERATION_EXAMPLES = {
 			},
 		} satisfies ApiResponse<SendTransactionalResponse>,
 	},
+	listTransactionalSends: {
+		response: {
+			data: [
+				{
+					sendId: 'k57s3nd00000000000000000000001',
+					status: 'bounced',
+					email: 'ada@example.com',
+					templateId: 'k57t3mpl4te0000000000000000000',
+					slug: 'password-reset',
+					language: 'en',
+					queuedAt: '2026-11-21T07:30:00.000Z',
+					sentAt: '2026-11-21T07:30:02.000Z',
+					deliveredAt: null,
+					openedAt: null,
+					clickedAt: null,
+					bouncedAt: '2026-11-21T07:30:05.000Z',
+					complainedAt: null,
+					failedAt: null,
+					bounceType: 'hard',
+					bounceCause: 'recipient',
+					errorCode: null,
+					errorMessage: '550 5.1.1 The email account that you tried to reach does not exist',
+				},
+			],
+			pagination: { limit: 25, cursor: null, isDone: true },
+		} satisfies CursorPaginatedResponse<TransactionalSendStatus>,
+	},
 	getTransactionalSend: {
 		response: {
 			data: {
@@ -139,6 +168,7 @@ export const OPERATION_EXAMPLES = {
 				complainedAt: null,
 				failedAt: '2026-11-06T09:00:00.000Z',
 				bounceType: null,
+				bounceCause: null,
 				errorCode: 'MTA_UNREACHABLE',
 				errorMessage: 'The mail server could not be reached before the delivery deadline passed',
 			},
@@ -258,5 +288,19 @@ export const OPERATION_EXAMPLES = {
 				},
 			],
 		} satisfies ApiResponse<SendingDomainSetup[]>,
+	},
+	getLimits: {
+		response: {
+			data: {
+				dailySends: {
+					isEnabled: true,
+					limit: 50_000,
+					used: 1_204,
+					remaining: 48_796,
+					resetsAt: '2026-11-24T00:00:00.000Z',
+				},
+				recipientSends: { isEnabled: true, limit: 5, windowSeconds: 3600 },
+			},
+		} satisfies ApiResponse<SendLimits>,
 	},
 } satisfies Record<PublicOperationId, OperationExample>;

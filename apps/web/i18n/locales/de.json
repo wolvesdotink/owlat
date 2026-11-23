@@ -575,6 +575,7 @@
 					"getCampaignStats": "Kampagnenstatistiken abgerufen",
 					"getDeliveryHealth": "Zustellung geprüft",
 					"getEmailStats": "E-Mail-Statistiken abgerufen",
+					"getTransactionalSends": "E-Mails an eine Adresse nachgesehen",
 					"searchEverything": "Workspace durchsucht",
 					"searchFiles": "Dateien durchsucht",
 					"searchKnowledge": "Wissensdatenbank durchsucht"
@@ -10938,7 +10939,7 @@
 								"label": "Themen — schreiben"
 							},
 							"transactionalSend": {
-								"description": "Transaktions-E-Mails senden.",
+								"description": "Transaktions-E-Mails senden und die Sendungen mit Empfängern und Zustellstatus auflisten.",
 								"label": "Transaktional — senden"
 							}
 						},

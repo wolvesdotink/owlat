@@ -15,6 +15,8 @@ export default defineConfig({
 			/^\.\/deliveryStatus$/,
 			/^\.\/domainSetup$/,
 			/^\.\/errorReasons$/,
+			/^\.\/sendLimits$/,
+			/^\.\/sendList$/,
 			/^\.\/topicList$/,
 			/^\.\/webhookEvents$/,
 		],

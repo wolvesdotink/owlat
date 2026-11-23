@@ -62,6 +62,15 @@ export const paginationMetaSchema = z.strictObject({
 	isDone: z.boolean(),
 });
 
+export const cursorPaginationMetaSchema = z.strictObject({
+	limit: z.number().int(),
+	cursor: z.string().nullable().meta({
+		description:
+			'Cursor of the next page, or null once isDone is true. It belongs to the filters of the request that returned it.',
+	}),
+	isDone: z.boolean(),
+});
+
 /**
  * Response schemas are strict: the server sends exactly the documented
  * fields, so a test that parses a real response with one of them also catches
@@ -76,6 +85,11 @@ export function dataEnvelope<Item extends z.ZodType>(item: Item) {
 /** `{ data, pagination }`, the envelope of a list response. */
 export function paginatedEnvelope<Item extends z.ZodType>(item: Item) {
 	return z.strictObject({ data: z.array(item), pagination: paginationMetaSchema });
+}
+
+/** `{ data, pagination }` of a list that has no total. */
+export function cursorPaginatedEnvelope<Item extends z.ZodType>(item: Item) {
+	return z.strictObject({ data: z.array(item), pagination: cursorPaginationMetaSchema });
 }
 
 export const apiErrorResponseSchema = z.strictObject({

@@ -1,10 +1,11 @@
 import { BaseResource } from './base';
 import type {
+	ListTransactionalSendsParams,
 	SendTransactionalParams,
 	SendTransactionalResponse,
 	TransactionalSendStatus,
 } from '../types/transactional';
-import type { ApiResponse, RequestOptions } from '../types/common';
+import type { ApiResponse, CursorPaginatedResponse, RequestOptions } from '../types/common';
 import { ValidationError } from '../errors';
 
 /**
@@ -154,8 +155,10 @@ export class TransactionalResource extends BaseResource {
 
 	/**
 	 * Get where one send stands: queued, sent, delivered, bounced, failed, ...
-	 * A failed send names its `errorCode` and `errorMessage`. The send's data
-	 * variables are never returned. Needs the `transactional:send` scope.
+	 * A failed send names its `errorCode` and `errorMessage`; a bounced one its
+	 * `bounceType`, `bounceCause` and the receiving server's text in
+	 * `errorMessage`. The send's data variables are never returned. Needs the
+	 * `transactional:send` scope.
 	 *
 	 * @param sendId - The `transactionalEmailId` that {@link send} returned
 	 *   (every `email.*` webhook for the send carries it as `sendId`)
@@ -177,5 +180,53 @@ export class TransactionalResource extends BaseResource {
 			`/api/v1/transactional/${encodeURIComponent(sendId)}`
 		);
 		return response.data.data;
+	}
+
+	/**
+	 * List the sends this API created, newest first, each as {@link get}
+	 * answers it: the sends to one address, or the sends in one state, within
+	 * a window of at most 30 days (by default the last 30). Needs the
+	 * `transactional:send` scope.
+	 *
+	 * Pass `cursor` from the previous response's `pagination.cursor`, with the
+	 * same filters, to fetch the next page, and stop once `pagination.isDone`
+	 * is true. The page has no total.
+	 *
+	 * @param params - Filters, page size and cursor
+	 * @returns One page of sends plus cursor metadata
+	 * @throws {ValidationError} If a filter is malformed, `email` and `status`
+	 *   are combined, the window is over 30 days, or the cursor belongs to
+	 *   other filters
+	 *
+	 * @example
+	 * ```typescript
+	 * // What happened to the reset mail for this customer?
+	 * const { data: sends } = await owlat.transactional.list({ email: 'user@example.com' });
+	 * for (const send of sends) {
+	 *   if (send.status === 'bounced') console.warn(send.bounceCause, send.errorMessage);
+	 * }
+	 *
+	 * // Which sends failed in the last hour?
+	 * const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+	 * const failed = await owlat.transactional.list({ status: 'failed', since });
+	 * ```
+	 */
+	async list(
+		params: ListTransactionalSendsParams = {}
+	): Promise<CursorPaginatedResponse<TransactionalSendStatus>> {
+		const searchParams = new URLSearchParams();
+		// A filter given empty is sent as is, for the server to refuse: dropped,
+		// it would widen the list to every recipient.
+		for (const name of ['email', 'status', 'since', 'until'] as const) {
+			const value = params[name];
+			if (value !== undefined) searchParams.set(name, value);
+		}
+		if (params.cursor) searchParams.set('cursor', params.cursor);
+		if (params.limit) searchParams.set('limit', String(params.limit));
+		const queryString = searchParams.toString();
+		const response = await this.http.get<CursorPaginatedResponse<TransactionalSendStatus>>(
+			queryString ? `/api/v1/transactional?${queryString}` : '/api/v1/transactional'
+		);
+		return response.data;
 	}
 }

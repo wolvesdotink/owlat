@@ -8,6 +8,7 @@ import { describe, expectTypeOf, it } from 'vitest';
 import type { z } from 'zod';
 import type {
 	apiErrorResponseSchema,
+	cursorPaginationMetaSchema,
 	healthStatusSchema,
 	jsonPrimitiveSchema,
 	paginationMetaSchema,
@@ -20,6 +21,7 @@ import type {
 } from '../contacts';
 import type { sendingDomainSetupSchema } from '../domains';
 import type { sendEventRequestSchema, sendEventResponseSchema } from '../events';
+import type { sendLimitsSchema } from '../limits';
 import type { deliveryStatusSchema } from '../status';
 import type {
 	addContactToTopicRequestSchema,
@@ -74,8 +76,12 @@ describe('schema and type agreement', () => {
 		expectTypeOf<z.output<typeof topicSchema>>().toEqualTypeOf<T.Topic>();
 		expectTypeOf<z.output<typeof sendingDomainSetupSchema>>().toEqualTypeOf<T.SendingDomainSetup>();
 		expectTypeOf<z.output<typeof deliveryStatusSchema>>().toEqualTypeOf<T.DeliveryStatus>();
+		expectTypeOf<z.output<typeof sendLimitsSchema>>().toEqualTypeOf<T.SendLimits>();
 		expectTypeOf<z.output<typeof healthStatusSchema>>().toEqualTypeOf<T.HealthStatus>();
 		expectTypeOf<z.output<typeof paginationMetaSchema>>().toEqualTypeOf<T.PaginationMeta>();
+		expectTypeOf<
+			z.output<typeof cursorPaginationMetaSchema>
+		>().toEqualTypeOf<T.CursorPaginationMeta>();
 		expectTypeOf<z.output<typeof apiErrorResponseSchema>>().toEqualTypeOf<T.ApiErrorResponse>();
 		expectTypeOf<z.output<typeof jsonPrimitiveSchema>>().toEqualTypeOf<T.JsonPrimitive>();
 	});

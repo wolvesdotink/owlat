@@ -35,6 +35,7 @@ import { meterLlmCall } from '../analytics/meteredSpend';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
 import { scrubForInjection, clampText } from './prompt';
 import { ASK_MAILBOX_SPEND, answerFromMail } from '../mail/ai/askMailbox';
+import { buildGetTransactionalSends } from './transactionalSendsTool';
 import {
 	ASSISTANT_TOOL_DRAFT_SPEND,
 	hasFlaggedModule,
@@ -354,8 +355,9 @@ function buildDraftCampaignCopy(
  * the single source of truth for built-in membership and metadata; the same set
  * powers both the personal assistant and @assistant-in-chat. The assistant is
  * gated as a whole by `ai.assistant`; `searchKnowledge` is also gated by
- * `ai.knowledge`, like Quick Query, and `askMailbox` by `ai`, like the rest of
- * Postbox AI. No built-in writes or sends.
+ * `ai.knowledge`, like Quick Query, `askMailbox` by `ai`, like the rest of
+ * Postbox AI, and `getTransactionalSends` by `transactional`, like the send log.
+ * No built-in writes or sends.
  */
 export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze([
 	{
@@ -419,6 +421,15 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scrubOutput: true,
 		isRetrieval: false,
 		build: buildGetDeliveryHealth,
+	},
+	{
+		name: 'getTransactionalSends',
+		flag: 'transactional',
+		scope: 'workspace:read',
+		spend: null,
+		scrubOutput: true,
+		isRetrieval: false,
+		build: buildGetTransactionalSends,
 	},
 	{
 		name: 'draftEmailReply',

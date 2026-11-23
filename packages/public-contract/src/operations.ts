@@ -10,10 +10,9 @@
 
 import type { z } from 'zod';
 import {
+	cursorPaginatedEnvelope,
 	dataEnvelope,
-	DEFAULT_PAGE_SIZE,
 	healthStatusSchema,
-	MAX_PAGE_SIZE,
 	paginatedEnvelope,
 } from './common';
 import {
@@ -24,6 +23,7 @@ import {
 } from './contacts';
 import { sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
+import { sendLimitsSchema } from './limits';
 import { deliveryStatusSchema } from './status';
 import {
 	addContactToTopicRequestSchema,
@@ -37,83 +37,32 @@ import {
 	transactionalSendStatusSchema,
 } from './transactional';
 import { ERROR_REASON_STATUS } from './errors';
-import { API_KEY_ERROR_REASONS, TRANSACTIONAL_REFUSAL_REASONS, type ApiErrorReason } from './types';
+import {
+	API_KEY_ERROR_REASONS,
+	SEND_LIST_MAX_WINDOW_DAYS,
+	TRANSACTIONAL_REFUSAL_REASONS,
+	type ApiErrorReason,
+} from './types';
+import {
+	ANY_KEY,
+	CONTACT_REF,
+	PAGE_CURSOR,
+	PAGE_LIMIT,
+	SEND_ID,
+	SEND_LIST_FILTERS,
+	TOPIC_ID,
+	type PublicOperation,
+} from './operationShape';
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
-
-/** A key scope one operation requires. */
-export type PublicApiScope =
-	| 'contacts:read'
-	| 'contacts:write'
-	| 'events:write'
-	| 'transactional:send'
-	| 'topics:write'
-	| 'topics:read'
-	| 'status:read';
-
-export interface PathParameter {
-	name: string;
-	description: string;
-}
-
-export interface QueryParameter {
-	name: string;
-	description: string;
-	schema: Record<string, unknown>;
-}
-
-export interface PublicOperation {
-	operationId: string;
-	method: HttpMethod;
-	/** The path with `{name}` placeholders for its path parameters. */
-	path: string;
-	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Domains' | 'Health';
-	summary: string;
-	/** The key scope the operation needs; `null` for the unauthenticated probe. */
-	scope: PublicApiScope | null;
-	pathParameters: readonly PathParameter[];
-	queryParameters: readonly QueryParameter[];
-	/** Whether an `Idempotency-Key` header makes a repeat answer with the first response. */
-	idempotent: boolean;
-	/** Name of the request body in the document's components, and its schema. */
-	request: { name: string; schema: z.ZodType } | null;
-	/**
-	 * The success status and what its envelope carries: `{ data }` with one
-	 * item, or `{ data: [...], pagination }` when `paginated`. `name` is the
-	 * item's name in the document's components.
-	 */
-	success: {
-		status: number;
-		description: string;
-		name: string;
-		data: z.ZodType;
-		paginated: boolean;
-	};
-	/** Error statuses the operation answers with, beyond the ones every keyed call can. */
-	errors: readonly number[];
-	/** The `error.data.reason` codes the operation answers with, beyond the ones every keyed call can. */
-	reasons: readonly ApiErrorReason[];
-}
-
-/** Statuses every key-authenticated call can answer with. */
-export const KEYED_ERROR_STATUSES = [400, 401, 403, 429, 500] as const;
-
-const CONTACT_REF: PathParameter = {
-	name: 'id',
-	description: 'The contact ID, or the contact email address (URL-encoded).',
-};
-const TOPIC_ID: PathParameter = { name: 'topicId', description: 'The topic ID.' };
-
-const PAGE_LIMIT: QueryParameter = {
-	name: 'limit',
-	description: `Items per page, at most ${MAX_PAGE_SIZE}; a larger value is clamped.`,
-	schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE },
-};
-const PAGE_CURSOR: QueryParameter = {
-	name: 'cursor',
-	description: "The previous page's `pagination.cursor`. Omit it for the first page.",
-	schema: { type: 'string' },
-};
+export {
+	ANY_KEY,
+	KEYED_ERROR_STATUSES,
+	type HttpMethod,
+	type PathParameter,
+	type PublicApiScope,
+	type PublicOperation,
+	type QueryParameter,
+} from './operationShape';
 
 export const PUBLIC_OPERATIONS = [
 	{
@@ -293,18 +242,34 @@ export const PUBLIC_OPERATIONS = [
 		reasons: TRANSACTIONAL_REFUSAL_REASONS,
 	},
 	{
+		operationId: 'listTransactionalSends',
+		method: 'GET',
+		path: '/api/v1/transactional',
+		tag: 'Transactional',
+		summary: `List the transactional sends, newest first, each with its delivery status, filtered by recipient or by status, within a window of at most ${SEND_LIST_MAX_WINDOW_DAYS} days. Needs the same scope as sending.`,
+		scope: 'transactional:send',
+		pathParameters: [],
+		queryParameters: [PAGE_LIMIT, PAGE_CURSOR, ...SEND_LIST_FILTERS],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'One page of sends, newest first.',
+			name: 'TransactionalSendStatus',
+			data: transactionalSendStatusSchema,
+			paginated: 'cursor',
+		},
+		errors: [],
+		reasons: ['feature_disabled'],
+	},
+	{
 		operationId: 'getTransactionalSend',
 		method: 'GET',
 		path: '/api/v1/transactional/{sendId}',
 		tag: 'Transactional',
 		summary: 'Get the delivery status of one transactional send. Needs the same scope as sending.',
 		scope: 'transactional:send',
-		pathParameters: [
-			{
-				name: 'sendId',
-				description: 'The `transactionalEmailId` the send call answered with.',
-			},
-		],
+		pathParameters: [SEND_ID],
 		queryParameters: [],
 		idempotent: false,
 		request: null,
@@ -432,15 +397,37 @@ export const PUBLIC_OPERATIONS = [
 		errors: [],
 		reasons: [],
 	},
+	{
+		operationId: 'getLimits',
+		method: 'GET',
+		path: '/api/v1/limits',
+		tag: 'Transactional',
+		summary:
+			"Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own.",
+		scope: ANY_KEY,
+		pathParameters: [],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'The limits in force.',
+			name: 'SendLimits',
+			data: sendLimitsSchema,
+			paginated: false,
+		},
+		errors: [],
+		reasons: [],
+	},
 ] as const satisfies readonly PublicOperation[];
 
 export type PublicOperationId = (typeof PUBLIC_OPERATIONS)[number]['operationId'];
 
 /** The schema of an operation's whole success body, envelope included. */
 export function successBodySchema(operation: PublicOperation): z.ZodType {
-	return operation.success.paginated
-		? paginatedEnvelope(operation.success.data)
-		: dataEnvelope(operation.success.data);
+	const { paginated, data } = operation.success;
+	if (paginated === 'cursor') return cursorPaginatedEnvelope(data);
+	return paginated ? paginatedEnvelope(data) : dataEnvelope(data);
 }
 
 /** The operation with this ID. */
@@ -450,9 +437,10 @@ export function publicOperation(operationId: PublicOperationId): PublicOperation
 
 /** The `error.data.reason` codes an operation can answer with at `status`. */
 export function reasonsAt(operation: PublicOperation, status: number): ApiErrorReason[] {
-	const reasons = [
-		...(operation.scope === null ? [] : API_KEY_ERROR_REASONS),
-		...operation.reasons,
-	];
+	const keyReasons =
+		operation.scope === ANY_KEY
+			? API_KEY_ERROR_REASONS.filter((reason) => reason !== 'missing_scope')
+			: API_KEY_ERROR_REASONS;
+	const reasons = [...(operation.scope === null ? [] : keyReasons), ...operation.reasons];
 	return reasons.filter((reason) => ERROR_REASON_STATUS[reason] === status);
 }
