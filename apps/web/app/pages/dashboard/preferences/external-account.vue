@@ -24,7 +24,6 @@ useHead({ title: () => t('dashboard.preferences.externalAccount.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 // `mail.external` defaults to OFF, so until the flags subscription lands

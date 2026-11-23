@@ -3,6 +3,12 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import * as onboarding from '../auth/onboarding';
+import {
+	createTestApiKey,
+	createTestContact,
+	createTestDomain,
+	createTestEmailTemplate,
+} from './factories';
 
 /**
  * Onboarding consolidation contract (audit item p3-onboarding).
@@ -33,6 +39,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'admin-a', role: 'owner' }),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'admin-a', role: 'owner' }),
 	};
+});
+
+// Delivery readiness reads provider routes and the environment; the checklist
+// tests below only need "this instance can send" to be true.
+vi.mock('../lib/sendProviders/capability', async () => {
+	const actual = await vi.importActual('../lib/sendProviders/capability');
+	return { ...actual, isDeliveryConfigured: vi.fn().mockResolvedValue(true) };
 });
 
 const allModules = import.meta.glob('../**/*.*s');
@@ -117,5 +130,44 @@ describe('auth/onboarding — dead code is deleted', () => {
 		expect(surface['getWithActualProgress']).toBeDefined();
 		expect(surface['dismiss']).toBeDefined();
 		expect(surface['restore']).toBeDefined();
+	});
+});
+
+describe('auth/onboarding — steps follow the workspace features', () => {
+	/** Every instance step done except the campaign one. */
+	async function seedAllButACampaign(t: ReturnType<typeof convexTest>, campaigns: boolean) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { campaigns },
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('contacts', createTestContact() as never);
+			await ctx.db.insert('emailTemplates', createTestEmailTemplate() as never);
+			await ctx.db.insert('apiKeys', createTestApiKey() as never);
+			await ctx.db.insert('domains', createTestDomain({ status: 'verified' }) as never);
+		});
+	}
+
+	it('leaves out "Send a campaign" while campaigns are off, so the rest completes it', async () => {
+		const t = convexTest(schema, modules);
+		await seedAllButACampaign(t, false);
+		const progress = await t
+			.withIdentity(adminIdentity('admin-a'))
+			.query(api.auth.onboarding.getWithActualProgress, { userId: 'admin-a' });
+		expect(progress.totalSteps).toBe(5);
+		expect(progress.completedSteps).toBe(5);
+		expect(progress.isComplete).toBe(true);
+	});
+
+	it('counts "Send a campaign" while campaigns are on', async () => {
+		const t = convexTest(schema, modules);
+		await seedAllButACampaign(t, true);
+		const progress = await t
+			.withIdentity(adminIdentity('admin-a'))
+			.query(api.auth.onboarding.getWithActualProgress, { userId: 'admin-a' });
+		expect(progress.totalSteps).toBe(6);
+		expect(progress.completedSteps).toBe(5);
+		expect(progress.isComplete).toBe(false);
 	});
 });

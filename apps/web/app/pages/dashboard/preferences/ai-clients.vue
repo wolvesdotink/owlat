@@ -11,7 +11,6 @@ useHead({ title: () => t('dashboard.preferences.aiClients.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresFeature: 'mail.mcp',
 });
 
 const { clients, isLoading, error, refetch, serverUrl, create, revoke } = useMcpClients();

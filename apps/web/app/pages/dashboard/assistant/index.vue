@@ -20,7 +20,6 @@ useHead({ title: () => t('dashboard.assistant.index.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'ai.assistant',
 });
 
 const {

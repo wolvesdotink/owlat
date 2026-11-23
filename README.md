@@ -25,6 +25,12 @@ On a fresh Linux VPS with Docker + Docker Compose v2:
 curl -fsSL https://get.owlat.app | bash
 ```
 
+If `get.owlat.app` does not answer, fetch the same script from GitHub. It installs the latest release all the same:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/main/install.sh | bash
+```
+
 The one-liner installs the `owlat` CLI to `/usr/local/bin` and runs `owlat quickstart`: it asks for your domain, DNS, DKIM, SMTP settings, and which feature packs you want enabled, then generates secrets, brings up the Docker stack, deploys the Convex functions, pushes the runtime env vars, and bootstraps your admin account. 10 minutes from empty VPS to working install.
 
 Already have a clone? `git clone https://github.com/wolvesdotink/owlat.git && cd owlat && scripts/owlat quickstart` runs the exact same blessed flow. The older pure-bash wizard (`bash scripts/setup.sh`) still ships as a legacy fallback — prefer `owlat quickstart` for new installs.

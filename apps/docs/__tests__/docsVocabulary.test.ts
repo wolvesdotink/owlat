@@ -78,6 +78,7 @@ const EXTERNAL_NAMES: Readonly<Record<string, string>> = {
 	CONVEX_BACKEND_VERSION: 'named to say 0.6.14 stopped reading it',
 	CONVEX_DASHBOARD_VERSION: 'named to say 0.6.14 stopped reading it',
 	UPPER_SNAKE: 'the shape of a plugin env-var name, not a name',
+	OWLAT_API_URL: "the reader's own app variable in the SDK examples",
 };
 
 /**

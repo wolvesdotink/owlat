@@ -8,7 +8,6 @@ useHead({ title: () => t('dashboard.preferences.vacation.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const {

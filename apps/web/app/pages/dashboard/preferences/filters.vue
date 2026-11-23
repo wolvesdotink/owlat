@@ -29,7 +29,6 @@ useHead({ title: () => t('dashboard.preferences.filters.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const {

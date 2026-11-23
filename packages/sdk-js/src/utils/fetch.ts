@@ -1,15 +1,6 @@
 import type { RateLimitInfo, RequestOptions } from '../types/common';
-import {
-	OwlatError,
-	AuthenticationError,
-	RateLimitError,
-	NotFoundError,
-	ValidationError,
-	ConflictError,
-	ForbiddenError,
-	InvalidStateError,
-	LimitReachedError,
-} from '../errors';
+import { OwlatError, ValidationError, UnexpectedResponseError } from '../errors';
+import { bodyExcerpt, createError, displayUrl, errorEnvelope } from './errorResponse';
 
 /**
  * HTTP method types supported by the client.
@@ -67,72 +58,6 @@ function extractRateLimit(headers: Headers): RateLimitInfo {
 		remaining: parseInt(headers.get('X-RateLimit-Remaining') || '10', 10),
 		reset: parseInt(headers.get('X-RateLimit-Reset') || '0', 10),
 	};
-}
-
-/**
- * Create an appropriate error based on status code. `code` is the Operation
- * error category from the response body; `data` carries its specifics.
- */
-function createError(
-	message: string,
-	code: string,
-	statusCode: number,
-	rateLimit: RateLimitInfo,
-	retryAfter?: number,
-	data?: Record<string, unknown>
-): OwlatError {
-	switch (statusCode) {
-		case 401:
-			return new AuthenticationError(message, code, rateLimit, data);
-		case 402:
-			return new LimitReachedError(message, code, rateLimit, data);
-		case 403:
-			return new ForbiddenError(message, code, rateLimit, data);
-		case 404:
-			return new NotFoundError(message, code, rateLimit, data);
-		case 409:
-			return new ConflictError(message, code, rateLimit, data);
-		case 422:
-			return new InvalidStateError(message, code, rateLimit, data);
-		case 429:
-			return new RateLimitError(message, retryAfter || 1, rateLimit, data);
-		case 400:
-			return new ValidationError(message, code, rateLimit, data);
-		default:
-			return new OwlatError(message, code, statusCode, rateLimit, data);
-	}
-}
-
-/**
- * The parts of an error body's `{ error: { message, category, data } }`
- * envelope that are usable: a field that is missing, empty or of the wrong
- * type takes the generic fallback, as an empty or non-JSON body does.
- */
-function errorEnvelope(rawBody: string): {
-	message: string;
-	category: string;
-	data: Record<string, unknown> | undefined;
-} {
-	let parsed: unknown;
-	try {
-		parsed = rawBody ? JSON.parse(rawBody) : undefined;
-	} catch {
-		parsed = undefined;
-	}
-	const error = isObject(parsed) ? parsed['error'] : undefined;
-	const fields: Record<string, unknown> = isObject(error) ? error : {};
-	const message = fields['message'];
-	const category = fields['category'];
-	const data = fields['data'];
-	return {
-		message: typeof message === 'string' && message ? message : 'Unknown error',
-		category: typeof category === 'string' && category ? category : 'internal',
-		data: isObject(data) ? data : undefined,
-	};
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Status codes that are safe to retry (transient server errors) */
@@ -380,17 +305,33 @@ export function createHttpClient(
 			// Content-Length of 0, so the old "empty response" branch returned it
 			// as a null success — the resource layer then NPE'd, and the
 			// retryable ones were never retried. Read the body as text and parse
-			// the error envelope defensively: an empty or non-JSON body falls
-			// back to the generic category/message rather than throwing.
+			// the error envelope defensively: an empty body falls back to the
+			// generic category/message, and a body that is not the envelope
+			// becomes an UnexpectedResponseError.
 			if (!response.ok) {
-				const { message, category, data } = errorEnvelope(rawBody);
+				const envelope = errorEnvelope(rawBody);
+				const { message, category, data } = envelope ?? {
+					message: 'Unknown error',
+					category: 'internal',
+					data: undefined,
+				};
 				const retryAfterHeader = response.headers.get('Retry-After');
 				const retryAfterData =
 					typeof data?.['retryAfter'] === 'number' ? data['retryAfter'] : undefined;
 				const retryAfter =
 					retryAfterData ?? (retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined);
 
-				lastError = createError(message, category, response.status, rateLimit, retryAfter, data);
+				// A 429 stays a rate-limit error whoever sent it: proxies and edges
+				// in front of an instance throttle too, and its Retry-After holds.
+				lastError =
+					envelope === null && response.status !== 429
+						? new UnexpectedResponseError(
+								response.status,
+								displayUrl(url),
+								bodyExcerpt(rawBody, apiKey),
+								rateLimit
+							)
+						: createError(message, category, response.status, rateLimit, retryAfter, data);
 
 				// A 429 asking for a longer wait than the client sleeps cannot be
 				// outwaited by retrying: hand the caller its `retryAfter` at once.
@@ -428,10 +369,12 @@ export function createHttpClient(
 			try {
 				body = JSON.parse(rawBody);
 			} catch {
-				throw new OwlatError(
-					'Failed to parse response body',
-					'parse_error',
+				// The API answers every 2xx with JSON; an HTML page here is most
+				// often the web app's address given as baseUrl.
+				throw new UnexpectedResponseError(
 					response.status,
+					displayUrl(url),
+					bodyExcerpt(rawBody, apiKey),
 					rateLimit
 				);
 			}
