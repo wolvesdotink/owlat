@@ -5,7 +5,12 @@ import {
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
-import { jsonResponse, errorResponse, errorResponseFromThrow } from '../auth/apiResponses';
+import {
+	jsonResponse,
+	errorResponse,
+	errorResponseFromThrow,
+	invalidInputResponse,
+} from '../auth/apiResponses';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import type { SendEventResponse } from '@owlat/public-contract';
 import { decodeRequest, sendEventRequestSchema } from '@owlat/public-contract/schemas';
@@ -49,15 +54,15 @@ export const sendEvent = createAuthenticatedHandler(
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
 		const decoded = decodeRequest(sendEventRequestSchema, raw);
-		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		if (!decoded.ok) return invalidInputResponse(decoded.message, decoded.field);
 		const body = decoded.value;
 		if (!isValidEmail(body.email)) {
-			return errorResponse('invalid_input', 'Invalid email format');
+			return invalidInputResponse('Invalid email format', 'email');
 		}
 		if (!Object.keys(body.eventProperties ?? {}).every(isStorablePropertyName)) {
-			return errorResponse(
-				'invalid_input',
-				'eventProperties keys must be printable ASCII, at most 1024 characters, and must not start with "$"'
+			return invalidInputResponse(
+				'eventProperties keys must be printable ASCII, at most 1024 characters, and must not start with "$"',
+				'eventProperties'
 			);
 		}
 

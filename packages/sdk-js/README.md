@@ -296,9 +296,11 @@ try {
 All errors extend `OwlatError` and include:
 
 - `message` - Human-readable error message
-- `code` - Error code from the API (e.g., 'invalid_email', 'not_found')
+- `code` - Error category from the API (e.g., 'invalid_input', 'not_found')
 - `statusCode` - HTTP status code
 - `rateLimit` - Rate limit info (if available)
+- `data` - The error's specifics, such as `field` on a `400`
+- `reason` - The refusal code from `data.reason` (e.g., 'domain_unverified'), typed as `ApiErrorReason`; branch on it rather than on the message
 
 `RateLimitError` also includes:
 

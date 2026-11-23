@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, expectTypeOf, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { createTestContact, createTestTopic, createTestTransactionalEmail } from './factories';
@@ -7,14 +7,17 @@ import {
 	apiErrorResponseSchema,
 	PUBLIC_OPERATIONS,
 	publicOperation,
+	reasonsAt,
 	successBodySchema,
 	type PublicOperationId,
+	type TransactionalRefusalReason,
 } from '@owlat/public-contract/schemas';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
 import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
+import type { DispatchRejectionReason } from '../transactional/dispatch';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
@@ -161,6 +164,20 @@ async function expectContractSuccess(operationId: PublicOperationId, res: Respon
 }
 
 /**
+ * Check a refusal against the public contract: its body carries `reason`, and
+ * the operation documents that reason at the status the response has.
+ */
+function expectDocumentedReason(
+	operationId: PublicOperationId,
+	res: Response,
+	body: { error: { data?: { reason?: unknown } } },
+	reason: string
+) {
+	expect(body.error.data?.reason).toBe(reason);
+	expect(reasonsAt(publicOperation(operationId), res.status)).toContain(reason);
+}
+
+/**
  * A JSON array nested a few thousand levels deep, still well inside the body
  * size cap: deep enough to overflow a recursive walk of the body.
  */
@@ -210,6 +227,89 @@ describe('v1 auth gate', () => {
 		expect(res.status).toBe(401);
 		const body = await res.json();
 		expect(body.error.message).toBe('Invalid API key');
+	});
+
+	it.each([
+		['no Authorization header', undefined, 'missing_credentials'],
+		['a header that is not a bearer token', 'Basic a b', 'missing_credentials'],
+		['a malformed key', 'Bearer lm_live_short', 'malformed_key'],
+		['a well-formed but unknown key', `Bearer ${makeKey()}`, 'invalid_key'],
+	])('401 names the reason for %s', async (_label, authorization, reason) => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/contacts', {
+			method: 'GET',
+			headers: authorization === undefined ? {} : { Authorization: authorization },
+		});
+		expect(res.status).toBe(401);
+		const body = await res.json();
+		expect(body.error.category).toBe('unauthenticated');
+		expectDocumentedReason('listContacts', res, body, reason);
+	});
+
+	it('answers an unknown, a revoked and an expired key alike', async () => {
+		const t = setupTest();
+		const revoked = makeKey('r'.repeat(40));
+		const expired = makeKey('e'.repeat(40));
+		await t.run(async (ctx) => {
+			for (const [key, fields] of [
+				[revoked, { isActive: false }],
+				[expired, { isActive: true, expiresAt: Date.now() - 1000 }],
+			] as const) {
+				await ctx.db.insert('apiKeys', {
+					name: 'unusable',
+					keyHash: await hashKey(key),
+					keyPrefix: 'lm_live_',
+					scopes: ['contacts:read'],
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+					...fields,
+				});
+			}
+		});
+		const answers = [];
+		for (const key of [makeKey(), revoked, expired]) {
+			const res = await t.fetch('/api/v1/contacts', {
+				method: 'GET',
+				headers: { Authorization: `Bearer ${key}` },
+			});
+			answers.push({ status: res.status, body: await res.json() });
+		}
+		expect(answers[0]).toEqual({
+			status: 401,
+			body: {
+				error: {
+					category: 'unauthenticated',
+					message: 'Invalid API key',
+					data: { reason: 'invalid_key' },
+				},
+			},
+		});
+		expect(answers[1]).toEqual(answers[0]);
+		expect(answers[2]).toEqual(answers[0]);
+	});
+
+	it('429 names the failed-key throttle apart from the per-key limit', async () => {
+		const t = setupTest();
+		let res: Response | undefined;
+		// The throttle's burst is well under 60 failures; the loop stops at the first 429.
+		for (let attempt = 0; attempt < 60; attempt++) {
+			res = await t.fetch('/api/v1/contacts', {
+				method: 'GET',
+				headers: { Authorization: `Bearer ${makeKey()}` },
+			});
+			if (res.status !== 401) break;
+		}
+		expect(res?.status).toBe(429);
+		const body = await res!.json();
+		expect(body.error).toEqual({
+			category: 'rate_limited',
+			message:
+				'Too many failed API key attempts from this address. Wait for the Retry-After interval before trying again.',
+			data: { reason: 'too_many_failed_attempts' },
+		});
+		expectDocumentedReason('listContacts', res!, body, 'too_many_failed_attempts');
+		expect(Number(res!.headers.get('Retry-After'))).toBeGreaterThan(0);
+		expect(res!.headers.get('X-RateLimit-Limit')).toBeNull();
 	});
 
 	it('GET /api/v1/contacts → 401 for an inactive key', async () => {
@@ -315,6 +415,29 @@ describe('POST /api/v1/contacts (createContact → contacts:write)', () => {
 			body: JSON.stringify({ firstName: 'No Email' }),
 		});
 		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toEqual({
+			category: 'invalid_input',
+			message: 'Email is required',
+			data: { field: 'email' },
+		});
+	});
+
+	it('400 invalid_input naming the field for a malformed email', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:write']);
+		const res = await t.fetch('/api/v1/contacts', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'not-an-email' }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toEqual({
+			category: 'invalid_input',
+			message: 'Invalid email format',
+			data: { field: 'email' },
+		});
 	});
 
 	it.each(['', '"__proto__":0,'])(
@@ -581,6 +704,7 @@ describe('PUT /api/v1/contacts/{idOrEmail} (updateContact → contacts:write)', 
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
 		expect(body.error.message).toBe('firstName must be at most 200 characters');
+		expect(body.error.data).toEqual({ field: 'firstName' });
 	});
 });
 
@@ -711,6 +835,8 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 			body: JSON.stringify({ email: 'has@example.com', eventName: '1starts-with-digit' }),
 		});
 		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ field: 'eventName' });
 	});
 
 	it('400 invalid_input for a nested eventProperties value', async () => {
@@ -844,7 +970,43 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		});
 		expect(res.status).toBe(400);
 		const body = await res.json();
-		expect(body.error.category).toBe('invalid_input');
+		expect(body.error).toEqual({
+			category: 'invalid_input',
+			message: 'dataVariables must be an object of string, number, boolean or null values',
+			data: { field: 'dataVariables.order' },
+		});
+	});
+
+	it.each([
+		[{ email: 'not-an-email', slug: 'welcome' }, 'Invalid email format', 'email'],
+		[
+			{ email: 'to@example.com', slug: 'welcome', attachments: [{ filename: 'a.txt' }] },
+			'attachments[0] must have exactly one of "content" (base64) or "url"',
+			'attachments.0',
+		],
+		[
+			{
+				email: 'to@example.com',
+				slug: 'welcome',
+				attachments: [
+					{ filename: 'a.txt', content: 'YQ==' },
+					{ filename: 'b.txt', content: '%%' },
+				],
+			},
+			'attachments[1].content is not valid base64',
+			'attachments.1.content',
+		],
+	])('400 invalid_input naming the field: %j', async (request, message, field) => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify(request),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toEqual({ category: 'invalid_input', message, data: { field } });
 	});
 
 	it('400 invalid_input for a nested dataVariables value held under a __proto__ key', async () => {
@@ -861,6 +1023,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error).toMatchObject({
 			category: 'invalid_input',
 			message: 'dataVariables must be an object of string, number, boolean or null values',
+			data: { field: 'dataVariables.__proto__' },
 		});
 	});
 
@@ -875,6 +1038,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(res.status).toBe(404);
 		const body = await res.json();
 		expect(body.error.category).toBe('not_found');
+		expectDocumentedReason('sendTransactional', res, body, 'template_not_found');
 	});
 
 	it.each([
@@ -948,7 +1112,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(res.status).toBe(403);
 		const body = await res.json();
 		expect(body.error.category).toBe('forbidden');
-		expect(body.error.data?.reason).toBe('feature_disabled');
+		expectDocumentedReason('sendTransactional', res, body, 'feature_disabled');
 	});
 });
 
@@ -1570,10 +1734,20 @@ describe('the public contract (@owlat/public-contract)', () => {
 				...(operation.request ? { body: JSON.stringify({ email: 'ada@example.com' }) } : {}),
 			});
 			expect(res.status, operation.operationId).toBe(403);
-			const body: unknown = await res.json();
+			const body = await res.json();
 			expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
-			expect(JSON.stringify(body)).toContain(String(operation.scope));
+			expect(body.error.data, operation.operationId).toEqual({
+				reason: 'missing_scope',
+				scope: operation.scope,
+			});
+			expectDocumentedReason(operation.operationId, res, body, 'missing_scope');
 		}
+	});
+
+	it('declares exactly the refusals the send route answers with', () => {
+		// The route's refusal table is keyed by DispatchRejectionReason, so this
+		// also keeps it in step with the contract's list.
+		expectTypeOf<DispatchRejectionReason>().toEqualTypeOf<TransactionalRefusalReason>();
 	});
 
 	it('answers the health probe with the documented body', async () => {

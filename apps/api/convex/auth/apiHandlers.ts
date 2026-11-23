@@ -92,6 +92,7 @@ export function requireScope(
 ): Response | null {
 	if (auth.scopes.includes(scope)) return null;
 	return errorResponse('forbidden', `This API key is missing the required scope: ${scope}`, {
+		data: { reason: 'missing_scope', scope },
 		rateLimit: auth.rateLimit,
 		requestOrigin,
 	});
@@ -136,6 +137,7 @@ export function createAuthenticatedHandler(
 			const category: OperationErrorCategory =
 				authResult.status === 429 ? 'rate_limited' : 'unauthenticated';
 			return errorResponse(category, authResult.error, {
+				...(authResult.reason ? { data: { reason: authResult.reason } } : {}),
 				retryAfter: authResult.retryAfter,
 				rateLimit: authResult.rateLimit,
 				requestOrigin: origin,
