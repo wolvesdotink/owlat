@@ -18,6 +18,7 @@ import com.owlat.sdk.model.contact.Contact;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.DeleteContactResponse;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.event.SendEventResponse;
 import com.owlat.sdk.model.status.DeliveryStatus;
@@ -25,6 +26,7 @@ import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.AddToTopicResponse;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicResponse;
+import com.owlat.sdk.model.topic.Topic;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.owlat.sdk.model.transactional.SendTransactionalResponse;
 import com.owlat.sdk.model.transactional.TransactionalAttachment;
@@ -127,6 +129,10 @@ class OpenApiContractTest {
         calls.put("getTransactionalSend", new Call(
                 owlat -> owlat.transactional().get("k57s3nd00000000000000000000000"),
                 type(TransactionalSendStatus.class), false));
+        calls.put("listTopics", new Call(
+                owlat -> owlat.topics().list(PaginationParams.builder().limit(25).cursor("c1").build()),
+                mapper -> mapper.getTypeFactory().constructParametricType(PaginatedResponse.class, Topic.class),
+                true));
         calls.put("addContactToTopic", new Call(
                 owlat -> owlat.topics().addContact(
                         AddToTopicParams.builder(TOPIC_ID).email("ada@example.com").contactId(CONTACT_ID).build()),
@@ -135,6 +141,10 @@ class OpenApiContractTest {
                 owlat -> owlat.topics().removeContact(new RemoveFromTopicParams(TOPIC_ID, "ada@example.com")),
                 type(RemoveFromTopicResponse.class), false));
         calls.put("getStatus", new Call(owlat -> owlat.status().get(), type(DeliveryStatus.class), false));
+        calls.put("listDomains", new Call(
+                owlat -> owlat.domains().list(),
+                mapper -> mapper.getTypeFactory().constructCollectionType(List.class, SendingDomainSetup.class),
+                false));
         return calls;
     }
 

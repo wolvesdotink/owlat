@@ -25,8 +25,10 @@ import {
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
-import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
+import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
+import { listDomains } from './domainsHttp';
+import { getOpenApiDocument } from './openApiHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -43,6 +45,20 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/health',
 		method: 'OPTIONS',
 		handler: healthCheck,
+	});
+
+	// This instance's OpenAPI document (no authentication required). It
+	// answers its own preflight for the same reason the probe does.
+	http.route({
+		path: '/api/v1/openapi.json',
+		method: 'GET',
+		handler: getOpenApiDocument,
+	});
+
+	http.route({
+		path: '/api/v1/openapi.json',
+		method: 'OPTIONS',
+		handler: getOpenApiDocument,
 	});
 
 	// CORS preflight handlers for API routes
@@ -86,7 +102,20 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: handleCors,
 	});
 
-	// Topics API (single prefix covers all topic sub-paths)
+	// Domains API
+	http.route({
+		path: '/api/v1/domains',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	// Topics API: the list, and a single prefix for all topic sub-paths
+	http.route({
+		path: '/api/v1/topics',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
 	http.route({
 		pathPrefix: '/api/v1/topics/',
 		method: 'OPTIONS',
@@ -164,7 +193,23 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: getStatus,
 	});
 
+	// ============ DOMAINS API ENDPOINTS ============
+
+	// GET /api/v1/domains - Sending domains and the DNS records each needs
+	http.route({
+		path: '/api/v1/domains',
+		method: 'GET',
+		handler: listDomains,
+	});
+
 	// ============ TOPICS API ENDPOINTS ============
+
+	// GET /api/v1/topics - List topics
+	http.route({
+		path: '/api/v1/topics',
+		method: 'GET',
+		handler: listTopics,
+	});
 
 	// POST /api/v1/topics/{topicId}/contacts - Add contact to topic
 	http.route({

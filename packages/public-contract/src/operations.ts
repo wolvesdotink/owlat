@@ -22,12 +22,14 @@ import {
 	deleteContactResponseSchema,
 	updateContactRequestSchema,
 } from './contacts';
+import { sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { deliveryStatusSchema } from './status';
 import {
 	addContactToTopicRequestSchema,
 	addToTopicResponseSchema,
 	removeFromTopicResponseSchema,
+	topicSchema,
 } from './topics';
 import {
 	sendTransactionalRequestSchema,
@@ -46,6 +48,7 @@ export type PublicApiScope =
 	| 'events:write'
 	| 'transactional:send'
 	| 'topics:write'
+	| 'topics:read'
 	| 'status:read';
 
 export interface PathParameter {
@@ -64,7 +67,7 @@ export interface PublicOperation {
 	method: HttpMethod;
 	/** The path with `{name}` placeholders for its path parameters. */
 	path: string;
-	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Health';
+	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Domains' | 'Health';
 	summary: string;
 	/** The key scope the operation needs; `null` for the unauthenticated probe. */
 	scope: PublicApiScope | null;
@@ -101,6 +104,17 @@ const CONTACT_REF: PathParameter = {
 };
 const TOPIC_ID: PathParameter = { name: 'topicId', description: 'The topic ID.' };
 
+const PAGE_LIMIT: QueryParameter = {
+	name: 'limit',
+	description: `Items per page, at most ${MAX_PAGE_SIZE}; a larger value is clamped.`,
+	schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE },
+};
+const PAGE_CURSOR: QueryParameter = {
+	name: 'cursor',
+	description: "The previous page's `pagination.cursor`. Omit it for the first page.",
+	schema: { type: 'string' },
+};
+
 export const PUBLIC_OPERATIONS = [
 	{
 		operationId: 'getHealth',
@@ -132,16 +146,8 @@ export const PUBLIC_OPERATIONS = [
 		scope: 'contacts:read',
 		pathParameters: [],
 		queryParameters: [
-			{
-				name: 'limit',
-				description: `Items per page, at most ${MAX_PAGE_SIZE}; a larger value is clamped.`,
-				schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE },
-			},
-			{
-				name: 'cursor',
-				description: "The previous page's `pagination.cursor`. Omit it for the first page.",
-				schema: { type: 'string' },
-			},
+			PAGE_LIMIT,
+			PAGE_CURSOR,
 			{
 				name: 'search',
 				description: 'Filter by a search query; results are relevance-ordered.',
@@ -313,6 +319,28 @@ export const PUBLIC_OPERATIONS = [
 		reasons: ['feature_disabled'],
 	},
 	{
+		operationId: 'listTopics',
+		method: 'GET',
+		path: '/api/v1/topics',
+		tag: 'Topics',
+		summary:
+			'List the topics contacts can be subscribed to, a page at a time, oldest first, with the ID the membership routes take.',
+		scope: 'topics:read',
+		pathParameters: [],
+		queryParameters: [PAGE_LIMIT, PAGE_CURSOR],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'One page of topics.',
+			name: 'Topic',
+			data: topicSchema,
+			paginated: true,
+		},
+		errors: [],
+		reasons: [],
+	},
+	{
 		operationId: 'addContactToTopic',
 		method: 'POST',
 		path: '/api/v1/topics/{topicId}/contacts',
@@ -377,6 +405,28 @@ export const PUBLIC_OPERATIONS = [
 			description: 'How sending stands.',
 			name: 'DeliveryStatus',
 			data: deliveryStatusSchema,
+			paginated: false,
+		},
+		errors: [],
+		reasons: [],
+	},
+	{
+		operationId: 'listDomains',
+		method: 'GET',
+		path: '/api/v1/domains',
+		tag: 'Domains',
+		summary:
+			'List the sending domains, each with its verification state and every DNS record it needs: the name, the value to publish and what the last check found. Needs the same scope as the status.',
+		scope: 'status:read',
+		pathParameters: [],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'Every sending domain.',
+			name: 'SendingDomainSetupList',
+			data: sendingDomainSetupListSchema,
 			paginated: false,
 		},
 		errors: [],

@@ -35,6 +35,7 @@ import {
 } from '@owlat/shared/dane';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
 import { isSpfRecord } from './spf';
+import { dnsRecordLookupName } from './dnsRecordNames';
 import { duplicatePolicyRecordFailure, txtRecordMatches } from './dnsMatch';
 import { isDmarcRecord } from './dmarc';
 import {
@@ -287,14 +288,14 @@ export async function runDnsLookups(
 	const results: VerificationResults = {};
 
 	if (dnsRecords.spf) {
-		const spfHostname = dnsRecords.spf.host === '@' ? domain : `${dnsRecords.spf.host}.${domain}`;
+		const spfHostname = dnsRecordLookupName('spf', dnsRecords.spf, domain);
 		results.spf = await verifyTxtRecord(spfHostname, dnsRecords.spf.value);
 	}
 
 	if (dnsRecords.dkim) {
 		results.dkim = [];
 		for (const dkimRecord of dnsRecords.dkim) {
-			const dkimHostname = `${dkimRecord.host}.${domain}`;
+			const dkimHostname = dnsRecordLookupName('dkim', dkimRecord, domain);
 			const result =
 				dkimRecord.type === 'CNAME'
 					? await verifyCnameRecord(dkimHostname, dkimRecord.value)
@@ -304,19 +305,14 @@ export async function runDnsLookups(
 	}
 
 	if (dnsRecords.dmarc) {
-		const dmarcHostname = `${dnsRecords.dmarc.host}.${domain}`;
+		const dmarcHostname = dnsRecordLookupName('dmarc', dnsRecords.dmarc, domain);
 		results.dmarc = await verifyTxtRecord(dmarcHostname, dnsRecords.dmarc.value);
 	}
 
 	if (dnsRecords.mailFrom && dnsRecords.mailFrom.length > 0) {
 		results.mailFrom = [];
 		for (const mailFromRecord of dnsRecords.mailFrom) {
-			// A `hostname` is an absolute FQDN (used for the return-path SPF
-			// record, which lives on RETURN_PATH_DOMAIN — a sibling of the
-			// From-domain, not a subhost). Fall back to `host.domain` otherwise.
-			const mailFromHostname = mailFromRecord.hostname
-				? mailFromRecord.hostname
-				: `${mailFromRecord.host}.${domain}`;
+			const mailFromHostname = dnsRecordLookupName('mailFrom', mailFromRecord, domain);
 			if (mailFromRecord.type === 'MX') {
 				results.mailFrom.push(
 					await verifyMxRecord(mailFromHostname, mailFromRecord.value, mailFromRecord.priority)

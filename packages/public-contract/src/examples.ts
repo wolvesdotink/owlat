@@ -24,6 +24,8 @@ import type {
 	SendEventResponse,
 	SendTransactionalRequest,
 	SendTransactionalResponse,
+	SendingDomainSetup,
+	Topic,
 	TransactionalSendStatus,
 	UpdateContactRequest,
 } from './types';
@@ -142,6 +144,27 @@ export const OPERATION_EXAMPLES = {
 			},
 		} satisfies ApiResponse<TransactionalSendStatus>,
 	},
+	listTopics: {
+		response: {
+			data: [
+				{
+					id: 'k57t0pic0000000000000000000000',
+					name: 'Product updates',
+					description: 'New features and changes, about once a month.',
+					requiresDoubleOptIn: true,
+					createdAt: '2026-01-10T08:00:00.000Z',
+				},
+				{
+					id: 'k57t0pic0000000000000000000001',
+					name: 'Events',
+					description: null,
+					requiresDoubleOptIn: false,
+					createdAt: '2026-02-01T12:00:00.000Z',
+				},
+			],
+			pagination: { limit: 25, totalItems: 2, cursor: null, isDone: true },
+		} satisfies PaginatedResponse<Topic>,
+	},
 	addContactToTopic: {
 		request: { email: 'ada@example.com' } satisfies AddContactToTopicRequest,
 		response: {
@@ -194,5 +217,46 @@ export const OPERATION_EXAMPLES = {
 				},
 			},
 		} satisfies ApiResponse<DeliveryStatus>,
+	},
+	listDomains: {
+		response: {
+			data: [
+				{
+					id: 'k57d0main0000000000000000000000',
+					domain: 'news.example.com',
+					status: 'failed',
+					lastCheckedAt: '2026-11-21T07:30:00.000Z',
+					records: [
+						{
+							purpose: 'dkim',
+							type: 'CNAME',
+							host: 's1._domainkey.news.example.com',
+							value: 's1.dkim.owlat.example',
+							priority: null,
+							state: 'wrong',
+							foundValue: 'old.dkim.example.net',
+						},
+						{
+							purpose: 'dmarc',
+							type: 'TXT',
+							host: '_dmarc.news.example.com',
+							value: 'v=DMARC1; p=none',
+							priority: null,
+							state: 'missing',
+							foundValue: null,
+						},
+						{
+							purpose: 'mail_from',
+							type: 'MX',
+							host: 'bounce.news.example.com',
+							value: 'feedback.owlat.example',
+							priority: 10,
+							state: 'found',
+							foundValue: null,
+						},
+					],
+				},
+			],
+		} satisfies ApiResponse<SendingDomainSetup[]>,
 	},
 } satisfies Record<PublicOperationId, OperationExample>;

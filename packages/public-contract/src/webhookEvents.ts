@@ -22,10 +22,10 @@ export interface DeliverabilityAlertSubject {
 /** `deliverability.alert_resolved`: the alert with this `alertId` closed. */
 export interface DeliverabilityAlertResolvedData extends DeliverabilityAlertSubject {
 	resolvedAt: string;
-	/** `manual`: an admin resolved it; `automatic`: the check passed again or Owlat closed it. */
+	/** `manual`: an admin resolved it (a platform admin lifted a sending hold); `automatic`: the check passed again, the reputation check lifted the hold, or Owlat closed it. */
 	resolution: 'manual' | 'automatic';
 }
-/** `deliverability.alert_raised`: a check that had passed regressed; `nextAction` is the fix the Deliverability Center shows for it. */
+/** `deliverability.alert_raised`: a check that had passed regressed, or sending on the instance stopped (`checkId` `deployment.sending_hold`); `nextAction` says what to do. */
 export interface DeliverabilityAlertRaisedData extends DeliverabilityAlertSubject {
 	severity: string;
 	message: string;
@@ -35,6 +35,14 @@ export interface DeliverabilityAlertRaisedData extends DeliverabilityAlertSubjec
 	emailMayNotArrive: boolean;
 	/** Sent by "Send test alert"; no check regressed. */
 	isTest: boolean;
+	/** Set only on a `deployment.sending_hold` alert: sending on the instance stopped. */
+	holdStatus?: 'suspended' | 'banned';
+	/**
+	 * Set only on a `deployment.sending_hold` alert: how sending comes back, as
+	 * the JSON text of a `SendingHoldLift` (the `sendingHold.lift` of
+	 * `GET /api/v1/status`), because event data holds flat values only.
+	 */
+	lift?: string;
 }
 export type DeliverabilityAlertRaisedWebhook = WebhookPayload<
 	'deliverability.alert_raised',

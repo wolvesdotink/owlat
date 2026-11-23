@@ -189,7 +189,17 @@ console.log(`Triggered ${result.triggeredAutomations} automations`);
 
 ### Topics
 
-Manage topic memberships.
+List topics and manage topic memberships.
+
+#### List Topics
+
+Needs the `topics:read` scope. Each topic's `id` is the `topicId` the calls
+below take.
+
+```typescript
+const { data: topics, pagination } = await owlat.topics.list({ limit: 25 });
+console.log(topics.map((topic) => `${topic.id} ${topic.name}`));
+```
 
 #### Add Contact to Topic
 
@@ -236,6 +246,18 @@ console.log(status.level); // 'ok' | 'warn' | 'error'
 console.log(status.reasonCode); // e.g. 'domain_failed'
 console.log(status.fix?.route); // the page in the web app that fixes it
 console.log(status.sendingHold); // set while sending is suspended or banned
+```
+
+### Domains
+
+Every sending domain with its verification state and the DNS records it needs.
+Needs the `status:read` scope.
+
+```typescript
+for (const domain of await owlat.domains.list()) {
+	const outstanding = domain.records.filter((record) => record.state !== 'found');
+	console.log(domain.domain, domain.status, outstanding);
+}
 ```
 
 ## Error Handling

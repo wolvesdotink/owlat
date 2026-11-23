@@ -64,6 +64,11 @@ const endpoints = computed(() => [
 		path: '/api/v1/health',
 		description: t('dashboard.admin.team.api.docs.endpoints.health'),
 	},
+	{
+		method: 'GET',
+		path: '/api/v1/openapi.json',
+		description: t('dashboard.admin.team.api.docs.endpoints.openapi'),
+	},
 ]);
 </script>
 

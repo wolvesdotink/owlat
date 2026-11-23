@@ -32,6 +32,12 @@ export type {
 	// Events
 	SendEventParams,
 	SendEventResponse,
+	// Domains
+	DnsRecordPurpose,
+	DnsRecordState,
+	DnsRecordType,
+	SendingDomainRecord,
+	SendingDomainSetup,
 	// Status
 	AbuseBlockedErrorData,
 	DeliveryFix,
@@ -49,6 +55,8 @@ export type {
 	SendingHoldLiftMode,
 	SendingHoldTrigger,
 	// Topics
+	Topic,
+	ListTopicsParams,
 	DoiStatus,
 	AddToTopicParams,
 	RemoveFromTopicParams,

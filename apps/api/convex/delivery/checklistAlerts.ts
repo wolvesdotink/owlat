@@ -35,7 +35,7 @@ type RegressionEmailResult = {
  * This email may travel through the server the alert is about, so it names the
  * channels that do not: whoever reads it learns where to look when it is late.
  */
-const OTHER_CHANNELS_LINE =
+export const OTHER_CHANNELS_LINE =
 	'Owlat also shows this alert in the app, sends it as a push notification to admins who have push turned on, and sends it to any webhook subscribed to deliverability alerts.';
 
 export function regressionEmailRetryDelay(attempt: number): number | null {
