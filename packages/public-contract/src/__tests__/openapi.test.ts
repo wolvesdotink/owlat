@@ -16,6 +16,9 @@ import { sendTransactionalRequestSchema } from '../transactional';
 import {
 	API_KEY_ERROR_REASONS,
 	DELIVERY_STATUS_REASONS,
+	DNS_RECORD_PURPOSES,
+	DNS_RECORD_STATES,
+	DNS_RECORD_TYPES,
 	TRANSACTIONAL_REFUSAL_REASONS,
 } from '../types';
 
@@ -69,6 +72,37 @@ describe('openapi.json', () => {
 			)
 		);
 		expect(altered).not.toEqual(committed);
+	});
+});
+
+describe('a document an instance serves', () => {
+	it('names the instance as its only server and differs from the committed file in nothing else', () => {
+		const served = buildOpenApiDocument(PUBLIC_OPERATIONS, {
+			serverUrl: 'https://api.owlat.example',
+		});
+		expect(served['servers']).toEqual([{ url: 'https://api.owlat.example' }]);
+		const { servers: _served, ...rest } = served;
+		const { servers: _committed, ...committedRest } = committed;
+		expect(rest).toEqual(committedRest);
+	});
+
+	it('keeps the placeholder server without an address', () => {
+		const servers = committed['servers'] as { url: string }[];
+		expect(servers.map((server) => server.url)).toEqual(['{baseUrl}']);
+	});
+});
+
+describe('sending domains', () => {
+	it('lists every record state, purpose and type the domain list can name', () => {
+		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;
+		const record = schemas['SendingDomainSetup'].properties.records.items.properties;
+		expect(record.state.enum).toEqual([...DNS_RECORD_STATES]);
+		expect(record.purpose.enum).toEqual([...DNS_RECORD_PURPOSES]);
+		expect(record.type.enum).toEqual([...DNS_RECORD_TYPES]);
+		expect(schemas['SendingDomainSetupList']).toEqual({
+			type: 'array',
+			items: { $ref: '#/components/schemas/SendingDomainSetup' },
+		});
 	});
 });
 

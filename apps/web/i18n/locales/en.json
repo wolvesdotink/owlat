@@ -10823,6 +10823,7 @@
 							"contacts": "List or create contacts",
 							"events": "Track custom events",
 							"health": "Health probe",
+							"openapi": "This instance's OpenAPI document, for API clients and AI agents",
 							"topics": "Manage topics and subscriptions",
 							"transactional": "Send a transactional email (slug in body)"
 						},
@@ -10925,8 +10926,12 @@
 								"label": "Events — write"
 							},
 							"statusRead": {
-								"description": "See whether this instance can send, and why not.",
+								"description": "See whether this instance can send, why not, and which DNS records each sending domain still needs.",
 								"label": "Status — read"
+							},
+							"topicsRead": {
+								"description": "List topics and the IDs used to add contacts to them.",
+								"label": "Topics — read"
 							},
 							"topicsWrite": {
 								"description": "Add or remove contacts on topics.",

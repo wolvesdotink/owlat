@@ -17,6 +17,7 @@ import {
 	type DeliveryStatusReason,
 	type SendingDomainStatusValue,
 } from '@owlat/public-contract/schemas';
+import { buildOpenApiDocument } from '@owlat/public-contract/openapi';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
@@ -24,9 +25,10 @@ import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
 import type { DispatchRejectionReason } from '../transactional/dispatch';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
-import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
+import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
+import { listDomains } from '../publicApi/domainsHttp';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
 import type { DeliveryHealthLevel, DomainStatus } from '../delivery/health';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
@@ -105,6 +107,7 @@ const ALL_SCOPES = [
 	'events:write',
 	'transactional:send',
 	'topics:write',
+	'topics:read',
 	'status:read',
 ];
 
@@ -1514,6 +1517,135 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 	});
 });
 
+// ─── GET /api/v1/topics (list) ───────────────────────────────────────────────
+
+describe('GET /api/v1/topics (listTopics → topics:read)', () => {
+	const CREATED_AT = Date.UTC(2026, 10, 2, 8, 0, 0);
+
+	async function seedTopics(t: ReturnType<typeof convexTest>, count: number) {
+		return await t.run(async (ctx) => {
+			const ids = [];
+			for (let i = 1; i <= count; i++) {
+				ids.push(
+					await ctx.db.insert('topics', {
+						name: `Topic ${i}`,
+						...(i % 2 === 1 ? { description: `About topic ${i}` } : {}),
+						...(i === 1 ? { requireDoubleOptIn: true } : {}),
+						displayOrder: i,
+						cachedMemberCount: 40 + i,
+						seedTag: 'demo',
+						createdAt: CREATED_AT + i,
+					})
+				);
+			}
+			return ids;
+		});
+	}
+
+	async function fetchTopics(t: ReturnType<typeof convexTest>, key: string, query = '') {
+		return await t.fetch(`/api/v1/topics${query}`, { method: 'GET', headers: authHeaders(key) });
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/topics', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('listTopics', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that only writes topic membership', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['topics:write']);
+		const res = await fetchTopics(t, key);
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'topics:read' });
+		expectDocumentedReason('listTopics', res, body, 'missing_scope');
+	});
+
+	it('lists each topic with the fields a caller picks one by, and nothing else', async () => {
+		// The deployment serves one organization, so there is no other workspace
+		// whose topics could appear; what is left to rule out is internal fields.
+		const t = setupTest();
+		const [first, second] = await seedTopics(t, 2);
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key);
+		expect(res.status).toBe(200);
+		await expectContractSuccess('listTopics', res);
+		expect(await res.json()).toEqual({
+			data: [
+				{
+					id: first,
+					name: 'Topic 1',
+					description: 'About topic 1',
+					requiresDoubleOptIn: true,
+					createdAt: new Date(CREATED_AT + 1).toISOString(),
+				},
+				{
+					id: second,
+					name: 'Topic 2',
+					description: null,
+					requiresDoubleOptIn: false,
+					createdAt: new Date(CREATED_AT + 2).toISOString(),
+				},
+			],
+			pagination: { limit: 25, totalItems: 2, cursor: null, isDone: true },
+		});
+	});
+
+	it('pages through every topic with limit and cursor', async () => {
+		const t = setupTest();
+		const ids = await seedTopics(t, 3);
+		const key = await seedKey(t, ['topics:read']);
+
+		const first = await (await fetchTopics(t, key, '?limit=2')).json();
+		expect(first.data.map((topic: { id: string }) => topic.id)).toEqual(ids.slice(0, 2));
+		expect(first.pagination).toMatchObject({ limit: 2, totalItems: 3, isDone: false });
+		expect(typeof first.pagination.cursor).toBe('string');
+
+		const next = await fetchTopics(
+			t,
+			key,
+			`?limit=2&cursor=${encodeURIComponent(first.pagination.cursor)}`
+		);
+		await expectContractSuccess('listTopics', next);
+		const second = await next.json();
+		expect(second.data.map((topic: { id: string }) => topic.id)).toEqual(ids.slice(2));
+		expect(second.pagination).toEqual({ limit: 2, totalItems: 3, cursor: null, isDone: true });
+	});
+
+	it('refuses a search, since topics have no search, rather than answering unfiltered', async () => {
+		const t = setupTest();
+		await seedTopics(t, 2);
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key, '?search=Topic%201');
+		expect(res.status).toBe(400);
+		expect((await res.json()).error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a non-positive limit', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key, '?limit=0');
+		expect(res.status).toBe(400);
+	});
+
+	it('leaves the membership routes to topics:write alone', async () => {
+		const t = setupTest();
+		const [topicId] = await seedTopics(t, 1);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('contacts', createTestContact({ email: 'member@example.com' }));
+		});
+		const key = await seedKey(t, ['topics:write']);
+		const res = await t.fetch(`/api/v1/topics/${topicId}/contacts`, {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'member@example.com' }),
+		});
+		await expectContractSuccess('addContactToTopic', res);
+	});
+});
+
 // ─── A failure behind a write route keeps its category ───────────────────────
 
 const FENCE_MESSAGE =
@@ -1860,6 +1992,308 @@ describe('GET /api/v1/status (getStatus → status:read)', () => {
 	});
 });
 
+// ─── GET /api/v1/domains ─────────────────────────────────────────────────────
+
+describe('GET /api/v1/domains (listDomains → status:read)', () => {
+	const CHECKED_AT = Date.UTC(2026, 10, 21, 7, 30, 0);
+	const checked = (fields: { verified: boolean; [field: string]: unknown }) => ({
+		lastChecked: CHECKED_AT,
+		...fields,
+	});
+
+	/**
+	 * One verified domain with an apex SPF record, and one that failed: a DKIM
+	 * selector found, one pointing elsewhere, DMARC absent, and return-path
+	 * records the resolver could not answer for or that were never checked.
+	 */
+	async function seedDomains(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) => {
+			const now = Date.now();
+			const verified = await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {
+					spf: { type: 'TXT', host: '@', value: 'v=spf1 include:spf.owlat.example ~all' },
+					dkim: [{ type: 'TXT', host: 'owlat1._domainkey', value: 'v=DKIM1; k=rsa; p=PUBKEY' }],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+				},
+				verificationResults: {
+					spf: checked({ verified: true, foundValue: 'v=spf1 include:spf.owlat.example ~all' }),
+					dkim: [checked({ verified: true, foundValue: 'v=DKIM1; k=rsa; p=PUBKEY' })],
+					dmarc: checked({ verified: true, foundValue: 'v=DMARC1; p=none' }),
+				},
+				lastVerifiedAt: CHECKED_AT,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const failed = await ctx.db.insert('domains', {
+				domain: 'news.example.com',
+				status: 'failed',
+				providerType: 'ses',
+				dnsRecords: {
+					dkim: [
+						{ type: 'CNAME', host: 's1._domainkey', value: 's1.dkim.owlat.example' },
+						{ type: 'CNAME', host: 's2._domainkey', value: 's2.dkim.owlat.example' },
+					],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+					mailFrom: [
+						{ type: 'MX', host: 'bounce', value: 'feedback.owlat.example', priority: 10 },
+						{ type: 'TXT', hostname: 'bounces.owlat.example', value: 'v=spf1 a -all' },
+					],
+				},
+				verificationResults: {
+					dkim: [
+						checked({ verified: true, foundValue: 's1.dkim.owlat.example' }),
+						checked({
+							verified: false,
+							error: "CNAME record doesn't point to expected value",
+							foundValue: 'old.dkim.example.net',
+						}),
+					],
+					dmarc: checked({ verified: false, error: 'No matching TXT record found' }),
+					mailFrom: [
+						checked({
+							verified: false,
+							inconclusive: true,
+							error: 'DNS lookup failed: resolver-error-canary',
+						}),
+					],
+				},
+				lastRegistrationError: 'registration-error-canary',
+				returnPathHostSyncError: 'mta-sync-error-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId: failed,
+				dkimTokens: ['ses-dkim-token-canary'],
+				verificationToken: 'ses-verification-token-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('sendingDomainMtaIdentities', {
+				domainId: verified,
+				dkimSelector: 'owlat1',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { verified, failed };
+		});
+	}
+
+	async function fetchDomains(t: ReturnType<typeof convexTest>, scopes = ['status:read']) {
+		const key = await seedKey(t, scopes);
+		return await t.fetch('/api/v1/domains', { method: 'GET', headers: authHeaders(key) });
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/domains', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('listDomains', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that can only send', async () => {
+		const t = setupTest();
+		const res = await fetchDomains(t, ['transactional:send']);
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'status:read' });
+		expectDocumentedReason('listDomains', res, body, 'missing_scope');
+	});
+
+	it('lists each domain with the records to publish and what the last check found', async () => {
+		const t = setupTest();
+		const { verified, failed } = await seedDomains(t);
+		const res = await fetchDomains(t);
+		expect(res.status).toBe(200);
+		await expectContractSuccess('listDomains', res);
+		expect((await res.json()).data).toEqual([
+			{
+				id: verified,
+				domain: 'mail.example.com',
+				status: 'verified',
+				lastCheckedAt: new Date(CHECKED_AT).toISOString(),
+				records: [
+					{
+						purpose: 'spf',
+						type: 'TXT',
+						host: 'mail.example.com',
+						value: 'v=spf1 include:spf.owlat.example ~all',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dkim',
+						type: 'TXT',
+						host: 'owlat1._domainkey.mail.example.com',
+						value: 'v=DKIM1; k=rsa; p=PUBKEY',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dmarc',
+						type: 'TXT',
+						host: '_dmarc.mail.example.com',
+						value: 'v=DMARC1; p=none',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+				],
+			},
+			{
+				id: failed,
+				domain: 'news.example.com',
+				status: 'failed',
+				lastCheckedAt: null,
+				records: [
+					{
+						purpose: 'dkim',
+						type: 'CNAME',
+						host: 's1._domainkey.news.example.com',
+						value: 's1.dkim.owlat.example',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dkim',
+						type: 'CNAME',
+						host: 's2._domainkey.news.example.com',
+						value: 's2.dkim.owlat.example',
+						priority: null,
+						state: 'wrong',
+						foundValue: 'old.dkim.example.net',
+					},
+					{
+						purpose: 'dmarc',
+						type: 'TXT',
+						host: '_dmarc.news.example.com',
+						value: 'v=DMARC1; p=none',
+						priority: null,
+						state: 'missing',
+						foundValue: null,
+					},
+					{
+						purpose: 'mail_from',
+						type: 'MX',
+						host: 'bounce.news.example.com',
+						value: 'feedback.owlat.example',
+						priority: 10,
+						state: 'unchecked',
+						foundValue: null,
+					},
+					{
+						purpose: 'mail_from',
+						type: 'TXT',
+						host: 'bounces.owlat.example',
+						value: 'v=spf1 a -all',
+						priority: null,
+						state: 'unchecked',
+						foundValue: null,
+					},
+				],
+			},
+		]);
+	});
+
+	it('answers an empty list on an instance with no sending domain', async () => {
+		const t = setupTest();
+		const res = await fetchDomains(t);
+		await expectContractSuccess('listDomains', res);
+		expect(await res.json()).toEqual({ data: [] });
+	});
+
+	it('carries nothing a member cannot see: no provider tokens, keys or raw errors', async () => {
+		// The deployment serves one organization, so there is no other workspace
+		// whose domains could leak; what is left to rule out is admin-only data.
+		const t = setupTest();
+		await seedDomains(t);
+		const res = await fetchDomains(t);
+		expect(res.status).toBe(200);
+		const text = await res.text();
+		for (const field of [
+			'privateKey',
+			'dkimPrivateKey',
+			'dkimTokens',
+			'verificationToken',
+			'dkimSelector',
+			'lastRegistrationError',
+			'returnPathHostSyncError',
+			'verificationResults',
+		]) {
+			expect(text).not.toContain(field);
+		}
+		for (const canary of [
+			'ses-dkim-token-canary',
+			'ses-verification-token-canary',
+			'registration-error-canary',
+			'mta-sync-error-canary',
+			'resolver-error-canary',
+		]) {
+			expect(text).not.toContain(canary);
+		}
+	});
+});
+
+// ─── GET /api/v1/openapi.json ────────────────────────────────────────────────
+
+describe('GET /api/v1/openapi.json (the instance describes its own API)', () => {
+	const SITE_URL = 'https://api.owlat.example';
+
+	it("serves the contract's document with this instance's API address as its server, without a key", async () => {
+		process.env['CONVEX_SITE_URL'] = SITE_URL;
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', { method: 'GET' });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toContain('application/json');
+		const served = await res.json();
+		expect(served.servers).toEqual([{ url: SITE_URL }]);
+		expect(served).toEqual(buildOpenApiDocument(PUBLIC_OPERATIONS, { serverUrl: SITE_URL }));
+		const { servers: _served, ...rest } = served;
+		const { servers: _built, ...built } = buildOpenApiDocument();
+		expect(rest).toEqual(built);
+	});
+
+	it('drops a trailing slash from the configured address', async () => {
+		process.env['CONVEX_SITE_URL'] = `${SITE_URL}/`;
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', { method: 'GET' });
+		expect((await res.json()).servers).toEqual([{ url: SITE_URL }]);
+	});
+
+	it("keeps the placeholder server, not the request's Host, when no address is configured", async () => {
+		delete process.env['CONVEX_SITE_URL'];
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', {
+			method: 'GET',
+			headers: { Host: 'attacker.example', 'X-Forwarded-Host': 'attacker.example' },
+		});
+		expect(res.status).toBe(200);
+		expect((await res.json()).servers).toEqual(buildOpenApiDocument()['servers']);
+	});
+
+	it('lets a browser on another origin read it', async () => {
+		process.env['CONVEX_SITE_URL'] = SITE_URL;
+		const t = setupTest();
+		const preflight = await t.fetch('/api/v1/openapi.json', {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		const res = await t.fetch('/api/v1/openapi.json', {
+			method: 'GET',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+	});
+});
+
 // ─── A single all-scope key works across every route ─────────────────────────
 
 describe('an all-scope key satisfies every route', () => {
@@ -1909,7 +2343,9 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	getTransactionalSend,
 	addContactToTopic,
 	removeContactFromTopic,
+	listTopics,
 	getStatus,
+	listDomains,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */
@@ -1926,9 +2362,12 @@ describe('the public contract (@owlat/public-contract)', () => {
 		}
 	});
 
-	it('documents every route other than the CORS preflights', () => {
+	it('documents every route other than the CORS preflights and the document itself', () => {
 		for (const [path, method] of router.getRoutes()) {
 			if (method === 'OPTIONS') continue;
+			// The document is served as is, not in the `{ data }` envelope every
+			// operation answers with, so it cannot describe itself as one.
+			if (path === '/api/v1/openapi.json') continue;
 			const documented = PUBLIC_OPERATIONS.some(
 				(operation) =>
 					operation.method === method &&

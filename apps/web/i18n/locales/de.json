@@ -10823,6 +10823,7 @@
 							"contacts": "Kontakte auflisten oder anlegen",
 							"events": "Eigene Ereignisse erfassen",
 							"health": "Statusprüfung",
+							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
 							"topics": "Themen und Abonnements verwalten",
 							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body)"
 						},
@@ -10925,8 +10926,12 @@
 								"label": "Ereignisse — schreiben"
 							},
 							"statusRead": {
-								"description": "Sehen, ob diese Instanz senden kann, und warum nicht.",
+								"description": "Sehen, ob diese Instanz senden kann, warum nicht und welche DNS-Einträge jede Absenderdomain noch braucht.",
 								"label": "Status — lesen"
+							},
+							"topicsRead": {
+								"description": "Themen und die IDs auflisten, mit denen du Kontakte hinzufügst.",
+								"label": "Themen — lesen"
 							},
 							"topicsWrite": {
 								"description": "Kontakte zu Themen hinzufügen oder daraus entfernen.",
