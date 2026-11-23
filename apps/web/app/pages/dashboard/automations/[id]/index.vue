@@ -23,10 +23,13 @@ const { t } = useI18n();
 const { formatPercentage } = useFormat();
 // The runs list sits below the stats and the funnel and runs its own query, so
 // it and its filter control load after the page instead of with it (the
-// route's bundle budget).
-const AutomationsRunsPanel = defineAsyncComponent(
-	() => import('~/components/automations/RunsPanel.vue')
-);
+// route's bundle budget). Not suspensible: with the automation already cached
+// the panel renders on the page's first pass, and the page's Suspense would
+// otherwise hold the whole page back until the chunk arrives.
+const AutomationsRunsPanel = defineAsyncComponent({
+	loader: () => import('~/components/automations/RunsPanel.vue'),
+	suspensible: false,
+});
 
 useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
 
