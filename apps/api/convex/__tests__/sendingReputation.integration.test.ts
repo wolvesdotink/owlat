@@ -14,6 +14,7 @@ import { newBetterAuthHarness } from './testModules';
 import { _resetSingletonOrgCacheForTests } from '../lib/sessionOrganization';
 import { components, internal } from '../_generated/api';
 import { summarize, summarizeDomains } from '../analytics/sendingReputation';
+import { readSuspensionLift } from '../analytics/reputationEvidence';
 import {
 	SPAM_RATE_HARD_THRESHOLD,
 	SPAM_RATE_TARGET,
@@ -829,6 +830,27 @@ describe('evaluateAutoEnforce — automatic resume', () => {
 		expect((await settingsRow(t))?.abuseStatusTrigger).toEqual({ code: 'bounce_rate' });
 	});
 
+	it('describes the metric that keeps sending suspended once the stored one has cleared', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemSuspension);
+		// Bounces 1% (cleared), complaints 0.4% (over the suspension line).
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 10,
+			totalComplaints: 4,
+		});
+
+		const lift = await t.run(async (ctx) =>
+			readSuspensionLift(ctx.db, await ctx.db.query('instanceSettings').first(), NOW)
+		);
+
+		expect(lift).toMatchObject({ mode: 'automatic', code: 'complaint_rate', isClear: false });
+	});
+
 	it('lifts once the evidence has aged out of the window', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(NOW);
@@ -985,6 +1007,63 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 		await evaluate(t);
 
 		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+	});
+
+	it('a suspension on another metric during the hold does not end the hold', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, { abuseStatus: 'suspended', abuseStatusChangedBy: 'system' });
+		await liftByAdmin(t);
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(row!._id, {
+				reputationCheckHold: { until: NOW + 7 * DAY_MS, triggers: [{ code: 'bounce_rate' }] },
+			});
+		});
+		await t.mutation(internal.workspaces.abuseStatus.transition, {
+			input: {
+				to: 'suspended',
+				at: NOW + 1,
+				reason: 'Auto-suspended: complaints',
+				changedBy: 'system',
+				trigger: { code: 'complaint_rate' },
+			},
+		});
+
+		const row = await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+		expect(row?.reputationCheckHold?.triggers).toEqual([{ code: 'bounce_rate' }]);
+	});
+
+	it('a decision the hourly check queued is dropped when the status changed after it', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, {
+			abuseStatus: 'suspended',
+			abuseStatusChangedBy: 'system',
+			abuseStatusTrigger: { code: 'bounce_rate' },
+		});
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 120,
+		});
+		await evaluate(t);
+		const [job] = await pendingEnforceJobs(t);
+
+		vi.setSystemTime(NOW + 1);
+		await liftByAdmin(t);
+		vi.setSystemTime(NOW + 2);
+		await t.mutation(
+			internal.analytics.sendingReputation.autoEnforceReputation,
+			job as { riskLevel: 'high' | 'critical' }
+		);
+
+		expect(
+			(await t.run(async (ctx) => await ctx.db.query('instanceSettings').first()))?.abuseStatus
+		).toBe('clean');
 	});
 
 	it('still suspends during the hold on evidence that was not over the line at the lift', async () => {

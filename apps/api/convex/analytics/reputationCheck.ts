@@ -66,11 +66,10 @@ export const evaluateAutoEnforce = internalMutation({
 		const keepsTrigger =
 			settings?.abuseStatus === 'suspended' && condition !== null && !condition.isClear;
 		if (decision) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.analytics.sendingReputation.autoEnforceReputation,
-				keepsTrigger ? { riskLevel: decision.riskLevel, reason: decision.reason } : decision
-			);
+			await ctx.scheduler.runAfter(0, internal.analytics.sendingReputation.autoEnforceReputation, {
+				...(keepsTrigger ? { riskLevel: decision.riskLevel, reason: decision.reason } : decision),
+				decidedAt: now,
+			});
 		}
 		return { riskLevel: org.riskLevel };
 	},

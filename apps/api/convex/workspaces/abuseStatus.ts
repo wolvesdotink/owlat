@@ -166,12 +166,10 @@ function reduce(
 			abuseStatusChangedAt: input.at,
 			abuseStatusChangedBy: input.changedBy,
 			abuseStatusTrigger: trigger,
-			// A lift sets the hold; only a new suspension or ban ends it early.
-			// A warning on another metric leaves it, or the held evidence would
-			// suspend again at the next run.
-			...(options.hold !== undefined || !isSendingAllowed(input.to)
-				? { reputationCheckHold: options.hold }
-				: {}),
+			// Only the next lift replaces the hold; otherwise it ends at its
+			// deadline. A warning or a suspension on another metric leaves it, or
+			// the held evidence would suspend again once that one clears.
+			...(options.hold !== undefined ? { reputationCheckHold: options.hold } : {}),
 		},
 		applied: 'transitioned',
 	};

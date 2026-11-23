@@ -117,7 +117,10 @@ export const update = authedMutation({
 		// The resume switch is the platform admins' (whatever their workspace
 		// role); every other field needs settings:manage.
 		const { isSendingResumeManual, ...workspaceFields } = args;
-		if (Object.values(workspaceFields).some((value) => value !== undefined)) {
+		const isResumeSwitchOnly =
+			isSendingResumeManual !== undefined &&
+			Object.values(workspaceFields).every((value) => value === undefined);
+		if (!isResumeSwitchOnly) {
 			requirePermission(
 				hasPermission(session.role, 'settings:manage'),
 				'Only owners and admins can update organization settings'

@@ -11,7 +11,11 @@
 import type { Doc } from '../_generated/dataModel';
 import type { DatabaseReader } from '../_generated/server';
 import { readRecentGmailSpamReadings } from '../delivery/postmaster';
-import type { GmailSpamReading, ReputationTrigger } from './reputationEnforcement';
+import {
+	decideReputationEnforcement,
+	type GmailSpamReading,
+	type ReputationTrigger,
+} from './reputationEnforcement';
 import {
 	REPUTATION_WINDOW_MS,
 	describeSuspensionLift,
@@ -63,10 +67,22 @@ export async function readSuspensionLift(
 	const status = settings?.abuseStatus;
 	if (status !== 'suspended' && status !== 'banned') return null;
 	const trigger = settings?.abuseStatusTrigger;
-	const condition =
+	const evidence = await readEnforcementEvidence(db, now);
+	let condition =
 		trigger && status === 'suspended'
-			? await readResumeCondition(db, trigger, await summarize(db, { kind: 'org' }), now)
+			? await readResumeCondition(db, trigger, evidence.org, now)
 			: null;
+	// Once the stored trigger clears, the check hands the suspension to any
+	// other metric still over its suspension line; describe that one instead.
+	if (condition?.isClear) {
+		const next = decideReputationEnforcement({
+			...evidence,
+			hold: settings?.reputationCheckHold ?? null,
+		});
+		if (next?.riskLevel === 'critical') {
+			condition = await readResumeCondition(db, next.trigger, evidence.org, now);
+		}
+	}
 	return describeSuspensionLift({
 		status,
 		trigger,

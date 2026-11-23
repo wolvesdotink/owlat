@@ -243,6 +243,9 @@ describe('organizations.settings.update — write semantics', () => {
 				timezone: 'Europe/Berlin',
 			})
 		).rejects.toThrow(/Only owners and admins/);
+		await expect(caller.mutation(api.workspaces.settings.update, {})).rejects.toThrow(
+			/Only owners and admins/
+		);
 	});
 
 	it('rejects oversized trusted ARC forwarder lists', async () => {
