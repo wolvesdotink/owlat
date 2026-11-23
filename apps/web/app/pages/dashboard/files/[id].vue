@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useFileVersionHistory } from '~/composables/useFileVersionHistory';
@@ -23,6 +24,14 @@ import {
 } from '@coolicons/vue';
 
 const { t } = useI18n();
+// The new-version upload dialog stays closed until "Upload new version" is
+// clicked, so it and its drop zone load after the page instead of with it (the
+// route's bundle budget). Not suspensible: it renders on the page's first pass,
+// and the page's Suspense would otherwise hold the whole page until it arrives.
+const FilesFileUploadModal = defineAsyncComponent({
+	loader: () => import('~/components/files/FileUploadModal.vue'),
+	suspensible: false,
+});
 
 useHead({ title: () => t('dashboard.files.detail.pageTitle') });
 
