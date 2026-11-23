@@ -4,6 +4,7 @@
  *
  * It composes the existing read surfaces into one cheap query so the nav can
  * subscribe once (no N+1):
+ *  - the instance's abuse status: a suspension or ban stops every send
  *  - org sending reputation risk (`summarize` → `riskLevel`)
  *  - sending-domain verification states (`domains` table); going live needs
  *    at least one verified domain, matching the Delivery page's readiness panel
@@ -43,6 +44,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import type { mtaHealthSnapshotValidator } from '../schema/instance';
 import type { DeliveryHealthReason, DeliveryHealthReasonParams } from './healthCopy';
+import type { AbuseStatus } from '../workspaces/abuseStatus';
 
 /** Traffic-light level for the Delivery status dot. */
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
@@ -54,6 +56,8 @@ type ReputationRisk = 'low' | 'medium' | 'high' | 'critical';
 export type DomainStatus = 'registering' | 'pending' | 'verified' | 'failed';
 
 export interface DeliveryHealthInputs {
+	/** `instanceSettings.abuseStatus`. Optional: absent means clean. */
+	abuseStatus?: AbuseStatus | null;
 	/** Rolling org reputation risk, or `null` when there's no in-window activity. */
 	reputationRisk: ReputationRisk | null;
 	/** Verification status of every configured sending domain. */
@@ -140,6 +144,22 @@ function verdict(
 	reasonCode: DeliveryHealthReason
 ): DeliveryHealthRollup {
 	return { level, reasonCode };
+}
+
+/**
+ * Abuse-status dimension: the send gate refuses everything while the instance
+ * is suspended or banned. `warned` still sends, and the reputation dimension
+ * already speaks for the rates behind it.
+ */
+function abuseStatusHealth(status: AbuseStatus | null | undefined): DeliveryHealthRollup {
+	switch (status) {
+		case 'suspended':
+			return verdict('error', 'sending_suspended');
+		case 'banned':
+			return verdict('error', 'sending_banned');
+		default:
+			return HEALTHY;
+	}
 }
 
 /** Provider dimension: no usable provider is a hard, send-blocking failure. */
@@ -257,12 +277,14 @@ function reputationHealth(risk: ReputationRisk | null): DeliveryHealthRollup {
  * Roll the delivery-health dimensions into one worst-of verdict. Pure:
  * no DB, no ctx — the null-vs-populated and tie-break decisions are unit
  * testable. Ties at the same severity resolve in a fixed, most-actionable
- * order: provider → bounce feedback → infrastructure → sending IPs → domains → default sender →
- * warm-up → reputation (so a red provider dot names the provider, not a
- * coincidentally-red reputation).
+ * order: abuse status → provider → bounce feedback → infrastructure → sending IPs → domains →
+ * default sender → warm-up → reputation (so a red provider dot names the provider, not a
+ * coincidentally-red reputation). A suspension leads because no other fix
+ * sends anything until it is lifted.
  */
 export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHealthRollup {
 	const candidates: DeliveryHealthRollup[] = [
+		abuseStatusHealth(inputs.abuseStatus),
 		providerHealth(inputs.canSend, inputs.streamsWithoutTransport ?? []),
 		feedbackHealth(inputs.streamsWithoutFeedback ?? []),
 		mtaHealth(inputs.mtaInfrastructure, inputs.heldSigningDomains),
@@ -329,9 +351,10 @@ export const getDeliveryHealth = authedQuery({
 });
 
 /**
- * The per-stream inputs, for the message types whose feature is on: which have
- * no transport of their own, the posture of the IPs and warm-up the built-in
- * MTA sends them from, and the transactional default sender.
+ * The inputs read off the settings row: the abuse status, and the per-stream
+ * inputs for the message types whose feature is on: which have no transport of
+ * their own, the posture of the IPs and warm-up the built-in MTA sends them
+ * from, and the transactional default sender.
  */
 async function streamHealthInputs(
 	ctx: QueryCtx,
@@ -344,6 +367,7 @@ async function streamHealthInputs(
 		| 'sendingIps'
 		| 'isWarmupHalted'
 		| 'transactionalSender'
+		| 'abuseStatus'
 	>
 > {
 	const settings = await ctx.db.query('instanceSettings').first();
@@ -368,6 +392,7 @@ async function streamHealthInputs(
 		mtaPools.map((pool) => sendingIpPosture(warming?.ips ?? [], pool, warming?.pools))
 	);
 	return {
+		abuseStatus: settings?.abuseStatus ?? null,
 		streamsWithoutTransport,
 		streamsWithoutFeedback,
 		sendingIps: postures.has('all_held')

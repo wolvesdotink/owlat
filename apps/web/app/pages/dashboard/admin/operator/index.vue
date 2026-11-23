@@ -6,11 +6,9 @@ import OperatorAdminsTab from '~/components/operator/AdminsTab.vue';
 import OperatorOrganizationsTab from '~/components/operator/OrganizationsTab.vue';
 import OperatorOverviewTab from '~/components/operator/OverviewTab.vue';
 import OperatorReviewTab from '~/components/operator/ReviewTab.vue';
-import {
-	isBlockingAbuseStatus,
-	operatorConsoleLayout,
-	type OperatorReviewItem,
-} from '~/utils/operatorConsole';
+import OperatorSendingStatusCard from '~/components/operator/SendingStatusCard.vue';
+import { useOperatorConsoleReads } from '~/composables/useOperatorConsoleReads';
+import { isBlockingAbuseStatus, type OperatorReviewItem } from '~/utils/operatorConsole';
 
 const { t } = useI18n();
 
@@ -28,48 +26,21 @@ type TabValue = 'overview' | 'review' | 'organizations' | 'admins';
 const activeTab = ref<TabValue>('overview');
 const tabPanelId = useId();
 
-// ── Queries (all requirePlatformAdmin-gated; no org arg needed) ───────────────
-const statsQuery = useConvexQuery(api.platformAdmin.queries.getPlatformStats, () => ({}));
-const abuseQuery = useConvexQuery(api.platformAdmin.queries.listRecentAbuse, () => ({}));
-const reviewQuery = useConvexQuery(api.platformAdmin.queries.getContentReviewQueue, () => ({}));
-const flaggedQuery = useConvexQuery(api.platformAdmin.queries.listFlaggedOrganizations, () => ({}));
-const orgsQuery = useConvexQuery(api.platformAdmin.queries.listAllOrganizations, () => ({}));
-const { data: orgDetail } = useConvexQuery(
-	api.platformAdmin.queries.getOrganizationDetail,
-	() => ({})
-);
-const adminsQuery = useConvexQuery(api.platformAdmin.queries.listPlatformAdmins, () => ({}));
-const usersQuery = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
-const stats = statsQuery.data;
-const recentAbuse = abuseQuery.data;
-const reviewQueue = reviewQuery.data;
-const flaggedOrgs = flaggedQuery.data;
-const allOrgs = orgsQuery.data;
-const admins = adminsQuery.data;
-const allUsers = usersQuery.data;
-
-// The reads behind each tab. A failed one shows the error and Try again in
-// place of the tab, never its "nothing here" state.
-const tabReads = computed(
-	() =>
-		({
-			overview: [statsQuery, abuseQuery],
-			review: [reviewQuery],
-			organizations: [flaggedQuery, orgsQuery],
-			admins: [adminsQuery, usersQuery],
-		})[activeTab.value]
-);
-const tabError = computed(() => tabReads.value.find((q) => q.error.value)?.error.value ?? null);
-// Until every read behind the tab has answered, the tab would claim "nothing to
-// review", a clean status or an empty roster, which on a moderation console
-// reads as an all-clear.
-const tabLoading = computed(() => tabReads.value.some((q) => q.data.value === undefined));
-function retryTab() {
-	for (const q of tabReads.value) if (q.error.value) q.refetch();
-}
-
-const deploymentMode = useRuntimeConfig().public.deploymentMode as string | undefined;
-const layout = computed(() => operatorConsoleLayout(deploymentMode, allOrgs.value?.length));
+// ── Reads, the layout they decide, and the active tab's load state ────────────
+const {
+	stats,
+	recentAbuse,
+	reviewQueue,
+	flaggedOrgs,
+	allOrgs,
+	orgDetail,
+	admins,
+	allUsers,
+	layout,
+	tabError,
+	tabLoading,
+	retryTab,
+} = useOperatorConsoleReads(activeTab);
 
 const allTabs = computed(() => [
 	{ value: 'overview', label: t('dashboard.admin.operator.index.tabs.overview') },
@@ -346,12 +317,21 @@ const anyMutationLoading = computed(
 				@retry="retryTab"
 			/>
 
-			<OperatorOverviewTab
-				v-else-if="activeTab === 'overview'"
-				:stats="stats"
-				:recent-abuse="recentAbuse"
-				:show-delivery-stats="layout.showDeliveryStats"
-			/>
+			<div v-else-if="activeTab === 'overview'" class="space-y-6">
+				<OperatorSendingStatusCard
+					v-if="layout.showSendingStatusOnOverview"
+					:current-abuse-status="currentAbuseStatus"
+					:abuse-status-reason="orgDetail?.settings?.abuseStatusReason"
+					:is-warned="isWarnedAbuseStatus"
+					:busy="anyMutationLoading"
+					@set-status="openStatus"
+				/>
+				<OperatorOverviewTab
+					:stats="stats"
+					:recent-abuse="recentAbuse"
+					:show-delivery-stats="layout.showDeliveryStats"
+				/>
+			</div>
 
 			<OperatorReviewTab
 				v-else-if="activeTab === 'review'"

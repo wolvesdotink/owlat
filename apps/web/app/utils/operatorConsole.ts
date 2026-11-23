@@ -126,16 +126,27 @@ export type OperatorReviewItem = {
  * other workspaces to police, and Delivery health already shows its sending
  * numbers, so it drops the Workspaces tab and the overview's delivery stats
  * and keeps what it still needs: content review, the admin roster and the
- * abuse signals. An unknown count (still loading) keeps everything, so
- * a multi-workspace console never flashes a trimmed view.
+ * abuse signals. The sending-status card (status, reason, Unsuspend) lives on
+ * the Workspaces tab, so a console without that tab shows it on the Overview:
+ * it is the only place a suspension is lifted. An unknown count (still
+ * loading) keeps everything, so a multi-workspace console never flashes a
+ * trimmed view.
  */
 export function operatorConsoleLayout(
 	deploymentMode: string | undefined,
 	workspaceCount: number | undefined
-): { tabs: OperatorTab[]; showDeliveryStats: boolean } {
+): { tabs: OperatorTab[]; showDeliveryStats: boolean; showSendingStatusOnOverview: boolean } {
 	const singleWorkspace =
 		deploymentMode !== 'hosted' && workspaceCount !== undefined && workspaceCount <= 1;
 	return singleWorkspace
-		? { tabs: ['overview', 'review', 'admins'], showDeliveryStats: false }
-		: { tabs: ['overview', 'review', 'organizations', 'admins'], showDeliveryStats: true };
+		? {
+				tabs: ['overview', 'review', 'admins'],
+				showDeliveryStats: false,
+				showSendingStatusOnOverview: true,
+			}
+		: {
+				tabs: ['overview', 'review', 'organizations', 'admins'],
+				showDeliveryStats: true,
+				showSendingStatusOnOverview: false,
+			};
 }

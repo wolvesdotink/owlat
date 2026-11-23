@@ -9068,8 +9068,12 @@
 				},
 				"index": {
 					"abuse": {
-						"banned": "Dieses Konto ist dauerhaft vom Versand ausgeschlossen.",
-						"suspended": "Der Versand ist ausgesetzt, weil Reputationsgrenzwerte überschritten wurden. Behebe die markierten Probleme, um fortzufahren.",
+						"askOperator": "Eine Person mit Plattform-Admin-Rechten auf dieser Instanz kann die Sperre in der Betreiberkonsole aufheben.",
+						"banned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt. Bis die Sperre aufgehoben wird, geht keine neue Mail raus.",
+						"liftAction": "In der Betreiberkonsole prüfen",
+						"reason": "Hinterlegter Grund:",
+						"since": "Seit {date}",
+						"suspended": "Der Versand ist auf dieser Instanz ausgesetzt. Bis die Sperre aufgehoben wird, geht keine neue Mail raus.",
 						"warned": "Dein Konto ist wegen erhöhter Bounce- oder Beschwerderaten markiert. Verbessere die Listenqualität, um weitere Einschränkungen zu vermeiden."
 					},
 					"domains": {
@@ -20062,8 +20066,9 @@
 			"changed": "Das hat sich geändert, nachdem du es geöffnet hast. Prüf die neuen Angaben und gib es dann erneut frei."
 		},
 		"campaignRefusal": {
-			"accountBanned": "Der Versand ist für diesen Workspace dauerhaft gesperrt. Wende dich für Details an den Support.",
-			"accountSuspended": "Der Versand ist für diesen Workspace wegen eines Richtlinienverstoßes ausgesetzt. Wende dich an den Support, um ihn wiederherzustellen.",
+			"accountBanned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt. Unter Zustellungsgesundheit siehst du den Grund; aufheben kann die Sperre eine Person mit Plattform-Admin-Rechten in der Betreiberkonsole.",
+			"accountSuspended": "Der Versand ist auf dieser Instanz ausgesetzt. Unter Zustellungsgesundheit siehst du den Grund; aufheben kann die Sperre eine Person mit Plattform-Admin-Rechten in der Betreiberkonsole.",
+			"askAboutSuspension": "Frag eine Person mit Admin-Rechten in diesem Workspace nach dem Grund oder eine Person mit Plattform-Admin-Rechten auf dieser Instanz, um die Sperre aufzuheben.",
 			"askAdmin": "Bitte eine Person mit Admin-Rechten in diesem Workspace, das zu beheben.",
 			"capacityAbout": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es etwa {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf {days} Tage.",
 			"capacityAtLeast": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es mindestens {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf mehrere Tage.",
@@ -20094,6 +20099,8 @@
 		"deliveryHealth": {
 			"reasons": {
 				"healthy": "Der Versand läuft einwandfrei",
+				"sendingSuspended": "Der Versand ist auf dieser Instanz ausgesetzt",
+				"sendingBanned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt",
 				"noProvider": "Es ist kein Zustellungsanbieter eingerichtet",
 				"noProviderTransactional": "Für Transaktionsmails ist kein Zustellungsanbieter eingerichtet",
 				"noProviderCampaign": "Für Kampagnen ist kein Zustellungsanbieter eingerichtet",
