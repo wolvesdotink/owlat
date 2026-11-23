@@ -561,18 +561,14 @@ require_supported_arch() {
 	exit 1
 }
 
-# Run the TS setup CLI inside the owlat/setup container.
-# Falls back to legacy bash wizard with --legacy.
-run_setup_container() {
-	# Pass through interactive TTY when available, mount the install dir, forward env.
-	local tty_flag=""
-	[[ -t 1 ]] && tty_flag="-it"
-	docker run --rm $tty_flag \
-		-v "$OWLAT_DIR:/opt/owlat" \
-		-e "OWLAT_DIR=/opt/owlat" \
-		-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
-		"$OWLAT_SETUP_IMAGE" "$@"
-}
+# `-it` for the setup containers when the operator is at a terminal, so the
+# wizard can prompt. Decided here and expanded as an array: inside `$(…)`
+# stdout is the capture pipe, so a `[ -t 1 ]` there is always false. Both ends
+# must be a terminal; `docker run -it` refuses a piped stdin.
+SETUP_TTY_ARGS=()
+if [[ -t 0 && -t 1 ]]; then
+	SETUP_TTY_ARGS=(-it)
+fi
 
 # ── Host config-file bind-mount ───────────────────────────────────────────────
 # A setup config file lives on the host, but the wizard container only sees
@@ -704,7 +700,7 @@ case "$cmd" in
 		# names reach it.
 		setup_network_args=()
 		on_docker_desktop || setup_network_args=(--network host)
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			${setup_network_args[@]+"${setup_network_args[@]}"} \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
@@ -754,7 +750,7 @@ case "$cmd" in
 			quickstart_docker_desktop=1
 		fi
 		if [[ "$quickstart_docker_desktop" == "1" ]]; then
-			run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
+			run_quickstart_container docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 				--add-host=host.docker.internal:host-gateway \
 				-v "$OWLAT_DIR:/opt/owlat" \
 				-v /var/run/docker.sock:/var/run/docker.sock \
@@ -769,7 +765,7 @@ case "$cmd" in
 				"$OWLAT_SETUP_IMAGE" quickstart "$@"
 			exit $?
 		fi
-		run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
+		run_quickstart_container docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-v /var/run/docker.sock:/var/run/docker.sock \
@@ -784,7 +780,7 @@ case "$cmd" in
 		exit $?
 		;;
 	config)
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
 			"$OWLAT_SETUP_IMAGE" config "$@"
@@ -802,7 +798,7 @@ case "$cmd" in
 			sample_data_docker_desktop=1
 		fi
 		if [[ "$sample_data_docker_desktop" == "1" ]]; then
-			exec docker run --rm $([ -t 1 ] && echo "-it") \
+			exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 				--add-host=host.docker.internal:host-gateway \
 				-v "$OWLAT_DIR:/opt/owlat" \
 				-e "OWLAT_DIR=/opt/owlat" \
@@ -810,7 +806,7 @@ case "$cmd" in
 				-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
 				"$OWLAT_SETUP_IMAGE" sample-data "$@"
 		fi
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-e "OWLAT_DIR=/opt/owlat" \

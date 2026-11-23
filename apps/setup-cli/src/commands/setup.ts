@@ -89,7 +89,7 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	const existingEnv = await readEnv(envPath);
 
 	// Headless path: `--assume-yes` (the documented
-	// `OWLAT_ASSUME_YES=1 curl … | bash` install) MUST NOT block on an interactive
+	// `curl … | OWLAT_ASSUME_YES=1 bash` install) MUST NOT block on an interactive
 	// prompt in a non-TTY. Build a complete SetupConfig from sensible defaults
 	// (plus environment overrides) and apply it through the same
 	// `buildSetupFromConfig` mapper the `--config` path uses, so the two

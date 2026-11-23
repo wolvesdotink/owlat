@@ -5,9 +5,10 @@
 # Usage (fresh VPS):
 #   curl -fsSL https://get.owlat.app | bash
 #
-# Non-interactive (CI / Ansible):
-#   OWLAT_ASSUME_YES=1 curl -fsSL https://get.owlat.app | bash
-#   OWLAT_CONFIG_FILE=/path/to/answers.env curl -fsSL https://get.owlat.app | bash
+# Non-interactive (CI / Ansible): the variable goes on `bash`, which runs the
+# installer, not on `curl`:
+#   curl -fsSL https://get.owlat.app | OWLAT_ASSUME_YES=1 bash
+#   curl -fsSL https://get.owlat.app | OWLAT_CONFIG_FILE=/path/to/answers.json bash
 #
 # This script:
 #   1. Checks prerequisites (docker, docker compose v2, curl, git)
@@ -332,6 +333,19 @@ install_owlat_cli() {
 }
 
 # ── Hand off to the setup wizard ──────────────────────────────────────────────
+# Under `curl … | bash` stdin is this script, not the operator, so a wizard
+# that asks questions reads them from the terminal instead. Called only right
+# before an `exec`, so this shell never reads another line of the script from
+# the terminal. With no terminal at all it dies, naming $1 as the way out.
+attach_terminal() {
+	[[ -t 0 ]] && return 0
+	if (exec </dev/tty) 2>/dev/null; then
+		exec </dev/tty
+	else
+		die "No terminal to ask the setup questions on. $1"
+	fi
+}
+
 # As of v0.2, the wizard lives in the owlat/setup Docker container (built from
 # apps/setup-cli/) so we don't require Bun or Node on the host. The legacy bash
 # wizard (scripts/setup.sh) is still available via `--legacy` for one release
@@ -339,13 +353,9 @@ install_owlat_cli() {
 run_wizard() {
 	cd "$OWLAT_INSTALL_DIR"
 
+	# --legacy picks the wizard here and is not passed on: neither scripts/setup.sh
+	# nor the containerized quickstart accepts it.
 	local use_legacy="${OWLAT_LEGACY_WIZARD:-0}"
-	for arg in "$@"; do
-		if [[ "$arg" == "--legacy" ]]; then
-			use_legacy=1
-		fi
-	done
-
 	local args=()
 	if [[ "$OWLAT_ASSUME_YES" == "1" ]]; then
 		args+=("--assume-yes")
@@ -353,7 +363,26 @@ run_wizard() {
 	if [[ -n "$OWLAT_CONFIG_FILE" && ! -r "$OWLAT_CONFIG_FILE" ]]; then
 		die "OWLAT_CONFIG_FILE is not readable: $OWLAT_CONFIG_FILE"
 	fi
-	args+=("$@")
+	for arg in "$@"; do
+		if [[ "$arg" == "--legacy" ]]; then
+			use_legacy=1
+		else
+			args+=("$arg")
+		fi
+	done
+
+	# A run that answers everything up front (--assume-yes, a config file) needs
+	# no terminal in the containerized wizard. The legacy bash wizard prompts
+	# whatever it is passed.
+	local needs_terminal=1
+	if [[ "$OWLAT_ASSUME_YES" == "1" || -n "$OWLAT_CONFIG_FILE" ]]; then
+		needs_terminal=0
+	fi
+	for arg in ${args[@]+"${args[@]}"}; do
+		case "$arg" in
+			--assume-yes | -y | --config | --config=*) needs_terminal=0 ;;
+		esac
+	done
 
 	# The bash wizard runs on the HOST, where the original config path is valid,
 	# so it can take `--config <host-path>` directly. The containerized wizard
@@ -365,9 +394,10 @@ run_wizard() {
 	fi
 
 	if [[ "$use_legacy" == "1" ]]; then
+		attach_terminal "The legacy bash wizard always asks; run the installer from a terminal."
 		info "Launching legacy bash setup wizard…"
 		echo
-		exec bash scripts/setup.sh "${bash_args[@]}"
+		exec bash scripts/setup.sh ${bash_args[@]+"${bash_args[@]}"}
 	fi
 
 	# The containerized wizard needs the owlat/setup image. Verify it is
@@ -407,8 +437,9 @@ run_wizard() {
 			printf '%s\n' "$pull_output" | tail -n 5 | sed 's/^/    /' >&2
 			warn "A 'denied' error usually means the GHCR package is private or the release is broken — please report it: https://github.com/${OWLAT_GH_SLUG}/issues"
 			warn "Falling back to the legacy bash setup wizard. If the failure above looks transient (network), abort with Ctrl-C and re-run this installer instead."
+			attach_terminal "The legacy bash wizard always asks; re-run the installer from a terminal, or once the wizard image can be pulled."
 			echo
-			exec bash scripts/setup.sh "${bash_args[@]}"
+			exec bash scripts/setup.sh ${bash_args[@]+"${bash_args[@]}"}
 		fi
 	fi
 
@@ -416,6 +447,9 @@ run_wizard() {
 	# deploy + env-set + admin bootstrap + demo seed), not config-only `setup`.
 	# `--terminal` forces the in-container TUI wizard (the browser-based web
 	# wizard cannot run inside the containerized installer).
+	if [[ "$needs_terminal" == "1" ]]; then
+		attach_terminal "Pass --assume-yes or --config <file> (or set OWLAT_ASSUME_YES=1 or OWLAT_CONFIG_FILE=<file> on bash)."
+	fi
 	info "Launching setup wizard (containerized quickstart)…"
 	echo
 	OWLAT_SETUP_IMAGE="$setup_image" OWLAT_CONFIG_FILE="$OWLAT_CONFIG_FILE" \
