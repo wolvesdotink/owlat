@@ -35,7 +35,7 @@ const RATE_LIMIT_HEADERS: JsonObject = {
 	},
 	'X-RateLimit-Remaining': {
 		description:
-			'A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.',
+			'A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.',
 		schema: { type: 'integer' },
 	},
 	'X-RateLimit-Reset': {

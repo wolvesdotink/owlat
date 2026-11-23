@@ -25,8 +25,9 @@ export interface RateLimitInfo {
 	limit: number;
 
 	/**
-	 * The server's `X-RateLimit-Remaining`: a fixed value (`0` on a `429`,
-	 * otherwise one less than `limit`), not a count of the requests left.
+	 * The server's `X-RateLimit-Remaining`: a fixed value (`0` on a `429` from
+	 * the per-key limit, otherwise one less than `limit`), not a count of the
+	 * requests left.
 	 * Back off by `RateLimitError.retryAfter` instead.
 	 */
 	remaining: number;

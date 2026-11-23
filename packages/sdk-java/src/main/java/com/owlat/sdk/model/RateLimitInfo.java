@@ -22,7 +22,7 @@ public class RateLimitInfo {
         return limit;
     }
 
-    /** {@code X-RateLimit-Remaining}: 0 on a 429, otherwise one less than the limit. */
+    /** {@code X-RateLimit-Remaining}: 0 on a 429 from the per-key limit, otherwise one less than the limit. */
     public int getRemaining() {
         return remaining;
     }
