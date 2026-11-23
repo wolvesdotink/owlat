@@ -315,6 +315,29 @@ describe('POST /api/v1/contacts (createContact → contacts:write)', () => {
 			body: JSON.stringify({ firstName: 'No Email' }),
 		});
 		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toEqual({
+			category: 'invalid_input',
+			message: 'Email is required',
+			data: { field: 'email' },
+		});
+	});
+
+	it('400 invalid_input naming the field for a malformed email', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:write']);
+		const res = await t.fetch('/api/v1/contacts', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'not-an-email' }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toEqual({
+			category: 'invalid_input',
+			message: 'Invalid email format',
+			data: { field: 'email' },
+		});
 	});
 
 	it.each(['', '"__proto__":0,'])(
@@ -581,6 +604,7 @@ describe('PUT /api/v1/contacts/{idOrEmail} (updateContact → contacts:write)', 
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
 		expect(body.error.message).toBe('firstName must be at most 200 characters');
+		expect(body.error.data).toEqual({ field: 'firstName' });
 	});
 });
 
@@ -711,6 +735,8 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 			body: JSON.stringify({ email: 'has@example.com', eventName: '1starts-with-digit' }),
 		});
 		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ field: 'eventName' });
 	});
 
 	it('400 invalid_input for a nested eventProperties value', async () => {
@@ -844,7 +870,43 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		});
 		expect(res.status).toBe(400);
 		const body = await res.json();
-		expect(body.error.category).toBe('invalid_input');
+		expect(body.error).toEqual({
+			category: 'invalid_input',
+			message: 'dataVariables must be an object of string, number, boolean or null values',
+			data: { field: 'dataVariables.order' },
+		});
+	});
+
+	it.each([
+		[{ email: 'not-an-email', slug: 'welcome' }, 'Invalid email format', 'email'],
+		[
+			{ email: 'to@example.com', slug: 'welcome', attachments: [{ filename: 'a.txt' }] },
+			'attachments[0] must have exactly one of "content" (base64) or "url"',
+			'attachments.0',
+		],
+		[
+			{
+				email: 'to@example.com',
+				slug: 'welcome',
+				attachments: [
+					{ filename: 'a.txt', content: 'YQ==' },
+					{ filename: 'b.txt', content: '%%' },
+				],
+			},
+			'attachments[1].content is not valid base64',
+			'attachments.1.content',
+		],
+	])('400 invalid_input naming the field: %j', async (request, message, field) => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify(request),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toEqual({ category: 'invalid_input', message, data: { field } });
 	});
 
 	it('400 invalid_input for a nested dataVariables value held under a __proto__ key', async () => {
@@ -861,6 +923,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error).toMatchObject({
 			category: 'invalid_input',
 			message: 'dataVariables must be an object of string, number, boolean or null values',
+			data: { field: 'dataVariables.__proto__' },
 		});
 	});
 
