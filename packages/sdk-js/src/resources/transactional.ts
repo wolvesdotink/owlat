@@ -154,8 +154,10 @@ export class TransactionalResource extends BaseResource {
 
 	/**
 	 * Get where one send stands: queued, sent, delivered, bounced, failed, ...
-	 * A failed send names its `errorCode` and `errorMessage`. The send's data
-	 * variables are never returned. Needs the `transactional:send` scope.
+	 * A failed send names its `errorCode` and `errorMessage`; a bounced one its
+	 * `bounceType`, `bounceCause` and the receiving server's text in
+	 * `errorMessage`. The send's data variables are never returned. Needs the
+	 * `transactional:send` scope.
 	 *
 	 * @param sendId - The `transactionalEmailId` that {@link send} returned
 	 *   (every `email.*` webhook for the send carries it as `sendId`)

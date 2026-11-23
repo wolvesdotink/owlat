@@ -1984,6 +1984,7 @@
 										"complainedAt": null,
 										"failedAt": "2026-11-06T09:00:00.000Z",
 										"bounceType": null,
+										"bounceCause": null,
 										"errorCode": "MTA_UNREACHABLE",
 										"errorMessage": "The mail server could not be reached before the delivery deadline passed"
 									}
@@ -4069,12 +4070,24 @@
 							}
 						]
 					},
+					"bounceCause": {
+						"anyOf": [
+							{
+								"type": "string",
+								"enum": ["recipient", "sender"]
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Who a bounce was about, as the email.bounced webhook names it: recipient (the address was refused) or sender (the receiver refused the sending IP or domain; the address is not blocklisted). Null without a bounce, and for a bounce recorded before servers stored the cause."
+					},
 					"errorCode": {
 						"description": "Stable code of the failure, for example MTA_UNREACHABLE. Null unless failed.",
 						"type": ["string", "null"]
 					},
 					"errorMessage": {
-						"description": "Human-readable reason of the failure. Null unless failed.",
+						"description": "Why it did not arrive: the reason of the failure when failed, the receiving server's diagnostic text when bounced (null if the report carried none). Null otherwise.",
 						"type": ["string", "null"]
 					}
 				},
@@ -4094,6 +4107,7 @@
 					"complainedAt",
 					"failedAt",
 					"bounceType",
+					"bounceCause",
 					"errorCode",
 					"errorMessage"
 				],

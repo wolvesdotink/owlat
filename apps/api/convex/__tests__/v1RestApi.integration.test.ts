@@ -1,6 +1,8 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, expectTypeOf, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
+import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { createTestContact, createTestTopic, createTestTransactionalEmail } from './factories';
 import {
@@ -1209,6 +1211,7 @@ describe('GET /api/v1/transactional/{sendId} (getTransactionalSend → transacti
 			complainedAt: null,
 			failedAt: null,
 			bounceType: null,
+			bounceCause: null,
 			errorCode: null,
 			errorMessage: null,
 		});
@@ -1249,6 +1252,55 @@ describe('GET /api/v1/transactional/{sendId} (getTransactionalSend → transacti
 			headers: authHeaders(key),
 		});
 		expect((await res.json()).data).toMatchObject({ status: 'bounced', bounceType: 'hard' });
+	});
+
+	it('names the type, the diagnostic text and the cause of a bounce the lifecycle recorded', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t, { status: 'sent', sentAt: SENT_AT + 1000 });
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'transactional', id: sendId as Id<'transactionalSends'> },
+			transition: {
+				to: 'bounced',
+				at: SENT_AT + 3000,
+				bounceType: 'hard',
+				bounceCause: 'sender',
+				bounceMessage: '550 5.7.1 Service unavailable; client host blocked',
+			},
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		await expectContractSuccess('getTransactionalSend', res);
+		expect((await res.json()).data).toMatchObject({
+			status: 'bounced',
+			bouncedAt: new Date(SENT_AT + 3000).toISOString(),
+			bounceType: 'hard',
+			bounceCause: 'sender',
+			errorCode: null,
+			errorMessage: '550 5.7.1 Service unavailable; client host blocked',
+		});
+	});
+
+	it('answers a null cause for a bounce stored before the cause was', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t, {
+			status: 'bounced',
+			bouncedAt: SENT_AT + 3000,
+			bounceType: 'soft',
+			errorMessage: '452 4.2.2 Mailbox full',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		expect((await res.json()).data).toMatchObject({
+			bounceType: 'soft',
+			bounceCause: null,
+			errorMessage: '452 4.2.2 Mailbox full',
+		});
 	});
 
 	it.each([

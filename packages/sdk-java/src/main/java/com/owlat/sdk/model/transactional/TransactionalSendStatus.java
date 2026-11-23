@@ -25,6 +25,7 @@ public class TransactionalSendStatus {
     private final String complainedAt;
     private final String failedAt;
     private final String bounceType;
+    private final String bounceCause;
     private final String errorCode;
     private final String errorMessage;
 
@@ -45,6 +46,7 @@ public class TransactionalSendStatus {
             @JsonProperty("complainedAt") String complainedAt,
             @JsonProperty("failedAt") String failedAt,
             @JsonProperty("bounceType") String bounceType,
+            @JsonProperty("bounceCause") String bounceCause,
             @JsonProperty("errorCode") String errorCode,
             @JsonProperty("errorMessage") String errorMessage) {
         this.sendId = sendId;
@@ -62,6 +64,7 @@ public class TransactionalSendStatus {
         this.complainedAt = complainedAt;
         this.failedAt = failedAt;
         this.bounceType = bounceType;
+        this.bounceCause = bounceCause;
         this.errorCode = errorCode;
         this.errorMessage = errorMessage;
     }
@@ -141,12 +144,27 @@ public class TransactionalSendStatus {
         return bounceType;
     }
 
+    /**
+     * Who a bounce was about, as the {@code email.bounced} webhook names it:
+     * {@code recipient} (the address was refused) or {@code sender} (the
+     * receiver refused the sending IP or domain; the address is not
+     * blocklisted). {@code null} without a bounce, and for a bounce recorded
+     * before servers stored the cause.
+     */
+    public String getBounceCause() {
+        return bounceCause;
+    }
+
     /** Stable code of the failure (for example {@code MTA_UNREACHABLE}); {@code null} unless the send failed. */
     public String getErrorCode() {
         return errorCode;
     }
 
-    /** Human-readable reason of the failure; {@code null} unless the send failed. */
+    /**
+     * Why the send did not arrive: the reason of the failure when it failed,
+     * the receiving server's diagnostic text when it bounced ({@code null} if
+     * the report carried none), otherwise {@code null}.
+     */
     public String getErrorMessage() {
         return errorMessage;
     }

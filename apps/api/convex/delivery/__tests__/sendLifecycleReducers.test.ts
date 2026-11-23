@@ -500,6 +500,27 @@ describe('reduceBounced', () => {
 		});
 	});
 
+	it.each([
+		['sender', 'sender'],
+		['recipient', 'recipient'],
+		// The lifecycle treats an unclassified bounce as the recipient's, and
+		// the webhook reports it so: the row stores what both acted on.
+		[undefined, 'recipient'],
+	] as const)('stores a bounce classified %s as caused by the %s', (bounceCause, stored) => {
+		const result = reduceBounced(
+			campaignSend({ status: 'sent' }),
+			{ to: 'bounced', at: 4000, bounceType: 'hard', bounceCause, bounceMessage: '550 5.7.1' },
+			campaignRef,
+			'jane@example.com',
+			'org.example',
+			null
+		);
+		expect(result.patch).toMatchObject({ bounceCause: stored, errorMessage: '550 5.7.1' });
+		expect(result.effects.find((e) => e.kind === 'customer_webhook')).toMatchObject({
+			spec: { input: { cause: stored } },
+		});
+	});
+
 	it('a duplicate hard bounce on an already-hard-bounced row is a no-op', () => {
 		const result = reduceBounced(
 			campaignSend({ status: 'bounced', bounceType: 'hard' }),

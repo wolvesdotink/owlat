@@ -139,6 +139,7 @@ export const OPERATION_EXAMPLES = {
 				complainedAt: null,
 				failedAt: '2026-11-06T09:00:00.000Z',
 				bounceType: null,
+				bounceCause: null,
 				errorCode: 'MTA_UNREACHABLE',
 				errorMessage: 'The mail server could not be reached before the delivery deadline passed',
 			},

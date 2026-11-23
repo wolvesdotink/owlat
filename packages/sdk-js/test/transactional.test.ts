@@ -2,7 +2,7 @@ import { describe, it, expect, expectTypeOf, vi, afterEach } from 'vitest';
 import { createTestClient, mockFetch, TEST_RATE_LIMIT_HEADERS } from './helpers';
 import { InvalidStateError, NotFoundError, ValidationError } from '../src/errors';
 import type { ApiErrorReason } from '../src';
-import type { TransactionalAttachment } from '../src/types/transactional';
+import type { TransactionalAttachment, TransactionalSendStatus } from '../src/types/transactional';
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -326,9 +326,10 @@ describe('TransactionalResource', () => {
 			complainedAt: null,
 			failedAt: '2026-11-06T09:00:00.000Z',
 			bounceType: null,
+			bounceCause: null,
 			errorCode: 'MTA_UNREACHABLE',
 			errorMessage: 'The mail server could not be reached',
-		};
+		} satisfies TransactionalSendStatus;
 
 		it('GETs the send by the id the send call returned', async () => {
 			const spy = mockFetch({
@@ -344,6 +345,23 @@ describe('TransactionalResource', () => {
 			const [url, options] = spy.mock.calls[0];
 			expect(new URL(String(url)).pathname).toBe('/api/v1/transactional/send_1');
 			expect(options?.method).toBe('GET');
+		});
+
+		it('reads the type, diagnostic text and cause of a bounce', async () => {
+			const bounced = {
+				...status,
+				status: 'bounced' as const,
+				failedAt: null,
+				bouncedAt: '2026-11-02T09:05:00.000Z',
+				bounceType: 'hard' as const,
+				bounceCause: 'sender' as const,
+				errorCode: null,
+				errorMessage: '550 5.7.1 Service unavailable; client host blocked',
+			} satisfies TransactionalSendStatus;
+			mockFetch({ status: 200, body: { data: bounced }, headers: TEST_RATE_LIMIT_HEADERS });
+			const result = await createTestClient().transactional.get('send_1');
+			expect(result).toMatchObject({ bounceCause: 'sender', errorMessage: bounced.errorMessage });
+			expectTypeOf(result.bounceCause).toEqualTypeOf<'recipient' | 'sender' | null>();
 		});
 
 		it('encodes the id into the path', async () => {
