@@ -56,4 +56,16 @@ public class OwlatException extends RuntimeException {
     public Map<String, Object> getData() {
         return data;
     }
+
+    /**
+     * Why the API refused the request, from {@code data.reason}: for example
+     * "domain_unverified" or "recipient_blocked". The API
+     * reference lists each reason and what to do about it. Null when the
+     * response named none. New reasons can be added; handle an unknown one by
+     * its status code.
+     */
+    public String getReason() {
+        Object reason = data == null ? null : data.get("reason");
+        return reason instanceof String ? (String) reason : null;
+    }
 }

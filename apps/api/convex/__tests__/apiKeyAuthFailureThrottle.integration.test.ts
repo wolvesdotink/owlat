@@ -37,6 +37,8 @@ describe('validateAndCheckRateLimit failure throttle (L3)', () => {
 			});
 			expect(r.success).toBe(false);
 			if (!r.success && r.error === 'rate_limited') {
+				// Named apart from the per-key limit, which answers with a different sentence.
+				expect(r).toMatchObject({ bucket: 'failed_auth' });
 				tripped = true;
 				break;
 			}

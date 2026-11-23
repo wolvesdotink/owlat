@@ -1,7 +1,12 @@
 import type { z } from 'zod';
 
-/** A decoded request, or the message of the first fault found. */
-export type Decoded<T> = { ok: true; value: T } | { ok: false; message: string };
+/**
+ * A decoded request, or the message of the first fault found and the field it
+ * is about. `field` addresses the value the way the body does, keys and array
+ * indexes joined by dots (`dataVariables.name`, `attachments.0.filename`); it
+ * is absent when the fault is the body as a whole.
+ */
+export type Decoded<T> = { ok: true; value: T } | { ok: false; message: string; field?: string };
 
 const PROTO_KEY = '__proto__';
 
@@ -64,6 +69,30 @@ function withProtoKeysRenamed(value: unknown): unknown {
 }
 
 /**
+ * The issue path as the client addressed it. In a copy with renamed
+ * `__proto__` keys a segment the input does not hold is such a renamed key,
+ * so it is reported under the name the client sent.
+ */
+function fieldOf(path: readonly PropertyKey[], input: unknown): string | undefined {
+	const segments: string[] = [];
+	let current: unknown = input;
+	for (const segment of path) {
+		let name = String(segment);
+		if (
+			isContainer(current) &&
+			!Array.isArray(current) &&
+			!Object.prototype.hasOwnProperty.call(current, name) &&
+			name.startsWith(PROTO_KEY)
+		) {
+			name = PROTO_KEY;
+		}
+		segments.push(name);
+		current = isContainer(current) ? (current as Record<string, unknown>)[name] : undefined;
+	}
+	return segments.length > 0 ? segments.join('.') : undefined;
+}
+
+/**
  * Check `input`, a parsed JSON value, against a request schema.
  *
  * On success the caller gets its own `input` back, typed, rather than the
@@ -89,5 +118,11 @@ export function decodeRequest<Schema extends z.ZodType>(
 ): Decoded<z.output<Schema>> {
 	const result = schema.safeParse(holdsProtoKey(input) ? withProtoKeysRenamed(input) : input);
 	if (result.success) return { ok: true, value: input as z.output<Schema> };
-	return { ok: false, message: result.error.issues[0]?.message ?? 'Invalid request body' };
+	const issue = result.error.issues[0];
+	const field = issue ? fieldOf(issue.path, input) : undefined;
+	return {
+		ok: false,
+		message: issue?.message ?? 'Invalid request body',
+		...(field === undefined ? {} : { field }),
+	};
 }

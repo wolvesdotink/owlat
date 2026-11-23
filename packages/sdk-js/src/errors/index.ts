@@ -1,4 +1,4 @@
-import type { RateLimitInfo } from '../types/common';
+import type { ApiErrorReason, RateLimitInfo } from '../types/common';
 
 /**
  * Base error class for all Owlat SDK errors.
@@ -8,7 +8,8 @@ export class OwlatError extends Error {
 	 * The Operation error category from the API (e.g., 'not_found',
 	 * 'invalid_input', 'rate_limited'). For client-side faults that never reach
 	 * the API this is a synthetic code ('timeout', 'network_error',
-	 * 'parse_error', 'retry_exhausted').
+	 * 'parse_error', 'retry_exhausted'), and for a response that did not come
+	 * from the API it is 'unexpected_response'.
 	 */
 	readonly code: string;
 
@@ -28,6 +29,14 @@ export class OwlatError extends Error {
 	 */
 	readonly data?: Record<string, unknown>;
 
+	/**
+	 * Why the API refused the request, from `data.reason`: one of the
+	 * {@link ApiErrorReason} codes, or a newer one this SDK does not know yet,
+	 * which is best handled by its status. Undefined when the response named
+	 * none.
+	 */
+	readonly reason?: ApiErrorReason | (string & {});
+
 	constructor(
 		message: string,
 		code: string,
@@ -41,6 +50,8 @@ export class OwlatError extends Error {
 		this.statusCode = statusCode;
 		this.rateLimit = rateLimit;
 		this.data = data;
+		const reason = data?.['reason'];
+		if (typeof reason === 'string') this.reason = reason;
 	}
 }
 
@@ -176,5 +187,33 @@ export class LimitReachedError extends OwlatError {
 	) {
 		super(message, code, 402, rateLimit, data);
 		this.name = 'LimitReachedError';
+	}
+}
+
+/**
+ * Thrown when a response is not the Owlat API's: an error status whose body is
+ * not the `{ error: { category, message } }` envelope, or a 2xx body that is
+ * not JSON. The usual cause is a `baseUrl` that points somewhere other than the
+ * instance's API (the web app's address, a typo, a missing path prefix), or a
+ * proxy in front of the instance answering for it. `url` leaves out the query
+ * string and any credentials; neither field ever holds the API key.
+ */
+export class UnexpectedResponseError extends OwlatError {
+	/** The URL that was called, without its query string. */
+	readonly url: string;
+
+	/** The start of the response body, whitespace collapsed. */
+	readonly bodyExcerpt: string;
+
+	constructor(statusCode: number, url: string, bodyExcerpt: string, rateLimit?: RateLimitInfo) {
+		super(
+			`Unexpected response from ${url} (HTTP ${statusCode}). This does not look like an Owlat API: check that baseUrl is your instance's API URL.${bodyExcerpt ? ` Body: ${bodyExcerpt}` : ''}`,
+			'unexpected_response',
+			statusCode,
+			rateLimit
+		);
+		this.name = 'UnexpectedResponseError';
+		this.url = url;
+		this.bodyExcerpt = bodyExcerpt;
 	}
 }

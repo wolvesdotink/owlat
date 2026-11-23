@@ -17,7 +17,10 @@ pnpm add @owlat/sdk-js
 ```typescript
 import { Owlat } from '@owlat/sdk-js';
 
-const owlat = new Owlat('lm_live_xxxxxxxx');
+const owlat = new Owlat({
+	apiKey: 'lm_live_xxxxxxxx',
+	baseUrl: 'https://rest.api.example.com',
+});
 
 // Create a contact
 const contact = await owlat.contacts.create({
@@ -37,23 +40,19 @@ await owlat.transactional.send({
 });
 ```
 
+`baseUrl` is your instance's API URL: the web app shows it as **Your API base URL** under **Settings → API → API quickstart**. It is the `NUXT_PUBLIC_CONVEX_SITE_URL` your operator set, `https://rest.api.<your-domain>` when the setup wizard derived it from your domain.
+
 ## Configuration
 
 ```typescript
-// Simple initialization with API key
-const owlat = new Owlat('lm_live_xxxxxxxx');
-
-// Full configuration
 const owlat = new Owlat({
 	apiKey: 'lm_live_xxxxxxxx',
-	// Self-hosting? Set this to your Convex deployment site URL — the API is
-	// served from `https://<your-deployment>.convex.site/api/v1/*`.
-	baseUrl: 'https://your-deployment.convex.site',
+	baseUrl: 'https://rest.api.example.com', // your instance's API URL
 	timeout: 30000, // Optional, request timeout in ms (default: 30000)
 });
 ```
 
-> **Self-hosting:** `baseUrl` defaults to `https://api.owlat.app`. If you run Owlat yourself, set `baseUrl` to your Convex deployment site URL (`https://<your-deployment>.convex.site`).
+> **No `baseUrl`:** the client sends requests and your API key to `https://api.owlat.app`, which is not your instance, and logs a warning. `new Owlat('lm_live_...')` does the same and is deprecated. `baseUrl` will become required.
 
 ## API Reference
 
@@ -242,6 +241,7 @@ import {
 	ForbiddenError,
 	InvalidStateError,
 	LimitReachedError,
+	UnexpectedResponseError,
 } from '@owlat/sdk-js';
 
 try {
@@ -267,6 +267,9 @@ try {
 		console.error(`Rate limited. Retry after ${error.retryAfter} seconds`);
 	} else if (error instanceof NotFoundError) {
 		console.error('Resource not found');
+	} else if (error instanceof UnexpectedResponseError) {
+		// The answer did not come from the Owlat API: check baseUrl.
+		console.error('Not an Owlat API:', error.url, error.statusCode, error.bodyExcerpt);
 	} else if (error instanceof OwlatError) {
 		console.error('API error:', error.message);
 		console.error('Status code:', error.statusCode);
@@ -276,25 +279,28 @@ try {
 
 ### Error classes
 
-| Error class           | HTTP status | When                                                                                             |
-| --------------------- | ----------- | ------------------------------------------------------------------------------------------------ |
-| `AuthenticationError` | 401         | Invalid or missing API key                                                                       |
-| `LimitReachedError`   | 402         | Plan or quota limit reached                                                                      |
-| `ForbiddenError`      | 403         | Authenticated but not permitted (suspended / abuse-blocked)                                      |
-| `NotFoundError`       | 404         | Resource does not exist                                                                          |
-| `ConflictError`       | 409         | Duplicate resource (e.g. existing email)                                                         |
-| `InvalidStateError`   | 422         | Resource state blocks the operation (unverified domain, blocked recipient, unpublished template) |
-| `RateLimitError`      | 429         | Too many requests, or a transactional send limit reached                                         |
-| `ValidationError`     | 400         | Request body fails validation                                                                    |
+| Error class               | HTTP status | When                                                                                                                                                                            |
+| ------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AuthenticationError`     | 401         | Invalid or missing API key                                                                                                                                                      |
+| `LimitReachedError`       | 402         | Plan or quota limit reached                                                                                                                                                     |
+| `ForbiddenError`          | 403         | Authenticated but not permitted (suspended / abuse-blocked)                                                                                                                     |
+| `NotFoundError`           | 404         | Resource does not exist                                                                                                                                                         |
+| `ConflictError`           | 409         | Duplicate resource (e.g. existing email)                                                                                                                                        |
+| `InvalidStateError`       | 422         | Resource state blocks the operation (unverified domain, blocked recipient, unpublished template)                                                                                |
+| `RateLimitError`          | 429         | Too many requests, or a transactional send limit reached                                                                                                                        |
+| `ValidationError`         | 400         | Request body fails validation                                                                                                                                                   |
+| `UnexpectedResponseError` | any         | The response is not the Owlat API's: usually a wrong `baseUrl`, or a proxy answering for the instance. Carries `url` (without the query string), `statusCode` and `bodyExcerpt` |
 
 ### Error Properties
 
 All errors extend `OwlatError` and include:
 
 - `message` - Human-readable error message
-- `code` - Error code from the API (e.g., 'invalid_email', 'not_found')
+- `code` - Error category from the API (e.g., 'invalid_input', 'not_found')
 - `statusCode` - HTTP status code
 - `rateLimit` - Rate limit info (if available)
+- `data` - The error's specifics, such as `field` on a `400`
+- `reason` - The refusal code from `data.reason` (e.g., 'domain_unverified'), typed as `ApiErrorReason`; branch on it rather than on the message
 
 `RateLimitError` also includes:
 

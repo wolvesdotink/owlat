@@ -20,10 +20,10 @@ describe('check-dist', () => {
 		]);
 	});
 
-	it('allows relative paths and node builtins', () => {
+	it('allows node builtins only: the bundle ships no second file', () => {
 		expect(
-			externalSpecifiers("import { a } from './a';\nconst fs = require('node:fs');\n")
-		).toEqual([]);
+			externalSpecifiers("import { a } from './errorReasons';\nconst fs = require('node:fs');\n")
+		).toEqual(['./errorReasons']);
 	});
 
 	it('ignores the package name inside a doc example', () => {
