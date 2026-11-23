@@ -678,33 +678,41 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 // autoEnforceReputation — the enforce EXECUTOR (the auto-suspend path)
 // ────────────────────────────────────────────────────────────────────
 
-describe('autoEnforceReputation — executor', () => {
-	it('critical → org is auto-suspended (delegates to Abuse status)', async () => {
+describe('autoEnforceReputation — a job an older release queued', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('decides afresh instead of applying its old verdict', async () => {
 		const t = await harness();
-		await seedSettings(t); // abuseStatus defaults to clean
+		await seedSettings(t);
 
 		await t.mutation(internal.analytics.sendingReputation.autoEnforceReputation, {
 			riskLevel: 'critical',
 		});
 
-		await t.run(async (ctx) => {
-			const s = await ctx.db.query('instanceSettings').first();
-			expect(s?.abuseStatus).toBe('suspended');
-		});
+		expect((await abuseState(t)).status).toBeUndefined();
 	});
 
-	it('high → org is auto-warned', async () => {
+	it('respects the hold of a lift made after it was queued', async () => {
+		const now = Date.UTC(2026, 10, 20, 12);
+		vi.useFakeTimers();
+		vi.setSystemTime(now);
 		const t = await harness();
-		await seedSettings(t);
+		await seedSettings(t, { abuseStatus: 'suspended', abuseStatusChangedBy: 'system' });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(now),
+			totalSent: 1000,
+			totalBounced: 120,
+		});
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'clean', at: now, reason: 'list cleaned', changedBy: 'admin-1' },
+		});
 
 		await t.mutation(internal.analytics.sendingReputation.autoEnforceReputation, {
-			riskLevel: 'high',
+			riskLevel: 'critical',
 		});
 
-		await t.run(async (ctx) => {
-			const s = await ctx.db.query('instanceSettings').first();
-			expect(s?.abuseStatus).toBe('warned');
-		});
+		expect((await abuseState(t)).status).toBe('clean');
 	});
 });
 

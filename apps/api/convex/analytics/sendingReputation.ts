@@ -24,8 +24,8 @@
  *     `recordEvent`.
  *   - `recalculateAll` is the cleanup cron: it ages out >60-day buckets across
  *     both scopes. Risk no longer needs periodic recalculation — it is derived.
- *   - `autoEnforceReputation` is the unchanged enforce executor (delegates to
- *     the **Abuse status (module)**).
+ *   - `autoEnforceReputation` only serves jobs an earlier release queued: it
+ *     runs the check afresh.
  */
 
 import { v } from 'convex/values';
@@ -36,7 +36,6 @@ import { internal } from '../_generated/api';
 import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared/reputation';
 import { utcDayStart } from '../lib/clock';
 import { REPUTATION_WINDOW_MS } from './reputationResume';
-import { reputationTriggerValidator } from '../lib/validators/abuseStatus';
 import { DAY_MS } from '../lib/constants';
 
 // ============ RISK LEVEL THRESHOLDS ============
@@ -371,47 +370,22 @@ export const recordEvent = internalMutation({
 	},
 });
 
-// ============ ENFORCE EXECUTOR ============
+// ============ JOBS AN EARLIER RELEASE QUEUED ============
 
 /**
- * Auto-enforce reputation-based restrictions.
- * - critical → auto-suspend
- * - high → auto-warn
- *
- * The severity-ladder + banned-terminal logic lives in
- * the Abuse status (module); this caller picks the target status and
- * delegates. Severity downgrades (e.g., critical → warned) are refused
- * by the lifecycle, matching the prior pre-deepening behavior of
- * `setAbuseStatusInternal`. (Same-state attempts return `recorded`.)
+ * Where earlier releases queued the hourly check's verdict. The check now
+ * applies its decision itself (`reputationCheck.ts`), so a job still queued
+ * from before an update runs the check afresh instead of applying a verdict
+ * that predates a platform admin's lift and its hold. The arguments stay
+ * accepted for those jobs and are not used.
  */
 export const autoEnforceReputation = internalMutation({
 	args: {
 		riskLevel: v.union(v.literal('high'), v.literal('critical')),
-		/**
-		 * What the operator reads, naming the evidence. Absent on a job a previous
-		 * release scheduled, which only ever enforced on the internal window.
-		 */
 		reason: v.optional(v.string()),
-		/** The metric the call was made on; absent on a job a previous release scheduled. */
-		trigger: v.optional(reputationTriggerValidator),
 	},
-	handler: async (ctx, args) => {
-		const target = args.riskLevel === 'critical' ? 'suspended' : 'warned';
-		const reason =
-			args.reason ??
-			(args.riskLevel === 'critical'
-				? 'Auto-suspended: complaint rate or bounce rate exceeded critical thresholds'
-				: 'Auto-warned: complaint rate or bounce rate exceeding safe thresholds');
-
-		await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
-			input: {
-				to: target,
-				at: Date.now(),
-				reason,
-				changedBy: 'system',
-				...(args.trigger ? { trigger: args.trigger } : {}),
-			},
-		});
+	handler: async (ctx) => {
+		await ctx.runMutation(internal.analytics.reputationCheck.evaluateAutoEnforce, {});
 	},
 });
 

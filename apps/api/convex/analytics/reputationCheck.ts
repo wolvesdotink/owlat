@@ -69,10 +69,15 @@ export const evaluateAutoEnforce = internalMutation({
 		// read above, and a platform admin's lift committed in between would
 		// otherwise be undone by it.
 		if (decision) {
-			await ctx.runMutation(
-				internal.analytics.sendingReputation.autoEnforceReputation,
-				keepsTrigger ? { riskLevel: decision.riskLevel, reason: decision.reason } : decision
-			);
+			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
+				input: {
+					to: decision.riskLevel === 'critical' ? 'suspended' : 'warned',
+					at: now,
+					reason: decision.reason,
+					changedBy: 'system',
+					...(keepsTrigger ? {} : { trigger: decision.trigger }),
+				},
+			});
 		}
 		return { riskLevel: org.riskLevel };
 	},
