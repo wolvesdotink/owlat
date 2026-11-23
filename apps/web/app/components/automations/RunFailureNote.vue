@@ -3,18 +3,19 @@
  * Why a failed run failed, under its row: one sentence for the coded reason,
  * the page that fixes it, and the step's stored text one click away.
  *
- * The fix pages are admin-only (`middleware/admin.ts`), so a member gets "ask
- * an admin" instead of a link that would bounce them to Home, as on a refused
- * campaign send.
+ * Every fix needs an admin: the settings pages are admin-only
+ * (`middleware/admin.ts`) and saving the automation needs `automations:manage`.
+ * A member gets "ask an admin" instead of a link they cannot use, as on a
+ * refused campaign send.
  */
 import { runFailureNote, type AutomationRunFailure } from '~/lib/automationRunFailure';
 
-const props = defineProps<{ failure: AutomationRunFailure }>();
+const props = defineProps<{ failure: AutomationRunFailure; automationId: string }>();
 
 const { t } = useI18n();
 const { isAdmin } = usePermissions();
 
-const note = computed(() => runFailureNote(props.failure));
+const note = computed(() => runFailureNote(props.failure, props.automationId));
 </script>
 
 <template>

@@ -166,26 +166,26 @@ describe('why a failed run failed', () => {
 		],
 		[
 			'template_missing',
-			'This step has no email to send, or its email was deleted. Choose one in the editor.',
-			null,
+			'This step has no email to send, or its email was deleted.',
+			'/dashboard/automations/au_welcome/edit',
 		],
 		[
 			'template_empty',
-			'The email this step sends has no content. Add content to it, or choose another email in the editor.',
-			null,
+			'The email this step sends has no content.',
+			'/dashboard/automations/au_welcome/edit',
 		],
 		['contact_no_email', 'This contact has no email address.', null],
 		[
 			'invalid_step_config',
-			"This step's settings are incomplete or invalid. Check the step in the editor.",
-			null,
+			"This step's settings are incomplete or invalid.",
+			'/dashboard/automations/au_welcome/edit',
 		],
 		['plugin_failed', 'The plugin behind this step reported a failure.', null],
 		['interrupted', 'This step was interrupted again and again and was given up.', null],
 		[
 			'step_limit',
 			'This run went through too many steps and was stopped. A condition that leads back to an earlier step usually causes this.',
-			null,
+			'/dashboard/automations/au_welcome/edit',
 		],
 		['unknown', 'This step failed.', null],
 	] as const)('%s says why, and links the page that fixes it', async (reason, sentence, fixTo) => {
@@ -217,15 +217,18 @@ describe('why a failed run failed', () => {
 		expect(note.get('details').text()).toContain('Newer backend text');
 	});
 
-	it('tells a member to ask an admin instead of linking an admin page', async () => {
-		isAdmin.value = false;
-		runsData = failedRun({ reason: 'domain_not_verified', detail: null });
-		const wrapper = await mountPanel();
-		const note = wrapper.get('[data-testid="run-failure"]');
-		expect(note.find('[data-testid="run-failure-fix"]').exists()).toBe(false);
-		expect(note.text()).toContain('Ask an admin of this workspace to fix this.');
-		expect(note.find('details').exists()).toBe(false);
-	});
+	it.each(['domain_not_verified', 'template_missing'])(
+		'tells a member to ask an admin about %s instead of linking a page they cannot use',
+		async (reason) => {
+			isAdmin.value = false;
+			runsData = failedRun({ reason, detail: null });
+			const wrapper = await mountPanel();
+			const note = wrapper.get('[data-testid="run-failure"]');
+			expect(note.find('[data-testid="run-failure-fix"]').exists()).toBe(false);
+			expect(note.text()).toContain('Ask an admin of this workspace to fix this.');
+			expect(note.find('details').exists()).toBe(false);
+		}
+	);
 
 	it('shows nothing under a run that did not fail', async () => {
 		const wrapper = await mountPanel();

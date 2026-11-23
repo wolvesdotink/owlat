@@ -20,7 +20,12 @@ type SharedGateReason = AutomationStepFailureReason & PreflightFailureReason;
 
 const sharedFix = (reason: SharedGateReason): RefusalFixLink | null => refusalFixLink(reason);
 
-const FAILURE_FIX_LINKS: Readonly<Record<AutomationStepFailureReason, RefusalFixLink | null>> = {
+/** Fixed in the automation's own editor, which needs `automations:manage` (admins). */
+const IN_AUTOMATION = 'automation';
+
+const FAILURE_FIX_LINKS: Readonly<
+	Record<AutomationStepFailureReason, RefusalFixLink | typeof IN_AUTOMATION | null>
+> = {
 	no_delivery_provider: sharedFix('no_delivery_provider'),
 	domain_not_verified: sharedFix('domain_not_verified'),
 	sending_not_allowed: sharedFix('sending_not_allowed'),
@@ -33,15 +38,14 @@ const FAILURE_FIX_LINKS: Readonly<Record<AutomationStepFailureReason, RefusalFix
 		to: '/dashboard/admin/instance/plugins',
 		labelKey: 'dashboard.automations.detail.index.runs.failure.fix.plugins',
 	},
-	// Fixed in the automation itself (the header's edit button) or not fixable
-	// from a page.
-	template_missing: null,
-	template_empty: null,
+	template_missing: IN_AUTOMATION,
+	template_empty: IN_AUTOMATION,
+	invalid_step_config: IN_AUTOMATION,
+	step_limit: IN_AUTOMATION,
+	// Not fixable from a page.
 	contact_no_email: null,
-	invalid_step_config: null,
 	plugin_failed: null,
 	interrupted: null,
-	step_limit: null,
 	unknown: null,
 };
 
@@ -78,14 +82,25 @@ const isKnownReason = (reason: string): reason is AutomationStepFailureReason =>
 	Object.hasOwn(MESSAGE_KEYS, reason);
 
 /**
- * The note for a failure. A code this build does not know (a newer backend)
- * reads as `unknown`, so the stored sentence still shows.
+ * The note for a failure of a run of `automationId`. A code this build does not
+ * know reads as `unknown`, so the stored sentence still shows: the desktop app
+ * ships the web build and can be older than the backend it talks to.
  */
-export function runFailureNote(failure: AutomationRunFailure): RunFailureNote {
+export function runFailureNote(
+	failure: AutomationRunFailure,
+	automationId: string
+): RunFailureNote {
 	const reason = isKnownReason(failure.reason) ? failure.reason : 'unknown';
+	const fix = FAILURE_FIX_LINKS[reason];
 	return {
 		messageKey: MESSAGE_KEYS[reason],
-		fix: FAILURE_FIX_LINKS[reason],
+		fix:
+			fix === IN_AUTOMATION
+				? {
+						to: `/dashboard/automations/${automationId}/edit`,
+						labelKey: 'dashboard.automations.detail.index.editAutomation',
+					}
+				: fix,
 		detail: failure.detail,
 	};
 }
@@ -93,7 +108,11 @@ export function runFailureNote(failure: AutomationRunFailure): RunFailureNote {
 /** Every catalog key a failure note can name, for the locale coverage check. */
 export function allRunFailureMessageKeys(): string[] {
 	const fixKeys = Object.values(FAILURE_FIX_LINKS).flatMap((fix) =>
-		fix ? [fix.labelKey, ...(fix.askKey ? [fix.askKey] : [])] : []
+		fix === IN_AUTOMATION
+			? ['dashboard.automations.detail.index.editAutomation']
+			: fix
+				? [fix.labelKey, ...(fix.askKey ? [fix.askKey] : [])]
+				: []
 	);
 	return [...Object.values(MESSAGE_KEYS), ...fixKeys];
 }

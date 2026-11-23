@@ -12000,7 +12000,7 @@
 						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",
 						"failed": "Failed",
-						"failedNote": "Runs a failed step ended in the last 7 days. An ended run does not continue: runs that start after the cause is fixed go through.",
+						"failedNote": "Runs a failed step ended in the last 7 days. An ended run does not continue. Once the cause is fixed, new runs go through; if the automation paused itself after repeated failures, resume it.",
 						"failure": {
 							"contactNoEmail": "This contact has no email address.",
 							"details": "Details",
@@ -12010,15 +12010,15 @@
 								"plugins": "Open plugins"
 							},
 							"interrupted": "This step was interrupted again and again and was given up.",
-							"invalidStepConfig": "This step's settings are incomplete or invalid. Check the step in the editor.",
+							"invalidStepConfig": "This step's settings are incomplete or invalid.",
 							"noDefaultSender": "No default sender is set, so this email could not go out.",
 							"noDeliveryProvider": "Sending is not set up yet, so this email could not go out.",
 							"pluginDenied": "The plugin behind this step is turned off or may not run automation steps.",
 							"pluginFailed": "The plugin behind this step reported a failure.",
 							"sendingNotAllowed": "Sending is suspended on this instance, so this email could not go out.",
 							"stepLimit": "This run went through too many steps and was stopped. A condition that leads back to an earlier step usually causes this.",
-							"templateEmpty": "The email this step sends has no content. Add content to it, or choose another email in the editor.",
-							"templateMissing": "This step has no email to send, or its email was deleted. Choose one in the editor.",
+							"templateEmpty": "The email this step sends has no content.",
+							"templateMissing": "This step has no email to send, or its email was deleted.",
 							"unknown": "This step failed."
 						},
 						"inProgress": "In progress",

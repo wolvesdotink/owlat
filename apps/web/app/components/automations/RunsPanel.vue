@@ -262,6 +262,7 @@ const loadPrevRuns = () => {
 					<AutomationsRunFailureNote
 						v-if="run.failure"
 						:failure="run.failure"
+						:automation-id="automationId"
 						class="mt-2 sm:pl-13"
 					/>
 				</div>

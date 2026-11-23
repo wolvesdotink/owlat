@@ -22,13 +22,6 @@ export type AutomationRunFailure = {
 };
 
 /**
- * How many of a run's newest step runs are searched for the failed one. The
- * step run that failed is the run's last: failing it cancels the run in the
- * same transaction, so nothing is written after it.
- */
-const FAILED_STEP_RUN_SEARCH = 4;
-
-/**
  * The failure of a run a failed step ended, or null for any other run. A failed
  * step run without a code (written before codes existed) reads as `unknown`,
  * with its sentence as the detail.
@@ -38,12 +31,14 @@ async function runFailureOf(
 	run: Doc<'automationRuns'>
 ): Promise<AutomationRunFailure | null> {
 	if (run.endReason !== 'step_failed') return null;
-	const recent = await db
+	// The failed step run is the run's newest: failing it cancels the run in the
+	// same transaction, so nothing is written after it.
+	const newest = await db
 		.query('automationStepRuns')
 		.withIndex('by_automation_run', (q) => q.eq('automationRunId', run._id))
 		.order('desc')
-		.take(FAILED_STEP_RUN_SEARCH);
-	const failed = recent.find((stepRun) => stepRun.status === 'failed');
+		.first();
+	const failed = newest?.status === 'failed' ? newest : null;
 	return {
 		reason: failed?.failureReason ?? 'unknown',
 		detail: failed?.errorMessage ?? null,
