@@ -282,6 +282,7 @@ deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
 deferred 19 FileUploadModal
 deferred 12 KnowledgeEntryForm
+deferred 18 PostboxMailboxConnectForm
 deferred 36 PostboxUndoSendToast
 deferred 6 SendFailureReason
 deferred 12 TestEmailModal
