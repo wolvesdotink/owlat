@@ -159,6 +159,8 @@ export interface ReadinessInput {
 	 * checklist; `null` or absent when unknown, which is never shown as a failure.
 	 */
 	oneClickUnsubscribe?: 'pass' | 'fail' | null;
+	/** Sending is stopped on the whole instance; `null` or absent while it is allowed. */
+	sendingSuspension?: 'suspended' | 'banned' | null;
 }
 
 /** The resolved transactional sender, as `delivery.status.getTransportSummary` reports it. */
@@ -189,6 +191,8 @@ export interface ReadinessStreamSources {
 	sendingReadiness?: { capped: false } | { capped: true; today: number } | null;
 	reputation?: { bounceRate: number; complaintRate: number } | null;
 	oneClickUnsubscribe?: 'pass' | 'fail' | null;
+	/** The instance's abuse status (`getSendingOverview`). */
+	abuseStatus?: string | null;
 }
 
 /**

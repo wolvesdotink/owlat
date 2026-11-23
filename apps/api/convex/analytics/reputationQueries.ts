@@ -11,6 +11,7 @@ import {
 	type RiskLevel,
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
+import { readSuspensionLift } from './reputationEvidence';
 import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import { microsoftHeldIps, readSndsIpStandings } from '../delivery/sndsStanding';
 import { buildCapacitySchedule } from '../campaigns/capacityPlan';
@@ -117,6 +118,8 @@ export const getSendingOverview = authedQuery({
 			// id) or carry an operator's note, never a credential.
 			abuseStatusReason: settings.abuseStatusReason ?? null,
 			abuseStatusChangedAt: settings.abuseStatusChangedAt ?? null,
+			// Whether a suspension lifts by itself and on what condition.
+			suspensionLift: await readSuspensionLift(ctx.db, settings, Date.now()),
 		};
 	},
 });

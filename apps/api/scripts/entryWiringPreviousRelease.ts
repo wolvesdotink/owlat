@@ -113,4 +113,6 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'domains/trackingDomains.ts#verifyTrackingDomainDns': 'old tracking-domain checks queued',
 	'domains/trackingDomains.ts#markVerifiedInternal': 'old tracking-domain checks mid-run',
 	'domains/trackingDomains.ts#getActiveTrackingDomain': 'old campaign send-walker hops mid-page',
+	// The hourly reputation check now applies its own decision (analytics/reputationCheck.ts).
+	'analytics/sendingReputation.ts#autoEnforceReputation': 'old reputation verdicts queued',
 };

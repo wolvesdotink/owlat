@@ -175,6 +175,10 @@ function streamInputFromSources(sources: ReadinessStreamSources): Partial<Readin
 		complaintRate: sources.reputation?.complaintRate ?? null,
 		bounceRate: sources.reputation?.bounceRate ?? null,
 		oneClickUnsubscribe: sources.oneClickUnsubscribe ?? null,
+		sendingSuspension:
+			sources.abuseStatus === 'suspended' || sources.abuseStatus === 'banned'
+				? sources.abuseStatus
+				: null,
 	};
 }
 

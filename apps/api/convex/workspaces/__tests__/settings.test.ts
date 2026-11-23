@@ -200,6 +200,54 @@ describe('organizations.settings.update — write semantics', () => {
 		});
 	});
 
+	it('lets only a platform admin choose whether suspensions wait for one', async () => {
+		const t = convexTest(schema, modules);
+		const caller = t.withIdentity({ subject: 'test-user' });
+
+		await expect(
+			caller.mutation(api.workspaces.settings.update, { isSendingResumeManual: true })
+		).rejects.toThrow(/Platform admin access required/);
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('platformAdmins', {
+				authUserId: 'test-user',
+				email: 'operator@owlat.example',
+				role: 'admin',
+				createdAt: 1,
+			});
+		});
+		await caller.mutation(api.workspaces.settings.update, { isSendingResumeManual: true });
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			expect(row?.isSendingResumeManual).toBe(true);
+		});
+	});
+
+	it('lets a platform admin without settings:manage set only the resume switch', async () => {
+		mockRole = 'editor';
+		const t = convexTest(schema, modules);
+		const caller = t.withIdentity({ subject: 'test-user' });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('platformAdmins', {
+				authUserId: 'test-user',
+				email: 'operator@owlat.example',
+				role: 'admin',
+				createdAt: 1,
+			});
+		});
+
+		await caller.mutation(api.workspaces.settings.update, { isSendingResumeManual: true });
+		await expect(
+			caller.mutation(api.workspaces.settings.update, {
+				isSendingResumeManual: false,
+				timezone: 'Europe/Berlin',
+			})
+		).rejects.toThrow(/Only owners and admins/);
+		await expect(caller.mutation(api.workspaces.settings.update, {})).rejects.toThrow(
+			/Only owners and admins/
+		);
+	});
+
 	it('rejects oversized trusted ARC forwarder lists', async () => {
 		const t = convexTest(schema, modules);
 		await expect(

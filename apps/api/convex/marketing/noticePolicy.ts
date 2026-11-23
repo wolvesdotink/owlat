@@ -82,6 +82,18 @@ export const MARKETING_NOTICE_POLICY: Record<MarketingNoticeKind, NoticePolicy> 
 		permission: 'organization:manage',
 		features: [],
 	},
+	// Same audience and switch as a deliverability alert: a suspension stops
+	// every stream, and owners and admins are who can act on it.
+	sending_suspended: {
+		preference: 'deliverabilityAlerts',
+		permission: 'organization:manage',
+		features: [],
+	},
+	sending_resumed: {
+		preference: 'deliverabilityAlerts',
+		permission: 'organization:manage',
+		features: [],
+	},
 };
 
 export type ResolvedFlags = Readonly<Record<FeatureFlagKey, boolean>>;
