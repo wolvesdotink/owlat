@@ -4,9 +4,16 @@ import { contactSchema } from '../contacts';
 import { decodeRequest } from '../decode';
 import { OPERATION_EXAMPLES } from '../examples';
 import { buildOpenApiDocument } from '../openapi';
-import { PUBLIC_OPERATIONS, publicOperation, successBodySchema } from '../operations';
+import { ERROR_REASON_STATUS } from '../errors';
+import {
+	KEYED_ERROR_STATUSES,
+	PUBLIC_OPERATIONS,
+	publicOperation,
+	successBodySchema,
+} from '../operations';
 import { addContactToTopicRequestSchema } from '../topics';
 import { sendTransactionalRequestSchema } from '../transactional';
+import { TRANSACTIONAL_REFUSAL_REASONS } from '../types';
 
 const committed = JSON.parse(
 	readFileSync(new URL('../../openapi.json', import.meta.url), 'utf8')
@@ -58,6 +65,50 @@ describe('openapi.json', () => {
 			)
 		);
 		expect(altered).not.toEqual(committed);
+	});
+});
+
+describe('error reasons', () => {
+	type ErrorResponses = Record<string, { content: { 'application/json': { schema: unknown } } }>;
+	const paths = committed['paths'] as Record<
+		string,
+		Record<string, { operationId: string; responses: ErrorResponses }>
+	>;
+	const reasonsListed = (operationId: string, status: number): unknown => {
+		const operation = Object.values(paths)
+			.flatMap((methods) => Object.values(methods))
+			.find((op) => op.operationId === operationId)!;
+		const schema = operation.responses[String(status)]?.content['application/json'].schema as {
+			allOf?: Array<{
+				properties?: {
+					error: { properties: { data: { properties: { reason: { enum: string[] } } } } };
+				};
+			}>;
+		};
+		return schema.allOf?.[1]?.properties?.error.properties.data.properties.reason.enum ?? [];
+	};
+
+	it('lists every refusal of the send route under the status it answers with', () => {
+		for (const reason of TRANSACTIONAL_REFUSAL_REASONS) {
+			expect(reasonsListed('sendTransactional', ERROR_REASON_STATUS[reason]), reason).toContain(
+				reason
+			);
+		}
+	});
+
+	it('names each reason only under a status its operation answers with', () => {
+		for (const operation of PUBLIC_OPERATIONS) {
+			const statuses = new Set<number>([
+				...(operation.scope === null ? [] : KEYED_ERROR_STATUSES),
+				...operation.errors,
+			]);
+			for (const reason of operation.reasons) {
+				expect(
+					statuses.has(ERROR_REASON_STATUS[reason]),
+					`${operation.operationId} ${reason}`
+				).toBe(true);
+			}
+		}
 	});
 });
 

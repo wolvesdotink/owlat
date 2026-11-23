@@ -13,6 +13,9 @@ export type {
 	PaginatedResponse,
 	RequestOptions,
 	JsonPrimitive,
+	// Errors
+	ApiErrorReason,
+	TransactionalRefusalReason,
 	// Contacts
 	Contact,
 	ContactSource,

@@ -77,7 +77,8 @@ export interface PaginatedResponse<T> {
 /**
  * Error response from the API — the HTTP serialization of an Operation error.
  * `category` is the closed classification (e.g. 'not_found', 'invalid_input',
- * 'rate_limited'); `data` carries the specifics ({ field }, { retryAfter }, …).
+ * 'rate_limited'); `data` carries the specifics: `field` names the body field
+ * a `400` is about, `reason` is one of the {@link ApiErrorReason} codes.
  */
 export interface ApiErrorResponse {
 	error: {
@@ -458,6 +459,36 @@ export interface TransactionalSendStatus {
 	/** Human-readable reason of the failure; `null` unless `failed`. */
 	errorMessage: string | null;
 }
+
+// ── Error reasons (`error.data.reason`) ─────────────────────────────────────
+
+/**
+ * Why `POST /api/v1/transactional` refused a send, in `error.data.reason`.
+ * Branch on these rather than on the message. New reasons can be added; treat
+ * an unknown one by its HTTP status.
+ */
+export const TRANSACTIONAL_REFUSAL_REASONS = [
+	'feature_disabled',
+	'abuse_blocked',
+	'no_delivery_provider',
+	'recipient_blocked',
+	'template_not_found',
+	'template_not_published',
+	'template_no_content',
+	'sender_not_configured',
+	'domain_unverified',
+	'invalid_variables',
+	'recipient_rate_limited',
+	'daily_send_limit',
+	'idempotency_conflict',
+	'idempotency_erased',
+] as const;
+
+/** Why a transactional send was refused. */
+export type TransactionalRefusalReason = (typeof TRANSACTIONAL_REFUSAL_REASONS)[number];
+
+/** Every `error.data.reason` the contract declares. */
+export type ApiErrorReason = TransactionalRefusalReason;
 
 // ── Outbound webhook events (body: `{ event, timestamp, data }`, times ISO-8601) ──
 export interface WebhookPayload<Event extends string, Data> {

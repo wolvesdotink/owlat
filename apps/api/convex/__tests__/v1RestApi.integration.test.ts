@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, expectTypeOf, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { createTestContact, createTestTopic, createTestTransactionalEmail } from './factories';
@@ -7,14 +7,17 @@ import {
 	apiErrorResponseSchema,
 	PUBLIC_OPERATIONS,
 	publicOperation,
+	reasonsAt,
 	successBodySchema,
 	type PublicOperationId,
+	type TransactionalRefusalReason,
 } from '@owlat/public-contract/schemas';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
 import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
+import type { DispatchRejectionReason } from '../transactional/dispatch';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
@@ -158,6 +161,20 @@ async function expectContractSuccess(operationId: PublicOperationId, res: Respon
 	expect(res.status).toBe(operation.success.status);
 	const body: unknown = await res.clone().json();
 	expect(successBodySchema(operation).safeParse(body).error?.issues).toBeUndefined();
+}
+
+/**
+ * Check a refusal against the public contract: its body carries `reason`, and
+ * the operation documents that reason at the status the response has.
+ */
+function expectDocumentedReason(
+	operationId: PublicOperationId,
+	res: Response,
+	body: { error: { data?: { reason?: unknown } } },
+	reason: string
+) {
+	expect(body.error.data?.reason).toBe(reason);
+	expect(reasonsAt(publicOperation(operationId), res.status)).toContain(reason);
 }
 
 /**
@@ -938,6 +955,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(res.status).toBe(404);
 		const body = await res.json();
 		expect(body.error.category).toBe('not_found');
+		expectDocumentedReason('sendTransactional', res, body, 'template_not_found');
 	});
 
 	it.each([
@@ -977,7 +995,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(res.status).toBe(403);
 		const body = await res.json();
 		expect(body.error.category).toBe('forbidden');
-		expect(body.error.data?.reason).toBe('feature_disabled');
+		expectDocumentedReason('sendTransactional', res, body, 'feature_disabled');
 	});
 });
 
@@ -1603,6 +1621,12 @@ describe('the public contract (@owlat/public-contract)', () => {
 			expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
 			expect(JSON.stringify(body)).toContain(String(operation.scope));
 		}
+	});
+
+	it('declares exactly the refusals the send route answers with', () => {
+		// The route's refusal table is keyed by DispatchRejectionReason, so this
+		// also keeps it in step with the contract's list.
+		expectTypeOf<DispatchRejectionReason>().toEqualTypeOf<TransactionalRefusalReason>();
 	});
 
 	it('answers the health probe with the documented body', async () => {

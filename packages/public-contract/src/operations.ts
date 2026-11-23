@@ -33,6 +33,8 @@ import {
 	sendTransactionalResponseSchema,
 	transactionalSendStatusSchema,
 } from './transactional';
+import { ERROR_REASON_STATUS } from './errors';
+import { TRANSACTIONAL_REFUSAL_REASONS, type ApiErrorReason } from './types';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -84,6 +86,8 @@ export interface PublicOperation {
 	};
 	/** Error statuses the operation answers with, beyond the ones every keyed call can. */
 	errors: readonly number[];
+	/** The `error.data.reason` codes the operation answers with, beyond the ones every keyed call can. */
+	reasons: readonly ApiErrorReason[];
 }
 
 /** Statuses every key-authenticated call can answer with. */
@@ -115,6 +119,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [],
+		reasons: [],
 	},
 	{
 		operationId: 'listContacts',
@@ -151,6 +156,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: true,
 		},
 		errors: [],
+		reasons: [],
 	},
 	{
 		operationId: 'createContact',
@@ -171,6 +177,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [409, 422],
+		reasons: [],
 	},
 	{
 		operationId: 'getContact',
@@ -191,6 +198,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404],
+		reasons: [],
 	},
 	{
 		operationId: 'updateContact',
@@ -211,6 +219,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
+		reasons: [],
 	},
 	{
 		operationId: 'deleteContact',
@@ -231,6 +240,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
+		reasons: [],
 	},
 	{
 		operationId: 'sendEvent',
@@ -251,6 +261,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
+		reasons: ['idempotency_conflict', 'idempotency_erased'],
 	},
 	{
 		operationId: 'sendTransactional',
@@ -271,6 +282,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
+		reasons: TRANSACTIONAL_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'getTransactionalSend',
@@ -296,6 +308,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404],
+		reasons: ['feature_disabled'],
 	},
 	{
 		operationId: 'addContactToTopic',
@@ -316,6 +329,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
+		reasons: [],
 	},
 	{
 		operationId: 'removeContactFromTopic',
@@ -342,6 +356,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
+		reasons: [],
 	},
 ] as const satisfies readonly PublicOperation[];
 
@@ -357,4 +372,9 @@ export function successBodySchema(operation: PublicOperation): z.ZodType {
 /** The operation with this ID. */
 export function publicOperation(operationId: PublicOperationId): PublicOperation {
 	return PUBLIC_OPERATIONS.find((operation) => operation.operationId === operationId)!;
+}
+
+/** The `error.data.reason` codes an operation can answer with at `status`. */
+export function reasonsAt(operation: PublicOperation, status: number): ApiErrorReason[] {
+	return operation.reasons.filter((reason) => ERROR_REASON_STATUS[reason] === status);
 }

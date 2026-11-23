@@ -4,12 +4,14 @@
  * carries no runtime dependency on it.
  */
 export type {
+	ApiErrorReason,
 	ApiErrorResponse,
 	ApiResponse,
 	JsonPrimitive,
 	ListQuery as PaginationParams,
 	PaginatedResponse,
 	PaginationMeta,
+	TransactionalRefusalReason,
 } from '@owlat/public-contract';
 
 /**
