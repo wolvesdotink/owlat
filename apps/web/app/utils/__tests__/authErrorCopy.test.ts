@@ -94,6 +94,10 @@ describe('authErrorCopy', () => {
 		expect(authErrorCopy(en, { message: 'No code at all' }, 'shared.useAuth.signUpFailed')).toBe(
 			'Sign up failed'
 		);
+		// A code that happens to name an object property is still unknown.
+		expect(authErrorCopy(en, { code: 'constructor' }, 'shared.useAuth.signUpFailed')).toBe(
+			'Sign up failed'
+		);
 		// The library's text stays available for support, in the console only.
 		expect(warn).toHaveBeenCalledWith(
 			'[auth] unmapped error',

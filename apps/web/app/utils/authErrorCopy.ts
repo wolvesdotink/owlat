@@ -96,7 +96,8 @@ export function authErrorCopy(
 	fallbackKey: string,
 	named?: Record<string, unknown>
 ): string {
-	const key = error.code ? KEY_FOR_CODE[error.code] : undefined;
+	const key =
+		error.code && Object.hasOwn(KEY_FOR_CODE, error.code) ? KEY_FOR_CODE[error.code] : undefined;
 	if (key) return named ? t(`shared.authErrors.${key}`, named) : t(`shared.authErrors.${key}`);
 	if (error.status === TOO_MANY_REQUESTS) return t('shared.authErrors.tooManyAttempts');
 	logUnmapped(error);

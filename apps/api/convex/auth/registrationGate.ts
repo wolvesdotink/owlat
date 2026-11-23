@@ -27,9 +27,11 @@ import { getBoolean } from '../lib/env';
  * Matching an invitation permits account creation, not organization access.
  * Invitation acceptance separately requires verified inbox ownership in auth.ts.
  *
- * Each refusal carries a `code`: the sign-up form reads the code to show the
- * reason in the reader's language (apps/web/app/utils/authErrorCopy.ts), and
- * never shows the English message.
+ * Each refusal carries a `code`, which the sign-up form translates
+ * (apps/web/app/utils/authErrorCopy.ts) instead of showing the English
+ * message. With REQUIRE_EMAIL_VERIFICATION on, better-auth answers a refused
+ * sign-up like a duplicate one (no session, no error), so no code reaches the
+ * form then.
  */
 export async function assertRegistrationAllowed(
 	ctx: ActionCtx,

@@ -40,10 +40,10 @@ function delay(ms: number) {
  * session state — it never reaches a branch that produces copy — so outside a
  * component the fallbacks degrade to their key rather than taking the app down.
  */
-function authTranslator(): (key: string, named?: Record<string, unknown>) => string {
+function authTranslator(): (key: string) => string {
 	if (!getCurrentInstance()) return (key: string) => key;
 	const { t } = useI18n();
-	return (key: string, named?: Record<string, unknown>) => (named ? t(key, named) : t(key));
+	return (key: string) => t(key);
 }
 
 function toError(error: BetterFetchError | null, t: (key: string) => string): Error | null {
