@@ -11999,7 +11999,7 @@
 						"emptyFiltered": "Keine Durchläufe für diesen Filter",
 						"emptyTitle": "Noch keine Kontakte in dieser Automation",
 						"failed": "Fehlgeschlagen",
-						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben. Ein beendeter Durchlauf geht nicht weiter. Sobald die Ursache behoben ist, laufen neue Durchläufe durch; hat sich die Automatisierung nach wiederholten Fehlern selbst pausiert, muss eine Person mit Admin-Rechten sie fortsetzen.",
+						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben. Ein beendeter Durchlauf geht nicht weiter. Sobald die Ursache behoben ist, laufen neue Durchläufe durch; hat sich die Automation nach wiederholten Fehlern selbst pausiert, muss eine Person mit Admin-Rechten sie fortsetzen.",
 						"failure": {
 							"contactNoEmail": "Dieser Kontakt hat keine E-Mail-Adresse.",
 							"details": "Details",
@@ -12012,7 +12012,7 @@
 							"invalidStepConfig": "Die Einstellungen dieses Schritts sind unvollständig oder ungültig.",
 							"noDefaultSender": "Es ist kein Standardabsender festgelegt, deshalb konnte diese E-Mail nicht rausgehen.",
 							"noDeliveryProvider": "Der Versand ist noch nicht eingerichtet, deshalb konnte diese E-Mail nicht rausgehen.",
-							"pluginDenied": "Das Plugin hinter diesem Schritt ist ausgeschaltet oder darf keine Automatisierungsschritte ausführen.",
+							"pluginDenied": "Das Plugin hinter diesem Schritt ist ausgeschaltet oder darf keine Automationsschritte ausführen.",
 							"pluginFailed": "Das Plugin hinter diesem Schritt hat einen Fehler gemeldet.",
 							"sendingNotAllowed": "Der Versand ist auf dieser Instanz ausgesetzt, deshalb konnte diese E-Mail nicht rausgehen.",
 							"stepLimit": "Dieser Durchlauf hat zu viele Schritte ausgeführt und wurde gestoppt. Meist führt eine Bedingung zurück zu einem früheren Schritt.",
