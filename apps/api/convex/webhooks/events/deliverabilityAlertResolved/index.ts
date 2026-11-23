@@ -1,8 +1,9 @@
 /**
  * deliverability.alert_resolved — an alert announced by
  * `deliverability.alert_raised` is closed: its check passed again, an admin
- * resolved it, or Owlat closed it (IPv6 turned off, retention). Sent once per
- * alert, so a receiver can close the incident it opened for `alertId`.
+ * resolved it, or Owlat closed it (IPv6 turned off, retention); for a sending
+ * hold, sending resumed. Sent once per alert, so a receiver can close the
+ * incident it opened for `alertId`.
  *
  * Customer-facing contract: see docs/webhook-payloads.md.
  */
@@ -28,7 +29,7 @@ export interface DeliverabilityAlertResolvedInput {
 	check: string;
 	domain: string | null;
 	resolvedAt: number;
-	/** `manual`: an admin resolved it; `automatic`: Owlat closed it. */
+	/** `manual`: an admin resolved it, or a platform admin lifted a sending hold; `automatic`: Owlat closed it. */
 	resolution: 'manual' | 'automatic';
 }
 
