@@ -22,10 +22,17 @@
  * tick. When a re-checked step's mail goes out, its commit starts
  * `releaseWaitingStepRuns`, which takes {@link RELEASE_BATCH} waiting steps out
  * of the queue per transaction and continues itself until the queue holds only
- * steps that started waiting again after it began. A released step drops its
- * `waitingFor`, so its own mail going out starts no second chain; if it hits a
- * fault again (a route that differs by recipient), it waits again with its
- * original deadline.
+ * steps that started waiting again after it began. A released step is marked
+ * with `waitingCheckedAt: 0`, so its own mail going out starts no second
+ * chain; if it hits a fault again (a route that differs by recipient), it waits
+ * again with its original deadline.
+ *
+ * THE END OF THE WAIT. The give-up firing runs the step once more at
+ * `waitingUntil`, so a fix made just before the end still sends. A waited step
+ * claimed later than {@link WAIT_END_GRACE_MS} after its end (nothing ran at
+ * the end, for example while the deployment was down) fails with its reason
+ * without running: the setup may have been fixed only after the wait ended,
+ * and the mail would go out later than the wait allows.
  *
  * NO SECOND SEND. A step runs only through the claim, which a `pending` row
  * passes once (the CAS of `stepOrchestration.claimStepRun`): the cron's firing,
@@ -64,6 +71,12 @@ import { transitionStepRun } from './stepRunTransitions';
  */
 export const CONFIGURATION_WAIT_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * How late after the end of its wait a waited step may still run: the
+ * scheduler's lag for the give-up firing, with room to spare.
+ */
+export const WAIT_END_GRACE_MS = 15 * 60 * 1000;
+
 /** Waiting steps one release transaction takes out of the queue. */
 export const RELEASE_BATCH = 25;
 
@@ -81,6 +94,11 @@ export function configurationWaitReason(
 	return reason !== undefined && WAIT_REASONS.has(reason)
 		? (reason as AutomationStepWaitReason)
 		: null;
+}
+
+/** Whether a step run that waited is being claimed too long after its wait ended. */
+export function isWaitLongOver(stepRun: Doc<'automationStepRuns'>, now: number): boolean {
+	return stepRun.waitingUntil !== undefined && now > stepRun.waitingUntil + WAIT_END_GRACE_MS;
 }
 
 /**
@@ -125,8 +143,9 @@ function waitingQueue(ctx: MutationCtx, checkedBefore: number) {
 
 /**
  * Take a waiting step run out of the queue and fire it now. A released one
- * (`isProbe` false) forgets its reason, so its mail going out does not start
- * another release; the probe keeps it, so its mail going out starts the first.
+ * (`isProbe` false) is marked with `waitingCheckedAt: 0`, below the queue's
+ * range, so its mail going out does not start another release; the probe's
+ * mail going out starts the first.
  */
 async function fireWaitingStepRun(
 	ctx: MutationCtx,
@@ -135,8 +154,7 @@ async function fireWaitingStepRun(
 ): Promise<void> {
 	await ctx.db.patch(stepRun._id, {
 		delayUntil: Date.now(),
-		waitingCheckedAt: undefined,
-		...(isProbe ? {} : { waitingFor: undefined }),
+		waitingCheckedAt: isProbe ? undefined : 0,
 	});
 	await ctx.scheduler.runAfter(0, internal.automations.stepWalker.executeStep, {
 		automationRunId: stepRun.automationRunId,
@@ -183,7 +201,8 @@ export async function releaseAfterWaitedSend(
 	stepRun: Doc<'automationStepRuns'>,
 	emailSendId: string | undefined
 ): Promise<void> {
-	if (stepRun.waitingFor === undefined || emailSendId === undefined) return;
+	const wasReleased = stepRun.waitingCheckedAt === 0;
+	if (stepRun.waitingFor === undefined || wasReleased || emailSendId === undefined) return;
 	await ctx.scheduler.runAfter(0, internal.automations.configurationWait.releaseWaitingStepRuns, {
 		checkedBefore: Date.now(),
 	});

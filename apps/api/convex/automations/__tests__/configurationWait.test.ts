@@ -326,6 +326,31 @@ describe('an email step waits for configuration instead of failing', () => {
 });
 
 describe('a waiting step never sends twice or to someone it should not', () => {
+	it('a wait whose end passed unchecked fails with its reason, even once sending works', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId } = await seedRun(t, automationId);
+		await startAndSettle(t, runId);
+		// Nothing ran when the wait ended (the deployment was down), and the
+		// setup was fixed an hour after it.
+		const [stepRun] = await stepRunsOf(t, runId);
+		const endedAt = Date.now() - 60 * MINUTE_MS;
+		await t.run(async (ctx) =>
+			ctx.db.patch(stepRun!._id, { waitingUntil: endedAt, delayUntil: endedAt })
+		);
+		await NO_DEFAULT_SENDER.fix(t);
+
+		// The sweep for due pending steps and the re-check both find it.
+		await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		await recheckTick(t);
+
+		expect(await sends(t)).toHaveLength(0);
+		const [settled] = await stepRunsOf(t, runId);
+		expect(settled?.status).toBe('failed');
+		expect(settled?.failureReason).toBe('no_default_sender');
+		expect((await runOf(t, runId)).endReason).toBe('step_failed');
+	});
+
 	it('a re-check racing a second firing of the same step sends once', async () => {
 		const t = await setup(NO_DEFAULT_SENDER);
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);

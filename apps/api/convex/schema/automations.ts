@@ -186,9 +186,9 @@ export const automationTables = {
 		// (automations/configurationWait.ts). `waitingFor` is the reason while the
 		// step run is `pending` on it; `waitingUntil` is when the wait gives up,
 		// set by the first wait and kept by every later one; `waitingCheckedAt` is
-		// set while the step run sits in the re-check queue and cleared when it
-		// is taken out to run. A pending row without them is an ordinary
-		// scheduled or delayed step.
+		// set while the step run sits in the re-check queue, cleared when the
+		// re-check takes it out to run and 0 when a release does. A pending row
+		// without them is an ordinary scheduled or delayed step.
 		waitingFor: v.optional(automationStepWaitReasonValidator),
 		waitingUntil: v.optional(v.number()),
 		waitingCheckedAt: v.optional(v.number()),

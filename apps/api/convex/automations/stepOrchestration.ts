@@ -57,6 +57,7 @@ import {
 import { findStepRunSend } from './stepRunSend';
 import {
 	configurationWaitReason,
+	isWaitLongOver,
 	releaseAfterWaitedSend,
 	waitForConfiguration,
 } from './configurationWait';
@@ -286,6 +287,15 @@ export const claimStepRun = internalMutation({
 			return { kind: 'ended', reason: 'Retries exhausted' };
 		}
 
+		if (stepRun.status === 'pending' && isWaitLongOver(stepRun, now)) {
+			await failStepAndCancelRun(ctx, stepRun, stepRun.errorMessage ?? 'Configuration wait ended', {
+				countRunFailure: true,
+				stepFault: true,
+				failureReason: stepRun.waitingFor ?? 'unknown',
+			});
+			return { kind: 'ended', reason: 'Configuration wait ended' };
+		}
+
 		if (stepRun.status === 'pending') {
 			// Loop protection counts step executions, so only a first claim counts:
 			// re-running a step that waited for configuration is the same execution.
@@ -304,7 +314,6 @@ export const claimStepRun = internalMutation({
 				startedAt: now,
 				retryCount: args.attempt,
 				leaseExpiresAt: now + STEP_LEASE_MS,
-				waitingCheckedAt: undefined,
 			});
 		} else {
 			await ctx.db.patch(stepRun._id, {
@@ -406,7 +415,7 @@ export const retryOrFailStepRun = internalMutation({
 		args
 	): Promise<
 		| { kind: 'retrying'; delayMs: number }
-		| { kind: 'waiting'; until: number }
+		| { kind: 'waiting' }
 		| { kind: 'failed' }
 		| { kind: 'stale' }
 	> => {
@@ -416,7 +425,7 @@ export const retryOrFailStepRun = internalMutation({
 		const waitReason = configurationWaitReason(args.failureReason);
 		if (waitReason) {
 			const waiting = await waitForConfiguration(ctx, stepRun, waitReason, args.errorMessage);
-			if (waiting) return { kind: 'waiting', until: waiting.until };
+			if (waiting) return { kind: 'waiting' };
 			await failStepAndCancelRun(ctx, stepRun, args.errorMessage, {
 				countRunFailure: true,
 				stepFault: true,
