@@ -9,7 +9,7 @@
  * reason, the page that fixes it (admins only), and the step's stored text
  * behind a disclosure.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive, ref } from 'vue';
 import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
@@ -60,6 +60,12 @@ const isAdmin = ref(true);
 function failedRun(failure: { reason: string; detail: string | null }) {
 	return { runs: [{ ...RUNS.runs[0], failure }], hasMore: false };
 }
+
+// The panel loads the failure note lazily. Loading the module once up front
+// lets every mount render it within the one flush `mountPanel` awaits.
+beforeAll(async () => {
+	await import('../RunFailureNote.vue');
+});
 
 beforeEach(() => {
 	route.query = {};

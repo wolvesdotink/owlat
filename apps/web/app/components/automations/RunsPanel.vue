@@ -20,9 +20,14 @@ import {
 	type IconComponent,
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
-import AutomationsRunFailureNote from '~/components/automations/RunFailureNote.vue';
 
 const props = defineProps<{ automationId: Id<'automations'> }>();
+
+// Shown only under a failed run, so its reasons map and the campaign fix-link
+// catalog it reuses load with the first failed run, not with every visit.
+const AutomationsRunFailureNote = defineAsyncComponent(
+	() => import('~/components/automations/RunFailureNote.vue')
+);
 
 const { t } = useI18n();
 const route = useRoute();
