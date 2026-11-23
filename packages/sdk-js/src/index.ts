@@ -15,6 +15,7 @@ export type {
 	JsonPrimitive,
 	// Errors
 	ApiErrorReason,
+	ApiKeyErrorReason,
 	TransactionalRefusalReason,
 	// Contacts
 	Contact,

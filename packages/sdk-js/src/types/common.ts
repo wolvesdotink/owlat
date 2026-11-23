@@ -6,6 +6,7 @@
 export type {
 	ApiErrorReason,
 	ApiErrorResponse,
+	ApiKeyErrorReason,
 	ApiResponse,
 	JsonPrimitive,
 	ListQuery as PaginationParams,

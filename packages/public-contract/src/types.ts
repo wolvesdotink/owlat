@@ -487,8 +487,25 @@ export const TRANSACTIONAL_REFUSAL_REASONS = [
 /** Why a transactional send was refused. */
 export type TransactionalRefusalReason = (typeof TRANSACTIONAL_REFUSAL_REASONS)[number];
 
+/**
+ * Why a key-authenticated call was refused before it ran, in
+ * `error.data.reason`: no usable `Authorization` header, a key that is not an
+ * Owlat key, a key that does not authenticate (unknown, revoked and expired
+ * keys answer alike), or a key without the operation's scope, which
+ * `error.data.scope` names.
+ */
+export const API_KEY_ERROR_REASONS = [
+	'missing_credentials',
+	'malformed_key',
+	'invalid_key',
+	'missing_scope',
+] as const;
+
+/** Why a key-authenticated call was refused before it ran. */
+export type ApiKeyErrorReason = (typeof API_KEY_ERROR_REASONS)[number];
+
 /** Every `error.data.reason` the contract declares. */
-export type ApiErrorReason = TransactionalRefusalReason;
+export type ApiErrorReason = ApiKeyErrorReason | TransactionalRefusalReason;
 
 // ── Outbound webhook events (body: `{ event, timestamp, data }`, times ISO-8601) ──
 export interface WebhookPayload<Event extends string, Data> {

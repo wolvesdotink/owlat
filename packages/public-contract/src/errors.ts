@@ -7,6 +7,10 @@
 import type { ApiErrorReason } from './types';
 
 export const ERROR_REASON_STATUS: Record<ApiErrorReason, number> = {
+	missing_credentials: 401,
+	malformed_key: 401,
+	invalid_key: 401,
+	missing_scope: 403,
 	feature_disabled: 403,
 	abuse_blocked: 403,
 	no_delivery_provider: 422,

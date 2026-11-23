@@ -229,6 +229,65 @@ describe('v1 auth gate', () => {
 		expect(body.error.message).toBe('Invalid API key');
 	});
 
+	it.each([
+		['no Authorization header', undefined, 'missing_credentials'],
+		['a header that is not a bearer token', 'Basic a b', 'missing_credentials'],
+		['a malformed key', 'Bearer lm_live_short', 'malformed_key'],
+		['a well-formed but unknown key', `Bearer ${makeKey()}`, 'invalid_key'],
+	])('401 names the reason for %s', async (_label, authorization, reason) => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/contacts', {
+			method: 'GET',
+			headers: authorization === undefined ? {} : { Authorization: authorization },
+		});
+		expect(res.status).toBe(401);
+		const body = await res.json();
+		expect(body.error.category).toBe('unauthenticated');
+		expectDocumentedReason('listContacts', res, body, reason);
+	});
+
+	it('answers an unknown, a revoked and an expired key alike', async () => {
+		const t = setupTest();
+		const revoked = makeKey('r'.repeat(40));
+		const expired = makeKey('e'.repeat(40));
+		await t.run(async (ctx) => {
+			for (const [key, fields] of [
+				[revoked, { isActive: false }],
+				[expired, { isActive: true, expiresAt: Date.now() - 1000 }],
+			] as const) {
+				await ctx.db.insert('apiKeys', {
+					name: 'unusable',
+					keyHash: await hashKey(key),
+					keyPrefix: 'lm_live_',
+					scopes: ['contacts:read'],
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+					...fields,
+				});
+			}
+		});
+		const answers = [];
+		for (const key of [makeKey(), revoked, expired]) {
+			const res = await t.fetch('/api/v1/contacts', {
+				method: 'GET',
+				headers: { Authorization: `Bearer ${key}` },
+			});
+			answers.push({ status: res.status, body: await res.json() });
+		}
+		expect(answers[0]).toEqual({
+			status: 401,
+			body: {
+				error: {
+					category: 'unauthenticated',
+					message: 'Invalid API key',
+					data: { reason: 'invalid_key' },
+				},
+			},
+		});
+		expect(answers[1]).toEqual(answers[0]);
+		expect(answers[2]).toEqual(answers[0]);
+	});
+
 	it('GET /api/v1/contacts → 401 for an inactive key', async () => {
 		const t = setupTest();
 		const key = makeKey('b'.repeat(40));
@@ -1617,9 +1676,13 @@ describe('the public contract (@owlat/public-contract)', () => {
 				...(operation.request ? { body: JSON.stringify({ email: 'ada@example.com' }) } : {}),
 			});
 			expect(res.status, operation.operationId).toBe(403);
-			const body: unknown = await res.json();
+			const body = await res.json();
 			expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
-			expect(JSON.stringify(body)).toContain(String(operation.scope));
+			expect(body.error.data, operation.operationId).toEqual({
+				reason: 'missing_scope',
+				scope: operation.scope,
+			});
+			expectDocumentedReason(operation.operationId, res, body, 'missing_scope');
 		}
 	});
 

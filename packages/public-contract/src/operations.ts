@@ -34,7 +34,7 @@ import {
 	transactionalSendStatusSchema,
 } from './transactional';
 import { ERROR_REASON_STATUS } from './errors';
-import { TRANSACTIONAL_REFUSAL_REASONS, type ApiErrorReason } from './types';
+import { API_KEY_ERROR_REASONS, TRANSACTIONAL_REFUSAL_REASONS, type ApiErrorReason } from './types';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -376,5 +376,9 @@ export function publicOperation(operationId: PublicOperationId): PublicOperation
 
 /** The `error.data.reason` codes an operation can answer with at `status`. */
 export function reasonsAt(operation: PublicOperation, status: number): ApiErrorReason[] {
-	return operation.reasons.filter((reason) => ERROR_REASON_STATUS[reason] === status);
+	const reasons = [
+		...(operation.scope === null ? [] : API_KEY_ERROR_REASONS),
+		...operation.reasons,
+	];
+	return reasons.filter((reason) => ERROR_REASON_STATUS[reason] === status);
 }

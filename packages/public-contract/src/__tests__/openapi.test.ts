@@ -13,7 +13,7 @@ import {
 } from '../operations';
 import { addContactToTopicRequestSchema } from '../topics';
 import { sendTransactionalRequestSchema } from '../transactional';
-import { TRANSACTIONAL_REFUSAL_REASONS } from '../types';
+import { API_KEY_ERROR_REASONS, TRANSACTIONAL_REFUSAL_REASONS } from '../types';
 
 const committed = JSON.parse(
 	readFileSync(new URL('../../openapi.json', import.meta.url), 'utf8')
@@ -78,14 +78,16 @@ describe('error reasons', () => {
 		const operation = Object.values(paths)
 			.flatMap((methods) => Object.values(methods))
 			.find((op) => op.operationId === operationId)!;
-		const schema = operation.responses[String(status)]?.content['application/json'].schema as {
-			allOf?: Array<{
-				properties?: {
-					error: { properties: { data: { properties: { reason: { enum: string[] } } } } };
-				};
-			}>;
-		};
-		return schema.allOf?.[1]?.properties?.error.properties.data.properties.reason.enum ?? [];
+		const schema = operation.responses[String(status)]?.content['application/json'].schema as
+			| {
+					allOf?: Array<{
+						properties?: {
+							error: { properties: { data: { properties: { reason: { enum: string[] } } } } };
+						};
+					}>;
+			  }
+			| undefined;
+		return schema?.allOf?.[1]?.properties?.error.properties.data.properties.reason.enum ?? [];
 	};
 
 	it('lists every refusal of the send route under the status it answers with', () => {
@@ -93,6 +95,16 @@ describe('error reasons', () => {
 			expect(reasonsListed('sendTransactional', ERROR_REASON_STATUS[reason]), reason).toContain(
 				reason
 			);
+		}
+	});
+
+	it('lists the key refusals on every keyed operation and none on the open probe', () => {
+		for (const operation of PUBLIC_OPERATIONS) {
+			for (const reason of API_KEY_ERROR_REASONS) {
+				const listed = reasonsListed(operation.operationId, ERROR_REASON_STATUS[reason]);
+				if (operation.scope === null) expect(listed, operation.operationId).toEqual([]);
+				else expect(listed, `${operation.operationId} ${reason}`).toContain(reason);
+			}
 		}
 	});
 

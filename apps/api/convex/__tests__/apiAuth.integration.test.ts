@@ -330,6 +330,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toContain('Missing or invalid Authorization header');
+			expect(result.reason).toBe('missing_credentials');
 		}
 	});
 
@@ -347,6 +348,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toContain('Invalid API key format');
+			expect(result.reason).toBe('malformed_key');
 		}
 	});
 
@@ -364,6 +366,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toContain('Invalid API key format');
+			expect(result.reason).toBe('malformed_key');
 		}
 	});
 
@@ -386,6 +389,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toBe('Invalid API key');
+			expect(result.reason).toBe('invalid_key');
 		}
 	});
 
@@ -477,10 +481,17 @@ describe('requireScope', () => {
 		expect(requireScope(authWith(['contacts:read']), 'contacts:read')).toBeNull();
 	});
 
-	it('forbids (403) when the key lacks the scope', () => {
+	it('forbids (403) when the key lacks the scope, naming it in data', async () => {
 		const denied = requireScope(authWith(['contacts:read']), 'contacts:write');
 		expect(denied).not.toBeNull();
 		expect(denied!.status).toBe(403);
+		expect(await denied!.json()).toEqual({
+			error: {
+				category: 'forbidden',
+				message: 'This API key is missing the required scope: contacts:write',
+				data: { reason: 'missing_scope', scope: 'contacts:write' },
+			},
+		});
 	});
 
 	it('forbids when the key has no scopes at all', () => {
