@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '@owlat/shared';
-import type { BlockReason } from '~/utils/suppressionReasons';
+import { isBlockReason, type BlockReason } from '~/utils/suppressionReasons';
 import {
 	CircleSlashIcon,
 	FileUploadIcon,
@@ -26,8 +26,18 @@ const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizatio
 // too); everyone else reads the list.
 const { canManageContacts } = usePermissions();
 
-// Filter state
-const reasonFilter = ref<'all' | BlockReason>('all');
+const route = useRoute();
+const router = useRouter();
+
+// The reason filter lives in `?reason=` so a link, such as the delivery hub's
+// bounce check, can open the list on one reason. Anything else lists them all.
+const reasonFilter = computed<'all' | BlockReason>({
+	get: () => (isBlockReason(route.query['reason']) ? route.query['reason'] : 'all'),
+	set: (value) =>
+		void router.replace({
+			query: { ...route.query, reason: value === 'all' ? undefined : value },
+		}),
+});
 
 // Get blocked emails with real-time updates
 const {
