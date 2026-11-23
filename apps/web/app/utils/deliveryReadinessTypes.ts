@@ -152,6 +152,8 @@ export interface ReadinessInput {
 	marketingCapacity?: MarketingCapacity | null;
 	/** Rolling complaint rate; `null` or absent with no sending activity. */
 	complaintRate?: number | null;
+	/** Rolling bounce rate; `null` or absent with no sending activity. */
+	bounceRate?: number | null;
 	/**
 	 * The checklist's one-click unsubscribe check, for viewers who may read the
 	 * checklist; `null` or absent when unknown, which is never shown as a failure.
@@ -185,7 +187,7 @@ export interface ReadinessStreamSources {
 		microsoftHeldIps?: readonly string[];
 	} | null;
 	sendingReadiness?: { capped: false } | { capped: true; today: number } | null;
-	reputation?: { complaintRate: number } | null;
+	reputation?: { bounceRate: number; complaintRate: number } | null;
 	oneClickUnsubscribe?: 'pass' | 'fail' | null;
 }
 

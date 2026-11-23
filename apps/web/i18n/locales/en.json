@@ -16767,6 +16767,12 @@
 					"missing": "Add {records} so mailboxes trust your mail and it lands in the inbox.",
 					"title": "Email authentication"
 				},
+				"bounces": {
+					"action": "Review suppressions",
+					"over": "{rate} of your mail bounced, over the {limit} limit. Remove addresses that bounce before the next campaign.",
+					"title": "Bounce rate",
+					"under": "{rate} of your mail bounced, under the {limit} limit."
+				},
 				"capacity": {
 					"action": "See warm-up checks",
 					"halted": "Warm-up is halted after too many bounces or deferrals, so campaign volume won't grow until it recovers.",

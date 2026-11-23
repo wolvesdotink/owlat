@@ -16767,6 +16767,12 @@
 					"missing": "Füge {records} hinzu, damit Postfächer deiner Mail vertrauen und sie im Posteingang landet.",
 					"title": "E-Mail-Authentifizierung"
 				},
+				"bounces": {
+					"action": "Sperrliste prüfen",
+					"over": "{rate} deiner Mails sind zurückgekommen, über dem Limit von {limit}. Entferne unzustellbare Adressen vor der nächsten Kampagne.",
+					"title": "Bounce-Rate",
+					"under": "{rate} deiner Mails sind zurückgekommen, unter dem Limit von {limit}."
+				},
 				"capacity": {
 					"action": "Warm-up-Prüfungen ansehen",
 					"halted": "Das Warm-up ist nach zu vielen Bounces oder Zurückstellungen angehalten, das Kampagnenvolumen wächst also erst wieder, wenn es sich erholt.",
