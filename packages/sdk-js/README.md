@@ -284,7 +284,7 @@ try {
 | `NotFoundError`       | 404         | Resource does not exist                                                                          |
 | `ConflictError`       | 409         | Duplicate resource (e.g. existing email)                                                         |
 | `InvalidStateError`   | 422         | Resource state blocks the operation (unverified domain, blocked recipient, unpublished template) |
-| `RateLimitError`      | 429         | Too many requests (transient per-second throttle)                                                |
+| `RateLimitError`      | 429         | Too many requests, or a transactional send limit reached                                         |
 | `ValidationError`     | 400         | Request body fails validation                                                                    |
 
 ### Error Properties
@@ -302,7 +302,7 @@ All errors extend `OwlatError` and include:
 
 ## Rate Limiting
 
-The API enforces rate limits (10 requests per second per API key). The SDK includes rate limit info in error responses:
+The API enforces rate limits (10 requests per second per API key), and transactional sends have per-recipient and daily limits. The SDK retries a `429` after its `Retry-After` when that is 30 seconds or less. A longer wait is thrown at once as a `RateLimitError`, so a request handler is not held up by a sleep that cannot outlast the limit; `retryAfter` says when to try again and `data.reason` which limit was hit. The SDK includes rate limit info in error responses:
 
 ```typescript
 try {

@@ -38,6 +38,7 @@ export type ReadinessGateKey =
 	| 'dmarc'
 	| 'unsubscribe'
 	| 'capacity'
+	| 'bounces'
 	| 'complaints'
 	| 'alignment'
 	| 'dual-arm-alignment'

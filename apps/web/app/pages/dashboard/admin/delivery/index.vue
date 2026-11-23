@@ -5,15 +5,9 @@ import { deliveryVerdict, warmupSentence, deliveryStatTiles } from '~/utils/deli
 import { healthChipClass, levelTone } from '~/utils/healthTone';
 import { formatDate } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
-import {
-	ArrowRightIcon,
-	CircleWarningIcon,
-	MailHelpIcon,
-	ShieldCheckIcon,
-	ShieldOffIcon,
-	TriangleWarningIcon,
-} from '@coolicons/vue';
+import { ArrowRightIcon, MailHelpIcon, ShieldCheckIcon, ShieldOffIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import DeliveryAbuseStatusBanner from '~/components/delivery/AbuseStatusBanner.vue';
 
 const { t, locale } = useI18n();
 
@@ -96,31 +90,6 @@ const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 const warmup = computed(() => {
 	const sentence = warmupSentence(sendingOverview.value?.warming ?? null);
 	return sentence === null ? null : localized(sentence);
-});
-
-// --- Abuse status banner (preserved from the old sending-limits card) ---
-const abuseWarning = computed(() => {
-	const status = sendingOverview.value?.abuseStatus;
-	if (!status || status === 'clean') return null;
-	switch (status) {
-		case 'warned':
-			return {
-				message: t('dashboard.admin.delivery.index.abuse.warned'),
-				severity: 'warning' as const,
-			};
-		case 'suspended':
-			return {
-				message: t('dashboard.admin.delivery.index.abuse.suspended'),
-				severity: 'error' as const,
-			};
-		case 'banned':
-			return {
-				message: t('dashboard.admin.delivery.index.abuse.banned'),
-				severity: 'error' as const,
-			};
-		default:
-			return null;
-	}
 });
 
 // --- Stat tiles ---
@@ -275,6 +244,14 @@ const sendingDetail = computed(() => {
 			</template>
 		</UiPageHeader>
 
+		<!-- Abuse status banner. It leads the hub: while sending is suspended
+			 nothing below can make mail go out, whatever the readiness panel says. -->
+		<DeliveryAbuseStatusBanner
+			:status="sendingOverview?.abuseStatus"
+			:reason="sendingOverview?.abuseStatusReason"
+			:changed-at="sendingOverview?.abuseStatusChangedAt"
+		/>
+
 		<!-- The one readiness panel leads the hub: it derives a single truth for
 			 "can this instance send?" from the real transport + domain + email-auth
 			 state, so the two halves of go-live (a transport, a verified/authenticated
@@ -300,23 +277,6 @@ const sendingDetail = computed(() => {
 		/>
 
 		<div v-else-if="sendingOverview" class="space-y-6">
-			<!-- Abuse status banner (send-blocking / attention) -->
-			<div
-				v-if="abuseWarning"
-				:class="
-					abuseWarning.severity === 'error'
-						? 'bg-error/10 border-error/20 text-error'
-						: 'bg-warning/10 border-warning/20 text-warning'
-				"
-				class="flex items-start gap-3 p-4 rounded-lg border"
-			>
-				<component
-					:is="abuseWarning.severity === 'error' ? TriangleWarningIcon : CircleWarningIcon"
-					class="w-5 h-5 mt-0.5 shrink-0"
-				/>
-				<p class="text-sm">{{ abuseWarning.message }}</p>
-			</div>
-
 			<!-- Sender compliance: the heading and every number it introduces in
 				 one card. The stat tiles (bounce / complaint / send budget — each with
 				 a real day-over-day delta and its threshold as a muted hint) lead. -->

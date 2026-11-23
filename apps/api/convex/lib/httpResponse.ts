@@ -87,19 +87,23 @@ export function errorResponse(
  * Serialize a caught throw as an HTTP Operation error — the HTTP-side mirror of
  * the `apps/web` Operation module's normalize step. A `ConvexError` carrying an
  * Operation error keeps its category (and HTTP status); anything else collapses
- * to `internal` (500). Catch blocks in HTTP handlers that re-surface a thrown
- * backend failure use this instead of guessing a status.
+ * to `internal` (500) with `fallbackMessage`. Catch blocks in HTTP handlers that
+ * re-surface a thrown backend failure use this instead of guessing a status.
+ *
+ * The raw text of an uncategorized throw never reaches the body: it can carry
+ * internal detail (a stack frame, a document id, an address) the caller must
+ * not see. Log it at the call site instead.
  */
 export function errorResponseFromThrow(
 	e: unknown,
-	corsHeaders: Record<string, string> | null = null
+	corsHeaders: Record<string, string> | null = null,
+	fallbackMessage = 'Internal server error'
 ): Response {
 	const op = extractOperationError(e);
 	if (op) {
 		return errorResponse(op.category, op.message, op.data, corsHeaders);
 	}
-	const message = e instanceof Error ? e.message : 'Internal error';
-	return errorResponse('internal', message, undefined, corsHeaders);
+	return errorResponse('internal', fallbackMessage, undefined, corsHeaders);
 }
 
 /**

@@ -300,6 +300,34 @@ function unsubscribeGate(input: ReadinessInput): ReadinessGate | null {
 	};
 }
 
+/**
+ * Marketing: room under the bounce-rate limit. The limit is the one the bounce
+ * tile shows and the backend's risk level starts at, so the gate turns at the
+ * same rate the tile turns amber, and is written the way the tile writes it.
+ */
+function bouncesGate(input: ReadinessInput): ReadinessGate | null {
+	const rate = input.bounceRate;
+	if (rate == null) return null;
+	const limit = REPUTATION_THRESHOLDS.bounce.medium;
+	const params = { rate: formatPercentage(rate, 2), limit: formatPercentage(limit, 0) };
+	const isOver = rate >= limit;
+	return {
+		key: 'bounces',
+		title: 'shared.deliveryReadiness.gates.bounces.title',
+		detail: {
+			key: isOver
+				? 'shared.deliveryReadiness.gates.bounces.over'
+				: 'shared.deliveryReadiness.gates.bounces.under',
+			params,
+		},
+		status: isOver ? 'attention' : 'ready',
+		tone: isOver ? 'warning' : 'success',
+		actionHref: isOver ? '/dashboard/audience/suppressions' : null,
+		actionLabel: isOver ? 'shared.deliveryReadiness.gates.bounces.action' : null,
+		streams: ['marketing'],
+	};
+}
+
 /** Marketing: room under the complaint-rate limit mailbox providers enforce. */
 function complaintsGate(input: ReadinessInput): ReadinessGate | null {
 	const rate = input.complaintRate;
@@ -397,6 +425,7 @@ export function buildReadinessGates(input: ReadinessInput): ReadinessGate[] {
 				dmarcGate(input),
 				unsubscribeGate(input),
 				capacityGate(input),
+				bouncesGate(input),
 				complaintsGate(input),
 			].filter(present)
 		);

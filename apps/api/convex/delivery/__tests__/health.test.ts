@@ -22,6 +22,8 @@ const REASON_PATHS: ReadonlyArray<{
 }> = [
 	{ inputs: {}, level: 'ok', reasonCode: 'healthy' },
 	{ inputs: { canSend: false }, level: 'error', reasonCode: 'no_provider' },
+	{ inputs: { abuseStatus: 'suspended' }, level: 'error', reasonCode: 'sending_suspended' },
+	{ inputs: { abuseStatus: 'banned' }, level: 'error', reasonCode: 'sending_banned' },
 	{
 		inputs: { streamsWithoutTransport: ['transactional'] },
 		level: 'error',
@@ -144,5 +146,23 @@ describe('rollUpDeliveryHealth', () => {
 			mtaInfrastructure: null,
 		});
 		expect(r).toEqual({ level: 'error', reasonCode: 'no_provider' });
+	});
+
+	it('names a suspension before every other error, since nothing sends until it is lifted', () => {
+		const r = rollUpDeliveryHealth({
+			reputationRisk: 'critical',
+			domainStatuses: ['failed'],
+			canSend: false,
+			mtaInfrastructure: null,
+			abuseStatus: 'suspended',
+		});
+		expect(r).toEqual({ level: 'error', reasonCode: 'sending_suspended' });
+	});
+
+	it('adds nothing for a warned status, which still sends', () => {
+		expect(rollUpDeliveryHealth({ ...HEALTHY, abuseStatus: 'warned' })).toEqual({
+			level: 'ok',
+			reasonCode: 'healthy',
+		});
 	});
 });
