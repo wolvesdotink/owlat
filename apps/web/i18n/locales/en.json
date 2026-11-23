@@ -20068,6 +20068,7 @@
 		"campaignRefusal": {
 			"accountBanned": "Sending is permanently disabled on this instance. Delivery health shows why, and a platform admin can lift it in the operator console.",
 			"accountSuspended": "Sending is suspended on this instance. Delivery health shows why, and a platform admin can lift it in the operator console.",
+			"askAboutSuspension": "Ask an admin of this workspace for the reason, or a platform admin of this instance to lift it.",
 			"askAdmin": "Ask an admin of this workspace to fix this.",
 			"capacityAbout": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes about {days} days to reach everyone, so send it over {days} days instead.",
 			"capacityAtLeast": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes at least {days} days to reach everyone, so send it over several days instead.",

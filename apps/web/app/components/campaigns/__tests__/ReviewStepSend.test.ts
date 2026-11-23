@@ -464,6 +464,37 @@ describe('ReviewStep send blockers', () => {
 		expect(pushed).toEqual([]);
 	});
 
+	it('tells a member who to ask about a suspension instead of "ask an admin to fix this"', async () => {
+		isAdmin = false;
+		const refusal: OperationError = {
+			category: 'invalid_state',
+			message: 'Sending is suspended on this instance.',
+			data: {
+				reason: 'sending_not_allowed',
+				messageKey: 'shared.campaignRefusal.accountSuspended',
+			},
+		};
+		vi.stubGlobal(
+			'useBackendOperation',
+			(_reference: unknown, options: { onError?: (error: OperationError) => boolean }) => ({
+				run: async () => {
+					options.onError?.(refusal);
+					return { ok: false };
+				},
+			})
+		);
+		const wrapper = mountStep({ audienceCount: 12 });
+
+		await clickSend(wrapper);
+
+		const note = wrapper.find('[role="alert"][data-testid="send-blocked-note"]');
+		expect(note.find('a').exists()).toBe(false);
+		expect(note.text()).toContain(
+			'Ask an admin of this workspace for the reason, or a platform admin of this instance to lift it.'
+		);
+		expect(note.text()).not.toContain('to fix this');
+	});
+
 	it('announces a capacity refusal as the multi-day schedule it offers', async () => {
 		const refusal: OperationError = {
 			category: 'invalid_state',

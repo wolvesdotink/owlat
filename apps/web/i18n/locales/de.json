@@ -20068,6 +20068,7 @@
 		"campaignRefusal": {
 			"accountBanned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt. Unter Zustellungsgesundheit siehst du den Grund; aufheben kann die Sperre eine Person mit Plattform-Admin-Rechten in der Betreiberkonsole.",
 			"accountSuspended": "Der Versand ist auf dieser Instanz ausgesetzt. Unter Zustellungsgesundheit siehst du den Grund; aufheben kann die Sperre eine Person mit Plattform-Admin-Rechten in der Betreiberkonsole.",
+			"askAboutSuspension": "Frag eine Person mit Admin-Rechten in diesem Workspace nach dem Grund oder eine Person mit Plattform-Admin-Rechten auf dieser Instanz, um die Sperre aufzuheben.",
 			"askAdmin": "Bitte eine Person mit Admin-Rechten in diesem Workspace, das zu beheben.",
 			"capacityAbout": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es etwa {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf {days} Tage.",
 			"capacityAtLeast": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es mindestens {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf mehrere Tage.",
