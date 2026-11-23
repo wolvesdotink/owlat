@@ -118,18 +118,6 @@ describe('operatorConsoleLayout', () => {
 		});
 	});
 
-	it('keeps the sending status (and its Unsuspend) on the Overview whenever the Workspaces tab is dropped', () => {
-		for (const [mode, count] of [
-			['selfhost', 1],
-			['selfhost', 2],
-			['hosted', 1],
-			['selfhost', undefined],
-		] as const) {
-			const layout = operatorConsoleLayout(mode, count);
-			expect(layout.showSendingStatusOnOverview).toBe(!layout.tabs.includes('organizations'));
-		}
-	});
-
 	it('keeps the full console for several workspaces, for hosted, and while loading', () => {
 		const full = ['overview', 'review', 'organizations', 'admins'];
 		expect(operatorConsoleLayout('selfhost', 2).tabs).toEqual(full);

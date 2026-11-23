@@ -9069,11 +9069,11 @@
 				"index": {
 					"abuse": {
 						"askOperator": "Eine Person mit Plattform-Admin-Rechten auf dieser Instanz kann die Sperre in der Betreiberkonsole aufheben.",
-						"banned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt. Bis die Sperre aufgehoben wird, geht nichts raus.",
+						"banned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt. Bis die Sperre aufgehoben wird, geht keine neue Mail raus.",
 						"liftAction": "In der Betreiberkonsole prüfen",
 						"reason": "Hinterlegter Grund:",
 						"since": "Seit {date}",
-						"suspended": "Der Versand ist auf dieser Instanz ausgesetzt. Bis die Sperre aufgehoben wird, geht nichts raus.",
+						"suspended": "Der Versand ist auf dieser Instanz ausgesetzt. Bis die Sperre aufgehoben wird, geht keine neue Mail raus.",
 						"warned": "Dein Konto ist wegen erhöhter Bounce- oder Beschwerderaten markiert. Verbessere die Listenqualität, um weitere Einschränkungen zu vermeiden."
 					},
 					"domains": {
@@ -20066,8 +20066,8 @@
 			"changed": "Das hat sich geändert, nachdem du es geöffnet hast. Prüf die neuen Angaben und gib es dann erneut frei."
 		},
 		"campaignRefusal": {
-			"accountBanned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt. Unter Zustellungsgesundheit siehst du den Grund und wer die Sperre aufheben kann.",
-			"accountSuspended": "Der Versand ist auf dieser Instanz ausgesetzt. Unter Zustellungsgesundheit siehst du den Grund und wer die Sperre aufheben kann.",
+			"accountBanned": "Der Versand ist auf dieser Instanz dauerhaft gesperrt. Unter Zustellungsgesundheit siehst du den Grund; aufheben kann die Sperre eine Person mit Plattform-Admin-Rechten in der Betreiberkonsole.",
+			"accountSuspended": "Der Versand ist auf dieser Instanz ausgesetzt. Unter Zustellungsgesundheit siehst du den Grund; aufheben kann die Sperre eine Person mit Plattform-Admin-Rechten in der Betreiberkonsole.",
 			"askAdmin": "Bitte eine Person mit Admin-Rechten in diesem Workspace, das zu beheben.",
 			"capacityAbout": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es etwa {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf {days} Tage.",
 			"capacityAtLeast": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es mindestens {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf mehrere Tage.",

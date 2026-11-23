@@ -244,6 +244,39 @@ describe('operator console', () => {
 		wrapper.unmount();
 	});
 
+	it('lifts a suspension from the Overview of a single-workspace console', async () => {
+		const saved = {
+			orgs: READS[getFunctionName(q.listAllOrganizations)],
+			detail: READS[getFunctionName(q.getOrganizationDetail)],
+		};
+		READS[getFunctionName(q.listAllOrganizations)] = [
+			{ abuseStatus: 'suspended', riskLevel: 'critical', defaultFromName: 'Northwind' },
+		];
+		READS[getFunctionName(q.getOrganizationDetail)] = {
+			settings: { abuseStatus: 'suspended', abuseStatusReason: 'Spam rate above the limit' },
+		};
+		try {
+			const wrapper = await mountOn('Overview');
+			expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).not.toContain('Workspaces');
+			expect(wrapper.text()).toContain('Reason: Spam rate above the limit');
+
+			await button(wrapper, 'Un-suspend (restore sending)')[0]!.trigger('click');
+			const modal = wrapper.get('[role="dialog"][aria-label="Set sending status"]');
+			expect((modal.get('select').element as HTMLSelectElement).value).toBe('clean');
+			await modal.get('textarea').setValue('Complaints back under the limit');
+			await button(wrapper, 'Apply')[0]!.trigger('click');
+			await flushPromises();
+			expect(ops['Set workspace status']).toHaveBeenCalledWith({
+				abuseStatus: 'clean',
+				reason: 'Complaints back under the limit',
+			});
+			wrapper.unmount();
+		} finally {
+			READS[getFunctionName(q.listAllOrganizations)] = saved.orgs;
+			READS[getFunctionName(q.getOrganizationDetail)] = saved.detail;
+		}
+	});
+
 	it('removes an admin and promotes a user who is not one yet', async () => {
 		const wrapper = await mountOn('Admins');
 		expect(wrapper.text()).toContain('lin@owlat.example');

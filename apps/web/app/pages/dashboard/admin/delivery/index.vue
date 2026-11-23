@@ -296,6 +296,48 @@ const sendingDetail = computed(() => {
 			</template>
 		</UiPageHeader>
 
+		<!-- Abuse status banner. It leads the hub: while sending is suspended
+			 nothing below can make mail go out, whatever the readiness panel says. -->
+		<div
+			v-if="abuseWarning"
+			:class="
+				abuseWarning.severity === 'error'
+					? 'bg-error/10 border-error/20 text-error'
+					: 'bg-warning/10 border-warning/20 text-warning'
+			"
+			class="mb-6 flex items-start gap-3 p-4 rounded-lg border"
+		>
+			<component
+				:is="abuseWarning.severity === 'error' ? TriangleWarningIcon : CircleWarningIcon"
+				class="w-5 h-5 mt-0.5 shrink-0"
+			/>
+			<div class="min-w-0 space-y-2 text-sm">
+				<p>{{ abuseWarning.message }}</p>
+				<div v-if="abuseWarning.reason" class="text-text-secondary">
+					<p class="text-caption">{{ t('dashboard.admin.delivery.index.abuse.reason') }}</p>
+					<blockquote class="mt-1 border-l-2 border-current pl-3 break-words">
+						{{ abuseWarning.reason }}
+					</blockquote>
+				</div>
+				<p v-if="abuseWarning.since" class="text-caption text-text-secondary">
+					{{ t('dashboard.admin.delivery.index.abuse.since', { date: abuseWarning.since }) }}
+				</p>
+				<template v-if="isSendingBlocked">
+					<NuxtLink
+						v-if="isPlatformAdmin === true"
+						to="/dashboard/admin/operator"
+						class="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+					>
+						{{ t('dashboard.admin.delivery.index.abuse.liftAction') }}
+						<ArrowRightIcon class="w-4 h-4" aria-hidden="true" />
+					</NuxtLink>
+					<p v-else-if="isPlatformAdmin === false" class="text-text-secondary">
+						{{ t('dashboard.admin.delivery.index.abuse.askOperator') }}
+					</p>
+				</template>
+			</div>
+		</div>
+
 		<!-- The one readiness panel leads the hub: it derives a single truth for
 			 "can this instance send?" from the real transport + domain + email-auth
 			 state, so the two halves of go-live (a transport, a verified/authenticated
@@ -321,47 +363,6 @@ const sendingDetail = computed(() => {
 		/>
 
 		<div v-else-if="sendingOverview" class="space-y-6">
-			<!-- Abuse status banner (send-blocking / attention) -->
-			<div
-				v-if="abuseWarning"
-				:class="
-					abuseWarning.severity === 'error'
-						? 'bg-error/10 border-error/20 text-error'
-						: 'bg-warning/10 border-warning/20 text-warning'
-				"
-				class="flex items-start gap-3 p-4 rounded-lg border"
-			>
-				<component
-					:is="abuseWarning.severity === 'error' ? TriangleWarningIcon : CircleWarningIcon"
-					class="w-5 h-5 mt-0.5 shrink-0"
-				/>
-				<div class="min-w-0 space-y-2 text-sm">
-					<p>{{ abuseWarning.message }}</p>
-					<div v-if="abuseWarning.reason" class="text-text-secondary">
-						<p class="text-caption">{{ t('dashboard.admin.delivery.index.abuse.reason') }}</p>
-						<blockquote class="mt-1 border-l-2 border-current pl-3 break-words">
-							{{ abuseWarning.reason }}
-						</blockquote>
-					</div>
-					<p v-if="abuseWarning.since" class="text-caption text-text-secondary">
-						{{ t('dashboard.admin.delivery.index.abuse.since', { date: abuseWarning.since }) }}
-					</p>
-					<template v-if="isSendingBlocked">
-						<NuxtLink
-							v-if="isPlatformAdmin === true"
-							to="/dashboard/admin/operator"
-							class="inline-flex items-center gap-1 font-medium underline underline-offset-2"
-						>
-							{{ t('dashboard.admin.delivery.index.abuse.liftAction') }}
-							<ArrowRightIcon class="w-4 h-4" aria-hidden="true" />
-						</NuxtLink>
-						<p v-else-if="isPlatformAdmin === false" class="text-text-secondary">
-							{{ t('dashboard.admin.delivery.index.abuse.askOperator') }}
-						</p>
-					</template>
-				</div>
-			</div>
-
 			<!-- Sender compliance: the heading and every number it introduces in
 				 one card. The stat tiles (bounce / complaint / send budget — each with
 				 a real day-over-day delta and its threshold as a muted hint) lead. -->

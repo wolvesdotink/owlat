@@ -9069,11 +9069,11 @@
 				"index": {
 					"abuse": {
 						"askOperator": "A platform admin of this instance can lift it in the operator console.",
-						"banned": "Sending is permanently disabled on this instance. Nothing is sent until an operator lifts the ban.",
+						"banned": "Sending is permanently disabled on this instance. No new mail goes out until an operator lifts the ban.",
 						"liftAction": "Review in the operator console",
 						"reason": "Reason recorded:",
 						"since": "Since {date}",
-						"suspended": "Sending is suspended on this instance. Nothing is sent until an operator lifts the suspension.",
+						"suspended": "Sending is suspended on this instance. No new mail goes out until an operator lifts the suspension.",
 						"warned": "Your account is flagged for elevated bounce or complaint rates. Improve list quality to avoid further restrictions."
 					},
 					"domains": {
@@ -20066,8 +20066,8 @@
 			"changed": "This changed after you opened it. Check the updated details, then approve again."
 		},
 		"campaignRefusal": {
-			"accountBanned": "Sending is permanently disabled on this instance. Delivery health shows the reason and who can lift it.",
-			"accountSuspended": "Sending is suspended on this instance. Delivery health shows the reason and who can lift it.",
+			"accountBanned": "Sending is permanently disabled on this instance. Delivery health shows why, and a platform admin can lift it in the operator console.",
+			"accountSuspended": "Sending is suspended on this instance. Delivery health shows why, and a platform admin can lift it in the operator console.",
 			"askAdmin": "Ask an admin of this workspace to fix this.",
 			"capacityAbout": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes about {days} days to reach everyone, so send it over {days} days instead.",
 			"capacityAtLeast": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes at least {days} days to reach everyone, so send it over several days instead.",
