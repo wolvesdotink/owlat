@@ -479,11 +479,10 @@ export interface DeliverabilityAlertResolvedData extends DeliverabilityAlertSubj
 	/** `manual`: an admin resolved it; `automatic`: the check passed again or Owlat closed it. */
 	resolution: 'manual' | 'automatic';
 }
-/** `deliverability.alert_raised`: a check that had passed regressed. */
+/** `deliverability.alert_raised`: a check that had passed regressed; `nextAction` is the fix the Deliverability Center shows for it. */
 export interface DeliverabilityAlertRaisedData extends DeliverabilityAlertSubject {
 	severity: string;
 	message: string;
-	/** The fix the Deliverability Center shows for this check. */
 	nextAction: string;
 	observedAt: string;
 	/** The alert is about the server its own email leaves from; that email may not arrive. */
