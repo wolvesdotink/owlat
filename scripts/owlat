@@ -464,9 +464,15 @@ sync_flag_mirror() {
 # takes more than five minutes to start (a restore waits for readiness). Prints
 # the answer's `description` (or `error`), then `snapshot-id: <id>` when the
 # answer names a snapshot; exits non-zero on a non-2xx answer.
+# A body of `--stdin-field=<name>` sends `{"<name>": <stdin>}`: a compose
+# template is too large for an argument and the host may have no JSON encoder.
 UPDATER_REQUEST_JS='
 const http = require("node:http");
-const [method, path, body] = process.argv.slice(1);
+const [method, path, bodyArg] = process.argv.slice(1);
+const stdinField = bodyArg && bodyArg.startsWith("--stdin-field=") ? bodyArg.slice(14) : "";
+const body = stdinField
+	? JSON.stringify({ [stdinField]: require("node:fs").readFileSync(0, "utf8") })
+	: bodyArg;
 const req = http.request(
 	{
 		host: "127.0.0.1",
@@ -1086,18 +1092,6 @@ case "$cmd" in
 			esac
 		done
 
-		# Resolve INSTANCE_SECRET from .env (needed to call updater sidecar)
-		if [[ ! -f .env ]]; then
-			echo "Error: .env not found — cannot call updater sidecar" >&2
-			exit 1
-		fi
-
-		instance_secret=$(grep -E "^INSTANCE_SECRET=" .env | cut -d= -f2- | tr -d '"' | tr -d "'")
-		if [[ -z "$instance_secret" ]]; then
-			echo "Error: INSTANCE_SECRET not set in .env" >&2
-			exit 1
-		fi
-
 		# Resolve target compose template
 		if [[ -z "$target_version" ]]; then
 			# Default: fetch the latest docker-compose-*.yml from GitHub Releases
@@ -1124,30 +1118,18 @@ case "$cmd" in
 			exit 1
 		}
 
-		# Post to the local updater sidecar via docker network — simplest path
-		# is to use a short-lived curl container on the same network.
-		echo -e "${CYAN}${BOLD}[info]${RESET} Dispatching to updater sidecar…"
-		payload=$(printf '%s' "$template" | jq -R -s '{composeTemplate: .}' 2>/dev/null) || {
-			# Fallback without jq — base64 encode and decode server-side
-			echo "Error: 'jq' is required. Install with: apt install jq" >&2
-			exit 1
-		}
-
-		response=$(docker compose exec -T web curl -sf \
-			-X POST "http://updater:3200/update" \
-			-H "Content-Type: application/json" \
-			-H "X-Instance-Secret: $instance_secret" \
-			--max-time 600 \
-			-d "$payload")
-
-		if [[ -n "$response" ]]; then
-			echo "$response" | jq . 2>/dev/null || echo "$response"
-			echo ""
-			echo -e "${GREEN}${BOLD}[ ok ]${RESET} Upgrade dispatched. Poll with: owlat status"
-		else
-			echo "Error: No response from updater" >&2
-			exit 1
+		# The web image has no curl, and the host may have no jq: the request goes
+		# through updater_request, from inside the updater container, which also
+		# holds the instance secret. It answers once the release is up or failed.
+		echo -e "${CYAN}${BOLD}[info]${RESET} Applying the release through the updater (this takes a few minutes)…"
+		upgrade_status=0
+		printf '%s' "$template" | updater_request POST /update --stdin-field=composeTemplate || upgrade_status=$?
+		if [[ "$upgrade_status" -ne 0 ]]; then
+			printf '%b\n' "${RED}${BOLD}[err ]${RESET} The update to v${target_version} did not complete (see above)." \
+				"       Check that the updater is running ('owlat status') and read its log ('owlat logs updater')." >&2
+			exit "$upgrade_status"
 		fi
+		echo -e "${GREEN}${BOLD}[ ok ]${RESET} Updated to v${target_version}."
 		;;
 	install-cli)
 		# Explicit repair/first-install of the PATH entry. install.sh delegates here
