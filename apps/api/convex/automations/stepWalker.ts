@@ -115,6 +115,8 @@ export const executeStep = internalAction({
 		if (claim.kind === 'ended') return { success: false, error: claim.reason, cancelled: true };
 
 		const outcome = await runStepSideEffect(ctx, claim, args.stepRunId);
+		if (outcome.status === 'ended')
+			return { success: false, error: outcome.reason, cancelled: true };
 
 		if (outcome.status === 'failed') {
 			const retry = await ctx.runMutation(

@@ -51,6 +51,12 @@ const REJECTION_STEP_OUTCOME: Record<
 		status: 'contact_ineligible',
 		reason: detail === 'contact_unsubscribed' ? 'contact_unsubscribed' : 'contact_deleted',
 	}),
+	// The run, the automation or the step ended after the claim; the intake
+	// wrote the outcome the claim would have.
+	automation_step_ended: (detail) => ({
+		status: 'ended',
+		reason: detail ?? 'Step ended before the send',
+	}),
 	no_delivery_provider: (detail) => ({
 		status: 'failed',
 		reason: 'no_delivery_provider',
