@@ -850,6 +850,39 @@ describe('appPasswords.revokeAll', () => {
 	});
 });
 
+// ─── clientConnection ──────────────────────────────────────────────────────
+
+describe('appPasswords.clientConnection', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('tells any member the mail host the IMAP and submission servers answer on', async () => {
+		vi.stubEnv('EHLO_HOSTNAME', ' mail.example.com ');
+		const t = await setupTest();
+		setSession('user-editor', 'editor', 'org-1');
+
+		const config = await t.query(api.mail.appPasswords.clientConnection, {});
+		expect(config).toEqual({ mailHost: 'mail.example.com' });
+	});
+
+	it('returns mailHost: null when the instance has no mail host configured', async () => {
+		vi.stubEnv('EHLO_HOSTNAME', '');
+		const t = await setupTest();
+
+		const config = await t.query(api.mail.appPasswords.clientConnection, {});
+		expect(config).toEqual({ mailHost: null });
+	});
+
+	it('rejects a caller without an organization membership', async () => {
+		vi.stubEnv('EHLO_HOSTNAME', 'mail.example.com');
+		const t = await setupTest();
+		setSession('', null, null);
+
+		await expect(t.query(api.mail.appPasswords.clientConnection, {})).rejects.toThrow();
+	});
+});
+
 // ─── verify-credential route: per-client throttling ─────────────────────────
 
 describe('verify-credential route keys the auth throttle on the client IP', () => {

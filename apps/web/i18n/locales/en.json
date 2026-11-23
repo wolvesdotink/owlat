@@ -13597,6 +13597,7 @@
 				"generate": "Generate",
 				"generateDialogTitle": "Generate app password",
 				"generating": "Generating…",
+				"hostUnknown": "Ask your admin for the mail server address.",
 				"imapLabel": "IMAP",
 				"imapValue": "{host}:993 (TLS)",
 				"labelLabel": "Label",
