@@ -95,7 +95,7 @@ Fired on each link click (via tracked URL redirect). Links followed by security 
 ```
 
 ### `email.bounced`
-Fired on hard or soft bounce reported by the provider.
+Fired on hard or soft bounce reported by the provider. `cause` is `sender` when nothing shows the address is at fault: the receiver refused our sending identity (an X.7.x policy refusal, IP or domain reputation, authentication), or a relay reported the bounce without naming the recipient or reporting the address failed (`relayBounceCause` in `@owlat/shared/bounceCause`). The address is then not blocklisted (`recipientAtFault` in `delivery/sendLifecycle/feedbackReducers.ts`), and a receiver must not suppress it either. Every other bounce is `recipient`.
 ```json
 {
   "email": "recipient@example.com",
@@ -103,6 +103,7 @@ Fired on hard or soft bounce reported by the provider.
   "campaignId": "<Convex Id<'campaigns'> | null>",
   "templateId": "<Convex Id<'transactionalEmails'> | null>",
   "bounceType": "hard" | "soft",
+  "cause": "recipient" | "sender",
   "message": "<provider-supplied reason or ''>",
   "timestamp": "<ISO-8601>"
 }
@@ -171,13 +172,14 @@ Fired when a deliverability check that had passed regresses and Owlat raises an 
   "scope": "deployment" | "domain",
   "domain": "mail.example.com" | null,
   "message": "<English diagnostic>",
+  "nextAction": "<English fix sentence>",
   "observedAt": "<ISO-8601>",
   "emailMayNotArrive": true,
   "isTest": false
 }
 ```
 
-`emailMayNotArrive` is true when the alert is about the server its own email leaves through (a blocking server check while system mail uses the built-in MTA).
+`nextAction` is the check's fix sentence from `DELIVERABILITY_NEXT_ACTIONS` in `@owlat/shared`, the one the Deliverability Center shows; a test alert carries a fixed sentence. `emailMayNotArrive` is true when the alert is about the server its own email leaves through (a blocking server check while system mail uses the built-in MTA).
 
 ### `deliverability.alert_resolved`
 

@@ -14,6 +14,7 @@ import {
 import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import type * as SsrfGuard from '../../lib/ssrfGuard';
 import { fetchGuarded } from '../../lib/ssrfGuard';
+import { deliverabilityAlertRaisedWebhookSchema } from '@owlat/public-contract/schemas';
 
 // The network edge of Web Push; everything behind it is real.
 vi.mock('../../lib/ssrfGuard', async (importOriginal) => ({
@@ -341,9 +342,9 @@ describe('deliverability alert channels', () => {
 			})
 		).toEqual({ delivered: 0, failed: 0, pending: 1 });
 		const [log] = await t.run((ctx) => ctx.db.query('webhookDeliveryLogs').collect());
-		expect(log?.payload).toMatchObject({
+		expect(deliverabilityAlertRaisedWebhookSchema.parse(log?.payload)).toMatchObject({
 			event: 'deliverability.alert_raised',
-			data: { isTest: true },
+			data: { isTest: true, nextAction: expect.stringMatching(/\S/) },
 		});
 
 		// An editor cannot run it.

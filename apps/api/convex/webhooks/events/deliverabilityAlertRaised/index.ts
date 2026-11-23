@@ -22,6 +22,7 @@ const schema = v.object({
 	scope: v.union(v.literal('deployment'), v.literal('domain')),
 	domain: v.union(v.string(), v.null()),
 	message: v.string(),
+	nextAction: v.string(),
 	observedAt: v.string(),
 	emailMayNotArrive: v.boolean(),
 	isTest: v.boolean(),
@@ -37,6 +38,8 @@ export interface DeliverabilityAlertRaisedInput {
 	severity: string;
 	domain: string | null;
 	message: string;
+	/** The fix the Deliverability Center shows for this check. */
+	nextAction: string;
 	observedAt: number;
 	emailMayNotArrive: boolean;
 	isTest: boolean;
@@ -60,6 +63,7 @@ export const deliverabilityAlertRaised: WebhookEventModule<
 			scope: input.domain === null ? 'deployment' : 'domain',
 			domain: input.domain,
 			message: input.message,
+			nextAction: input.nextAction,
 			observedAt: new Date(input.observedAt).toISOString(),
 			emailMayNotArrive: input.emailMayNotArrive,
 			isTest: input.isTest,

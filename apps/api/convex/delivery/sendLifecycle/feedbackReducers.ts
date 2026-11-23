@@ -164,6 +164,7 @@ export function reduceBounced(
 				email: contactEmail,
 				identity: sendIdentityOf(send, ref),
 				bounceType: args.bounceType,
+				cause: recipientAtFault ? 'recipient' : 'sender',
 				...(args.bounceMessage ? { message: args.bounceMessage } : {}),
 				at: args.at,
 			},
