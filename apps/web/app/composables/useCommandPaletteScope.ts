@@ -14,6 +14,8 @@ import {
 	nextPaletteScope,
 } from '~/lib/commandPaletteScope';
 import type { PaletteMode } from '~/lib/commandPalette';
+import { isFeatureReachable } from '~/lib/routeFeatureGates';
+import { MAIL_SEARCH_PATH } from '~/composables/useCommandPaletteObjectItems';
 import { type MaybeRefOrGetter, toValue } from 'vue';
 
 /**
@@ -38,18 +40,27 @@ export function useCommandPaletteScope(
 	const isAskAvailable = computed(() => isFlagEnabled('ai.knowledge'));
 	/** Answers from mail need Postbox AI, which knowledge does not imply. */
 	const isMailAskAvailable = computed(() => isFlagEnabled('ai'));
+	/** Mail scope's Enter opens the deep mail search, which needs mail switched on. */
+	const isMailAvailable = computed(() => isFeatureReachable(MAIL_SEARCH_PATH, isFlagEnabled));
+
+	/** Whether a scope can be entered here: Ask and Mail follow their features. */
+	function isScopeAvailable(candidate: PaletteScope): boolean {
+		if (candidate === 'ask') return isAskAvailable.value;
+		if (candidate === 'mail') return isMailAvailable.value;
+		return true;
+	}
 
 	const scope = ref<PaletteScope>('everything');
 
 	/** The scope this route opens in — the palette resets to it on every open. */
 	function routeScope(): PaletteScope {
 		const preferred = defaultScopeForRoute(route.path);
-		return preferred === 'ask' && !isAskAvailable.value ? 'everything' : preferred;
+		return isScopeAvailable(preferred) ? preferred : 'everything';
 	}
 
 	/** Open in `preferred` when the caller named one, otherwise follow the route. */
 	function resetScope(preferred?: PaletteScope) {
-		if (preferred && (preferred !== 'ask' || isAskAvailable.value)) {
+		if (preferred && isScopeAvailable(preferred)) {
 			scope.value = preferred;
 			return;
 		}
@@ -58,10 +69,7 @@ export function useCommandPaletteScope(
 
 	/** Tab. Skips a scope the instance switched off; never a dead key. */
 	function cycleScope() {
-		scope.value = nextPaletteScope(
-			scope.value,
-			(candidate) => candidate !== 'ask' || isAskAvailable.value
-		);
+		scope.value = nextPaletteScope(scope.value, isScopeAvailable);
 	}
 
 	/**
@@ -111,6 +119,7 @@ export function useCommandPaletteScope(
 		effectiveMode,
 		isAskAvailable,
 		isMailAskAvailable,
+		isMailAvailable,
 		placeholderKey,
 		resetScope,
 		cycleScope,

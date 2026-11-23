@@ -122,12 +122,20 @@ describe('slots', () => {
 		expect(hrefs).toContain('/dashboard/inbox');
 	});
 
-	it('drops the Inbox slot entirely rather than linking to a surface that is off', () => {
+	it('drops the Inbox and Answer slots rather than linking to surfaces that are off', () => {
 		flags = [];
 		const hrefs = mountBar()
 			.findAll('a')
 			.map((link) => link.attributes('href'));
-		expect(hrefs).toEqual(['/dashboard', '/dashboard/answer']);
+		expect(hrefs).toEqual(['/dashboard']);
+	});
+
+	it('keeps Answer wherever the drawer offers it, as the `g a` shortcut does', () => {
+		flags = ['inbox'];
+		const hrefs = mountBar()
+			.findAll('a')
+			.map((link) => link.attributes('href'));
+		expect(hrefs).toEqual(['/dashboard', '/dashboard/answer', '/dashboard/inbox']);
 	});
 
 	it('marks the destination you are on', () => {

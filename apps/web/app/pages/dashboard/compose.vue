@@ -42,7 +42,6 @@ import { ArrowLeftIcon } from '@coolicons/vue';
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 	// Focus mode, like Answer mode: the shell's sidebar and header step aside.
 	answerMode: true,
 	// One page instance per compose request; the page's own URL rewrite keeps `c`.

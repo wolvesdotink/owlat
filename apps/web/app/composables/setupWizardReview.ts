@@ -9,7 +9,7 @@
  *    name each one by its label under a pack heading;
  *  - every reason Launch is blocked, each pointing at the step (or field) that
  *    fixes it;
- *  - the places offered once setup is done.
+ *  - the places offered once setup is done, minus the ones its features close.
  *
  * Pure, so both are unit-testable without mounting the page. Copy is message
  * KEYS; the page resolves them.
@@ -18,19 +18,34 @@
 import {
 	ALL_FEATURE_PACK_KEYS,
 	FEATURE_PACKS,
+	resolveFlags,
 	type FeatureFlagKey,
+	type FeatureFlagState,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
 import { GlobeIcon, InboxIcon, UserPlusCornerIcon } from '@coolicons/vue';
+import { isFeatureReachable } from '~/lib/routeFeatureGates';
 import { adminIsValid } from './setupWizardValidation';
 import type { AdminDraft } from './useSetupWizard';
 
 /** Where the finished setup points the operator next, each a page behind the sign-in. */
-export const SETUP_NEXT_STEPS = [
+const SETUP_NEXT_STEPS = [
 	{ id: 'domain', icon: GlobeIcon, to: '/dashboard/admin/delivery/domains' },
 	{ id: 'team', icon: UserPlusCornerIcon, to: '/dashboard/admin/team' },
 	{ id: 'postbox', icon: InboxIcon, to: '/dashboard/postbox' },
 ] as const;
+
+/**
+ * The next steps that open with the features the operator chose: the Postbox
+ * only when they turned mail on, so the finale never links to a page that
+ * bounces to the Workbench.
+ */
+export function setupNextSteps(flags: FeatureFlagState): (typeof SETUP_NEXT_STEPS)[number][] {
+	const resolved = resolveFlags(flags);
+	return SETUP_NEXT_STEPS.filter((step) =>
+		isFeatureReachable(step.to, (flag) => resolved[flag] === true)
+	);
+}
 
 export interface ReviewFeatureGroup {
 	/** The pack these features belong to, or `'other'` for flags outside every pack. */

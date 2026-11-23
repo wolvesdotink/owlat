@@ -11,7 +11,6 @@ const { t } = useI18n();
 definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const labelId = useRouteId<'mailLabels'>('labelId');

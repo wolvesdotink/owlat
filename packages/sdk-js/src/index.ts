@@ -51,4 +51,5 @@ export {
 	ForbiddenError,
 	InvalidStateError,
 	LimitReachedError,
+	UnexpectedResponseError,
 } from './errors';

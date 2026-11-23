@@ -160,15 +160,19 @@ export function shownSidebarContext(
 
 /**
  * Where switching to `target` should navigate: its last-visited route if that
- * route still belongs to the target context, else the preferred home when the
+ * route still belongs to the target context and still opens (`isOpen`: its
+ * feature may have been switched off since), else the preferred home when the
  * flags kept it, else the first visible item of the context.
  */
 export function resolveSwitchTarget(
 	target: SidebarContext,
 	lastVisited: string | undefined,
-	sections: Array<{ key: SectionKey; items: Array<{ href: string }> }>
+	sections: Array<{ key: SectionKey; items: Array<{ href: string }> }>,
+	isOpen: (href: string) => boolean = () => true
 ): string {
-	if (lastVisited && contextForPath(lastVisited) === target) return lastVisited;
+	if (lastVisited && contextForPath(lastVisited) === target && isOpen(lastVisited)) {
+		return lastVisited;
+	}
 	const hrefs = sections
 		.filter((section) => SECTION_CONTEXT[section.key] === target)
 		.flatMap((section) => section.items.map((item) => item.href));

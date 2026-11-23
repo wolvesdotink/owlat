@@ -13,7 +13,6 @@ useHead({ title: () => t('dashboard.inbox.activity.pageTitle') });
 definePageMeta({
 	layout: 'admin',
 	middleware: ['auth', 'admin'],
-	requiresFeature: 'inbox',
 });
 
 // Global cross-channel activity feed: the newest messages across every channel

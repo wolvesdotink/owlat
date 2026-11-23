@@ -15,7 +15,6 @@ useHead({ title: () => t('postbox.senders.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const {

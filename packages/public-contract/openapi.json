@@ -10,7 +10,8 @@
 			"url": "{baseUrl}",
 			"variables": {
 				"baseUrl": {
-					"default": "https://api.owlat.app"
+					"default": "https://rest.api.example.com",
+					"description": "Your instance's API URL: 'Your API base URL' under Settings → API → API quickstart, set by the operator as NUXT_PUBLIC_CONVEX_SITE_URL."
 				}
 			}
 		}

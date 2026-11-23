@@ -147,6 +147,7 @@ export function useDeliveryReadiness(options: { scope?: 'all' | 'transactional' 
 			sendingReadiness: sendingReadiness.value ?? null,
 			reputation: overview?.reputation ?? null,
 			oneClickUnsubscribe: oneClickUnsubscribe.value,
+			abuseStatus: overview?.abuseStatus ?? null,
 		};
 	});
 

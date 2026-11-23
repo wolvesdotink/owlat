@@ -20,7 +20,9 @@ export type MarketingNoticeKind =
 	| 'automation_paused'
 	| 'domain_dns'
 	| 'postmaster_mail'
-	| 'deliverability_alert';
+	| 'deliverability_alert'
+	| 'sending_suspended'
+	| 'sending_resumed';
 
 /** One row of `marketing.notifications.listRecent`. */
 export interface MarketingNoticeView {
@@ -168,6 +170,21 @@ export function presentMarketingNotice(
 				toastType: 'warning',
 				href,
 			};
+		// The stored reason waits on the delivery hub; the toast says what changed.
+		case 'sending_suspended':
+			return {
+				title: { key: `${PREFIX}.sendingSuspended.title` },
+				body: { key: `${PREFIX}.sendingSuspended.body` },
+				toastType: 'warning',
+				href,
+			};
+		case 'sending_resumed':
+			return {
+				title: { key: `${PREFIX}.sendingResumed.title` },
+				body: { key: `${PREFIX}.sendingResumed.body` },
+				toastType: 'success',
+				href,
+			};
 	}
 }
 
@@ -193,6 +210,8 @@ const KIND_KEY: Record<MarketingNoticeKind, string> = {
 	domain_dns: 'domainDns',
 	postmaster_mail: 'postmasterMail',
 	deliverability_alert: 'deliverabilityAlert',
+	sending_suspended: 'sendingSuspended',
+	sending_resumed: 'sendingResumed',
 };
 
 /** What an OS notification says, and the page it opens when clicked. */

@@ -12,9 +12,9 @@
  * (`postbox`) or through a connected external mailbox (`mail.external`), and
  * `mail.external` deliberately does not depend on `postbox` — that would force
  * the hosted ACME + IMAP-server stack on the user who is avoiding it. The web
- * route gates on exactly the same pair (`/dashboard/postbox` declares
- * `requiresAnyFeature: ['postbox', 'mail.external']`), so the two now agree
- * rather than the route guard being the only check.
+ * route gates `/dashboard/postbox` on exactly the same pair
+ * (`apps/web/app/lib/routeFeatureGates.ts`), so the two agree rather than the
+ * route guard being the only check.
  *
  * NOT for every file under `mail/`:
  *   - modules behind the stricter `mail.external` alone (mailbox move,

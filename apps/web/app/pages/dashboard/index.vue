@@ -53,6 +53,7 @@ const choice = useWorkbenchInboxChoice();
 const { level: deliveryLevel, reason: deliveryReason } = useDeliveryHealth();
 const { showToast } = useToast();
 const { isZen, exitZen } = useZenMode();
+useFeatureOffNotice();
 
 // ── Which tab ──────────────────────────────────────────────────────────────
 const teamOn = computed(() => isAdmin.value && isEnabled('inbox'));
@@ -307,9 +308,7 @@ useWorkbenchKeyboard({
 						tag="span"
 						scope="global"
 					>
-						<template #name
-							><span class="lp-title-accent">{{ firstName }}</span></template
-						>
+						<template #name><span class="lp-title-accent">{{ firstName }}</span></template>
 					</I18nT>
 					<template v-else>{{ t(`dashboard.today.greeting.${greetingKey}`) }}</template>
 				</template>

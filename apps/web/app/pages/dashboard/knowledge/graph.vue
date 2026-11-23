@@ -3,7 +3,7 @@
  * Knowledge-graph dashboard (audit item p9-graph-dashboard).
  *
  * A read-only force-directed view of the knowledge graph plus its analytics
- * insight layer. Route-gated on `ai.knowledge.analytics` via `requiresFeature`
+ * insight layer. Route-gated on `ai.knowledge.analytics` in `lib/routeFeatureGates.ts`
  * (the global feature middleware bounces a direct deep-link when the flag is off);
  * the <KnowledgeGraphView> also gates its own render and skips every Convex read
  * until the flag resolves on, so this is defence-in-depth, not the only gate.
@@ -17,7 +17,6 @@ useHead({ title: () => t('dashboard.knowledge.graph.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'ai.knowledge.analytics',
 });
 </script>
 

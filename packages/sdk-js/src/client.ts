@@ -5,8 +5,16 @@ import { TransactionalResource } from './resources/transactional';
 import { EventsResource } from './resources/events';
 import { TopicsResource } from './resources/topics';
 
+/**
+ * The hosted Owlat address. No self-hosted instance answers here, so a client
+ * left on it sends its API key to a host its owner did not choose. Kept as the
+ * default only so existing callers do not break in a patch release; the
+ * constructor warns whenever it is used, and `baseUrl` becomes required.
+ */
 const DEFAULT_BASE_URL = 'https://api.owlat.app';
 const DEFAULT_TIMEOUT = 30000;
+
+const DEFAULT_BASE_URL_WARNING = `[@owlat/sdk-js] No baseUrl given, so requests and the API key go to ${DEFAULT_BASE_URL}, not to your instance. Pass baseUrl: your instance's API URL (Settings → API → API quickstart in the web app). baseUrl will become required.`;
 
 /**
  * Owlat SDK client for interacting with the Owlat email marketing API.
@@ -15,13 +23,10 @@ const DEFAULT_TIMEOUT = 30000;
  * ```typescript
  * import { Owlat } from '@owlat/sdk-js';
  *
- * // Initialize with API key
- * const owlat = new Owlat('lm_live_xxxxxxxx');
- *
- * // Or with full configuration
+ * // baseUrl is your instance's API URL (Settings → API → API quickstart in the web app)
  * const owlat = new Owlat({
  *   apiKey: 'lm_live_xxxxxxxx',
- *   baseUrl: 'https://api.owlat.app',
+ *   baseUrl: 'https://rest.api.example.com',
  *   timeout: 30000,
  * });
  *
@@ -54,16 +59,29 @@ export class Owlat {
 	readonly topics: TopicsResource;
 
 	/**
+	 * Create a client from an API key alone, which talks to the hosted address
+	 * instead of your instance.
+	 *
+	 * @deprecated Pass `{ apiKey, baseUrl }` with your instance's API URL. This
+	 * form sends the key to `https://api.owlat.app` and goes away when
+	 * `baseUrl` becomes required.
+	 */
+	constructor(apiKey: string);
+	/**
 	 * Create a new Owlat client.
 	 *
-	 * @param apiKeyOrConfig - API key string or full configuration object
+	 * @param config - API key, your instance's API URL, and optional settings
 	 */
+	constructor(config: OwlatConfig);
+	/** Either form, for a caller holding a key or a config. */
+	constructor(apiKeyOrConfig: string | OwlatConfig);
 	constructor(apiKeyOrConfig: string | OwlatConfig) {
 		const config: OwlatConfig =
-			typeof apiKeyOrConfig === 'string'
-				? { apiKey: apiKeyOrConfig }
-				: apiKeyOrConfig;
+			typeof apiKeyOrConfig === 'string' ? { apiKey: apiKeyOrConfig } : apiKeyOrConfig;
 
+		// Same condition as the `??` fallback below, so an untyped caller's null warns too.
+		if (config.baseUrl === undefined || config.baseUrl === null)
+			console.warn(DEFAULT_BASE_URL_WARNING);
 		const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
 		const timeout = config.timeout ?? DEFAULT_TIMEOUT;
 

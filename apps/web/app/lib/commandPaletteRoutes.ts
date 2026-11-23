@@ -10,9 +10,12 @@
  * This module turns that table into palette targets:
  *   - anything the sidebar already contributes is dropped (dedupe by href), so
  *     the sidebar's own wording and icon keep winning;
- *   - what is left is gated the same way the sidebar gates its sections, by the
- *     SAME pure environment (`NavigationEnvironment`) — a member never gets an
- *     admin destination offered, and a disabled feature takes its pages with it;
+ *   - what is left is gated by role the way the sidebar gates its sections, by
+ *     the SAME pure environment (`NavigationEnvironment`), so a member never
+ *     gets an admin destination offered;
+ *   - a page whose feature is off is left out by the table the feature
+ *     middleware reads (`lib/routeFeatureGates`), so ⌘K never offers a link
+ *     that bounces to the Workbench;
  *   - an Administration page also passes its registry gate (`AdminEnvironment`),
  *     so ⌘K never offers a page the Settings rail has left out;
  *   - an Administration page takes its title and area from
@@ -27,7 +30,8 @@
  * them.
  */
 import type { NavigationEnvironment } from './dashboardNavigationCore';
-import { minRole, recentlyDeletedGate, transactionalGate } from './dashboardNavigationCore';
+import { minRole, recentlyDeletedGate } from './dashboardNavigationCore';
+import { isFeatureReachable } from './routeFeatureGates';
 import { routeConfigs } from './breadcrumbRoutes';
 import {
 	ADMIN_AREAS,
@@ -65,23 +69,18 @@ const adminOnly = minRole('admin');
 const never = () => false;
 
 /**
- * Gate per route SUBTREE, longest matching prefix wins. Each one mirrors the
- * gate the sidebar puts on the same area in `dashboardNavigationCore`, so the
- * palette can never offer a destination the sidebar would refuse to show.
+ * Role gate per route SUBTREE, longest matching prefix wins. Each one mirrors
+ * the role the sidebar asks of the same area in `dashboardNavigationCore`.
+ * Feature flags are not repeated here: `isFeatureReachable` applies them.
  */
 const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment) => boolean]> = [
 	['/dashboard/admin', adminOnly],
 	['/dashboard/send', adminOnly],
-	['/dashboard/send/transactional', transactionalGate],
 	['/dashboard/audience', adminOnly],
-	['/dashboard/campaigns', (env) => env.isFeatureEnabled('campaigns')],
-	['/dashboard/automations', (env) => adminOnly(env) && env.isFeatureEnabled('automations')],
-	['/dashboard/inbox', (env) => env.isFeatureEnabled('inbox')],
+	['/dashboard/automations', adminOnly],
+	// Campaigns (any role, behind their flag) or templates and automations (admins).
 	['/dashboard/marketing/deleted', recentlyDeletedGate],
-	[
-		'/dashboard/visualizations',
-		(env) => adminOnly(env) && env.isFeatureEnabled('ai.visualizations'),
-	],
+	['/dashboard/visualizations', adminOnly],
 	// Owned by the settings registry (see the module doc).
 	['/dashboard/preferences', never],
 ];
@@ -152,6 +151,7 @@ export function routePaletteTargets(
 			([href]) =>
 				!knownHrefs.has(href) &&
 				!REDIRECT_ONLY_ROUTES.has(href) &&
+				isFeatureReachable(href, (flag) => env.isFeatureEnabled(flag)) &&
 				gateFor(href)(env) &&
 				passesAdminGate(href, admin)
 		)

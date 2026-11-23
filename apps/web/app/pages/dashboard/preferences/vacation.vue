@@ -8,11 +8,11 @@ useHead({ title: () => t('dashboard.preferences.vacation.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const {
 	mailboxes,
+	currentMailbox,
 	mailboxId,
 	selectMailbox,
 	isLoading: mailboxesLoading,
@@ -20,12 +20,16 @@ const {
 	refetch: refetchMailboxes,
 } = usePostboxSettingsMailbox('owner');
 
+// The reply is sent when Owlat receives the mail itself; a connected mailbox's
+// mail arrives at its provider, so a reply set here would never go out.
+const isConnected = computed(() => currentMailbox.value?.kind === 'external');
+
 const {
 	data,
 	error: readError,
 	refetch,
 } = useConvexQuery(api.mail.vacation.get, () =>
-	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
+	mailboxId.value && !isConnected.value ? { mailboxId: mailboxId.value } : 'skip'
 );
 // `null` is an answer (no responder stored yet); `undefined` is a read still
 // loading or one that failed. Only an answer may seed the form: a save upserts
@@ -134,7 +138,19 @@ async function confirmDisable() {
 			</p>
 		</header>
 
-		<UiQueryBoundary v-if="mailboxId" :loading="!loaded" :error="readError" @retry="refetch">
+		<p
+			v-if="mailboxId && isConnected"
+			class="card p-6 text-text-secondary"
+			data-testid="connected-mailbox-notice"
+		>
+			{{
+				t('dashboard.preferences.vacation.connectedNotice', {
+					address: currentMailbox?.address,
+				})
+			}}
+		</p>
+
+		<UiQueryBoundary v-else-if="mailboxId" :loading="!loaded" :error="readError" @retry="refetch">
 			<template #loading>
 				<div
 					class="card p-5 space-y-4"

@@ -7158,7 +7158,7 @@
 				},
 				"deliverabilityAlerts": {
 					"label": "Zustellbarkeitsalarme",
-					"hint": "Wenn eine bestandene Prüfung wieder fehlschlägt, etwa bei gesperrtem Port 25 oder einer gelisteten IP. Die Alarm-E-Mail geht trotzdem raus."
+					"hint": "Wenn eine bestandene Prüfung wieder fehlschlägt, etwa bei gesperrtem Port 25 oder einer gelisteten IP. Die Alarm-E-Mail geht trotzdem raus. Auch wenn der Versand der Instanz ausgesetzt wird oder wieder anläuft."
 				},
 				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
@@ -13656,14 +13656,13 @@
 				"fromSenderName": "E-Mail von {sender}"
 			},
 			"forwarding": {
+				"connectedNotice": "{address} wird von deinem Anbieter synchronisiert, deshalb kann Owlat die Mail dieses Postfachs nicht weiterleiten. Richte die Weiterleitung bei deinem Anbieter ein.",
 				"activeRules": "Aktive Regeln",
 				"addressPlaceholder": "archive{'@'}example.com",
 				"createOperation": "Weiterleitungsregel hinzufügen",
 				"empty": "Noch keine Weiterleitungsregeln.",
-				"forwardOnly": "Nur weiterleiten (keine Kopie im Posteingang)",
 				"forwardTo": "Weiterleiten an",
-				"intro": "Eingehende Mail automatisch an eine externe Adresse weiterleiten. Mail von Mailinglisten und automatisch versendete Mail wird übersprungen, um Schleifen zu vermeiden.",
-				"keepLocalCopy": "Lokale Kopie behalten",
+				"intro": "Eingehende Mail automatisch an eine externe Adresse weiterleiten. Die Nachricht bleibt außerdem in diesem Postfach. Mail von Mailinglisten und automatisch versendete Mail wird übersprungen, um Schleifen zu vermeiden.",
 				"noMailbox": "Kein Postfach konfiguriert.",
 				"pageTitle": "Weiterleitung — Owlat",
 				"removeConfirm": "Regel entfernen",
@@ -13867,6 +13866,7 @@
 				"sharedLink": "Team → Gespeicherte Antworten"
 			},
 			"vacation": {
+				"connectedNotice": "{address} wird von deinem Anbieter synchronisiert, deshalb kann Owlat dafür keine automatischen Antworten senden. Richte die automatische Antwort bei deinem Anbieter ein.",
 				"defaultBody": "Ich bin derzeit nicht per E-Mail erreichbar und antworte nach meiner Rückkehr.",
 				"defaultSubject": "Abwesend",
 				"enabledLabel": "Automatische Antwort senden",
@@ -14320,6 +14320,7 @@
 		},
 		"today": {
 			"pageTitle": "Werkbank",
+			"featureOff": "{feature} ist in diesem Workspace ausgeschaltet.",
 			"greeting": {
 				"morning": "Guten Morgen",
 				"morningNamed": "Guten Morgen, {name}",
@@ -14337,6 +14338,7 @@
 			"openQueue": "Liste öffnen",
 			"deliveryAlert": "Die Zustellung braucht Aufmerksamkeit.",
 			"openDelivery": "Zustellung öffnen",
+			"openFeatures": "Funktionen öffnen",
 			"operations": {
 				"done": "Als erledigt markieren",
 				"replyAnyway": "Antwort anfordern",
@@ -16826,6 +16828,12 @@
 					"ready": "Alle Versand-IPs sind im Einsatz.",
 					"some_held": "Einige Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb; die anderen übernehmen die Mail.",
 					"title": "Versand-IPs"
+				},
+				"suspension": {
+					"action": "Grund und Wiederaufnahme ansehen",
+					"banned": "Der Versand ist auf dieser Instanz gesperrt. Auf keinem Weg geht neue Mail raus.",
+					"suspended": "Der Versand ist auf dieser Instanz ausgesetzt. Auf keinem Weg geht neue Mail raus.",
+					"title": "Versandstatus"
 				},
 				"transactionalSender": {
 					"actionChange": "Absender ändern",
@@ -19385,6 +19393,16 @@
 				"bodyDomain": "{domain}: „{check}“ besteht nicht mehr",
 				"bodyNoCheck": "Eine Prüfung besteht nicht mehr",
 				"private": "Eine Zustellbarkeitsprüfung besteht nicht mehr"
+			},
+			"sendingSuspended": {
+				"body": "Von dieser Instanz geht keine neue Mail raus. Unter Zustellungsgesundheit siehst du, warum",
+				"private": "Von dieser Instanz geht keine neue Mail raus",
+				"title": "Versand ausgesetzt"
+			},
+			"sendingResumed": {
+				"body": "Mails von dieser Instanz gehen wieder raus",
+				"private": "Mails von dieser Instanz gehen wieder raus",
+				"title": "Versand wieder aktiv"
 			}
 		},
 		"useDesktopNotifications": {
@@ -20190,6 +20208,27 @@
 				"sent": "Versendet",
 				"cancelled": "Abgebrochen",
 				"pendingReview": "In Prüfung"
+			}
+		},
+		"sendingSuspension": {
+			"hold": "Die automatische Prüfung pausiert bis {date} für: {triggers}. Liegen die Werte der letzten 30 Tage dann noch über der Grenze, wird der Versand wieder ausgesetzt.",
+			"lift": {
+				"admin": "Diese Sperre hebt sich nicht von selbst auf. Eine Person mit Plattform-Admin-Rechten muss sie aufheben.",
+				"bounce": "Der Versand läuft von selbst wieder an, sobald die Bounce-Rate der letzten 30 Tage unter {limit} liegt. Aktuell sind es {current}.",
+				"cleared": "Die Raten liegen wieder unter der Grenze. Der Versand läuft bei der nächsten stündlichen Prüfung wieder an.",
+				"complaint": "Der Versand läuft von selbst wieder an, sobald die Beschwerderate der letzten 30 Tage unter {limit} liegt. Aktuell sind es {current}.",
+				"gmail": "Der Versand läuft von selbst wieder an, sobald Gmail für {domain} in den letzten 30 Tagen keinen Wert ab {limit} mehr meldet. Der höchste liegt bei {current}; der letzte Wert über der Grenze fällt am {date} aus den 30 Tagen.",
+				"manualSetting": "Diese Instanz wartet auf eine Person mit Plattform-Admin-Rechten: Der Versand läuft erst wieder an, wenn sie die Sperre aufhebt, auch wenn sich die Raten erholt haben."
+			},
+			"liftHint": "Wenn du sie aufhebst, pausiert die automatische Prüfung bis {date} für jede Rate, die gerade über der Grenze liegt. Überschreitet eine Rate die Grenze später, wird der Versand trotzdem ausgesetzt.",
+			"setting": {
+				"description": "Aus: Eine Sperre der Reputationsprüfung hebt sich von selbst auf, sobald die Rate dahinter wieder unter der Grenze liegt. An: Der Versand läuft erst wieder an, wenn eine Person mit Plattform-Admin-Rechten die Sperre aufhebt.",
+				"label": "Aufheben einer Sperre durch Plattform-Admins abwarten"
+			},
+			"trigger": {
+				"bounce_rate": "Bounce-Rate",
+				"complaint_rate": "Beschwerderate",
+				"gmail_spam_rate": "Gmail-Spamrate für {domain}"
 			}
 		}
 	},

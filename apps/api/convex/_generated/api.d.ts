@@ -1,6 +1,9 @@
 import type * as agent_replyEnvelope from '../agent/replyEnvelope.js';
 import type * as agent_steps_classify_intents from '../agent/steps/classify/intents.js';
 import type * as analytics_meteredSpend from '../analytics/meteredSpend.js';
+import type * as analytics_reputationCheck from '../analytics/reputationCheck.js';
+import type * as analytics_reputationEvidence from '../analytics/reputationEvidence.js';
+import type * as analytics_reputationResume from '../analytics/reputationResume.js';
 import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
 import type * as contacts_growthCounters from '../contacts/growthCounters.js';
 import type * as delivery_sendLifecycle_sourceFinalization from '../delivery/sendLifecycle/sourceFinalization.js';
@@ -33,6 +36,7 @@ import type * as lib_llm_taskLimits from '../lib/llm/taskLimits.js';
 import type * as lib_llm_truncation from '../lib/llm/truncation.js';
 import type * as lib_rowCounters from '../lib/rowCounters.js';
 import type * as lib_semanticFileText from '../lib/semanticFileText.js';
+import type * as lib_validators_abuseStatus from '../lib/validators/abuseStatus.js';
 import type * as mail_ai_gapQuestions from '../mail/ai/gapQuestions.js';
 import type * as mail_ai_nudgeDraft from '../mail/ai/nudgeDraft.js';
 import type * as mail_draftOfferUsage from '../mail/draftOfferUsage.js';
@@ -1525,6 +1529,7 @@ import type * as mail_forwarding from '../mail/forwarding.js';
 import type * as mail_handlingRules from '../mail/handlingRules.js';
 import type * as mail_handlingRules_engine from '../mail/handlingRules/engine.js';
 import type * as mail_handlingRulesCompile from '../mail/handlingRulesCompile.js';
+import type * as mail_hostedDeliveryRules from '../mail/hostedDeliveryRules.js';
 import type * as mail_identities from '../mail/identities.js';
 import type * as mail_imageAllowlist from '../mail/imageAllowlist.js';
 import type * as mail_imap_append from '../mail/imap/append.js';
@@ -2243,6 +2248,9 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'analytics/meteredSpend': typeof analytics_meteredSpend;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;
+	'analytics/reputationCheck': typeof analytics_reputationCheck;
+	'analytics/reputationEvidence': typeof analytics_reputationEvidence;
+	'analytics/reputationResume': typeof analytics_reputationResume;
 	'analytics/visualizationAgentActions': typeof analytics_visualizationAgentActions;
 	'analytics/visualizationAgent': typeof analytics_visualizationAgent;
 	'analytics/admissionPorts': typeof analytics_admissionPorts;
@@ -3353,6 +3361,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/textPreview': typeof lib_textPreview;
 	'lib/typeAssert': typeof lib_typeAssert;
 	'lib/userProfiles': typeof lib_userProfiles;
+	'lib/validators/abuseStatus': typeof lib_validators_abuseStatus;
 	'lib/validators/aiProviderConfig': typeof lib_validators_aiProviderConfig;
 	'lib/validators/aiRouting': typeof lib_validators_aiRouting;
 	'lib/validators/answerAsk': typeof lib_validators_answerAsk;
@@ -3665,6 +3674,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/handlingRules': typeof mail_handlingRules;
 	'mail/handlingRules/engine': typeof mail_handlingRules_engine;
 	'mail/handlingRulesCompile': typeof mail_handlingRulesCompile;
+	'mail/hostedDeliveryRules': typeof mail_hostedDeliveryRules;
 	'mail/identities': typeof mail_identities;
 	'mail/imageAllowlist': typeof mail_imageAllowlist;
 	'mail/imap/append': typeof mail_imap_append;

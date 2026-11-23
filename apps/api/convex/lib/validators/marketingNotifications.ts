@@ -22,7 +22,9 @@ export const marketingNoticeKindValidator = v.union(
 	v.literal('automation_paused'),
 	v.literal('domain_dns'),
 	v.literal('postmaster_mail'),
-	v.literal('deliverability_alert')
+	v.literal('deliverability_alert'),
+	v.literal('sending_suspended'),
+	v.literal('sending_resumed')
 );
 export type MarketingNoticeKind = Infer<typeof marketingNoticeKindValidator>;
 
@@ -114,6 +116,11 @@ export const marketingNoticeEventValidator = v.union(
 	v.object({
 		kind: v.literal('deliverability_alert'),
 		alertId: v.id('deliverabilityRegressionAlerts'),
-	})
+	}),
+	// Sending on the instance was suspended (or banned), or resumed after
+	// one, automatically or by a platform admin. `changedAt` is the status
+	// change it is about: a later change makes it stale.
+	v.object({ kind: v.literal('sending_suspended'), changedAt: v.number() }),
+	v.object({ kind: v.literal('sending_resumed'), changedAt: v.number() })
 );
 export type MarketingNoticeEvent = Infer<typeof marketingNoticeEventValidator>;
