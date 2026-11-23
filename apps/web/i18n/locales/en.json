@@ -7158,7 +7158,7 @@
 				},
 				"deliverabilityAlerts": {
 					"label": "Deliverability alerts",
-					"hint": "When a check that passed starts failing, such as a blocked port 25 or a listed IP. The alert email goes out as well."
+					"hint": "When a check that passed starts failing, such as a blocked port 25 or a listed IP. The alert email goes out as well. Also when sending on the instance is suspended or resumes."
 				},
 				"saveOperation": "Save notification setting"
 			},
@@ -9074,7 +9074,7 @@
 						"liftAction": "Review in the operator console",
 						"reason": "Reason recorded:",
 						"since": "Since {date}",
-						"suspended": "Sending is suspended on this instance. No new mail goes out until an operator lifts the suspension.",
+						"suspended": "Sending is suspended on this instance. No new mail goes out until the suspension is lifted.",
 						"warned": "Your account is flagged for elevated bounce or complaint rates. Improve list quality to avoid further restrictions."
 					},
 					"domains": {
@@ -12004,7 +12004,27 @@
 						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",
 						"failed": "Failed",
-						"failedNote": "Runs a failed step ended in the last 7 days",
+						"failedNote": "Runs a failed step ended in the last 7 days. An ended run does not continue. Once the cause is fixed, new runs go through; if the automation paused itself after repeated failures, an admin needs to resume it.",
+						"failure": {
+							"contactNoEmail": "This contact has no email address.",
+							"details": "Details",
+							"domainNotVerified": "The default sender's domain is not a verified sending domain, so this email could not go out.",
+							"fix": {
+								"defaultSender": "Set the default sender",
+								"plugins": "Open plugins"
+							},
+							"interrupted": "This step was interrupted again and again and was given up.",
+							"invalidStepConfig": "This step's settings are incomplete or invalid.",
+							"noDefaultSender": "No default sender is set, so this email could not go out.",
+							"noDeliveryProvider": "Sending is not set up yet, so this email could not go out.",
+							"pluginDenied": "The plugin behind this step is turned off or may not run automation steps.",
+							"pluginFailed": "The plugin behind this step reported a failure.",
+							"sendingNotAllowed": "Sending is suspended on this instance, so this email could not go out.",
+							"stepLimit": "This run went through too many steps and was stopped. A condition that leads back to an earlier step usually causes this.",
+							"templateEmpty": "The email this step sends has no content.",
+							"templateMissing": "This step has no email to send, or its email was deleted.",
+							"unknown": "This step failed."
+						},
 						"inProgress": "In progress",
 						"next": "Next",
 						"noEmail": "No email",
@@ -13660,14 +13680,13 @@
 				"fromSenderName": "Mail from {sender}"
 			},
 			"forwarding": {
+				"connectedNotice": "{address} is synced from your provider, so Owlat cannot forward its mail. Set forwarding up at your provider.",
 				"activeRules": "Active rules",
 				"addressPlaceholder": "archive{'@'}example.com",
 				"createOperation": "Add forwarding rule",
 				"empty": "No forwarding rules yet.",
-				"forwardOnly": "Forward only (no inbox copy)",
 				"forwardTo": "Forward to",
-				"intro": "Auto-forward inbound mail to an external address. Mailing-list and auto-submitted mail is skipped to prevent loops.",
-				"keepLocalCopy": "Keep local copy",
+				"intro": "Auto-forward inbound mail to an external address. The message also stays in this mailbox. Mailing-list and auto-submitted mail is skipped to prevent loops.",
 				"noMailbox": "No mailbox configured.",
 				"pageTitle": "Forwarding — Owlat",
 				"removeConfirm": "Remove rule",
@@ -13871,6 +13890,7 @@
 				"sharedLink": "Team → Saved replies"
 			},
 			"vacation": {
+				"connectedNotice": "{address} is synced from your provider, so Owlat cannot send automatic replies for it. Set the auto-reply up at your provider.",
 				"defaultBody": "I'm away from email and will respond when I return.",
 				"defaultSubject": "Out of office",
 				"enabledLabel": "Send an automatic reply",
@@ -14324,6 +14344,7 @@
 		},
 		"today": {
 			"pageTitle": "Workbench",
+			"featureOff": "{feature} is turned off in this workspace.",
 			"greeting": {
 				"morning": "Good morning",
 				"morningNamed": "Good morning, {name}",
@@ -14341,6 +14362,7 @@
 			"openQueue": "Open queue",
 			"deliveryAlert": "Mail delivery needs attention.",
 			"openDelivery": "Open delivery",
+			"openFeatures": "Open Features",
 			"operations": {
 				"done": "Mark as done",
 				"replyAnyway": "Ask for a reply",
@@ -16832,6 +16854,12 @@
 					"ready": "Every sending IP is in rotation.",
 					"some_held": "Some sending IPs are held back by a failed check or are out of rotation; the others carry the mail.",
 					"title": "Sending IPs"
+				},
+				"suspension": {
+					"action": "See why and how it resumes",
+					"banned": "Sending is disabled on this instance, so no new mail goes out on any stream.",
+					"suspended": "Sending is suspended on this instance, so no new mail goes out on any stream.",
+					"title": "Sending status"
 				},
 				"transactionalSender": {
 					"actionChange": "Change the sender",
@@ -19368,6 +19396,16 @@
 				"bodyDomain": "{domain}: {check} stopped passing",
 				"bodyNoCheck": "A check stopped passing",
 				"private": "A deliverability check stopped passing"
+			},
+			"sendingSuspended": {
+				"body": "No new mail goes out from this instance. Open Delivery health to see why",
+				"private": "No new mail goes out from this instance",
+				"title": "Sending suspended"
+			},
+			"sendingResumed": {
+				"body": "Mail from this instance goes out again",
+				"private": "Mail from this instance goes out again",
+				"title": "Sending resumed"
 			}
 		},
 		"useDesktopNotifications": {
@@ -20173,6 +20211,27 @@
 				"sent": "Sent",
 				"cancelled": "Cancelled",
 				"pendingReview": "Under review"
+			}
+		},
+		"sendingSuspension": {
+			"hold": "The automatic check is paused for the {triggers} until {date}. If the 30-day numbers are still over the line then, sending is suspended again.",
+			"lift": {
+				"admin": "This suspension does not lift by itself. A platform admin has to lift it.",
+				"bounce": "Sending resumes by itself once the bounce rate over the last 30 days is under {limit}. It is {current} now.",
+				"cleared": "The rates are back under the line, so sending resumes at the next hourly check.",
+				"complaint": "Sending resumes by itself once the complaint rate over the last 30 days is under {limit}. It is {current} now.",
+				"gmail": "Sending resumes by itself once no Gmail reading for {domain} in the last 30 days is at or above {limit}. The highest is {current}; the last reading over the line leaves the 30 days on {date}.",
+				"manualSetting": "This instance waits for a platform admin: sending resumes only once one lifts the suspension, even after the rates recover."
+			},
+			"liftHint": "Lifting it pauses the automatic check, until {date}, for every rate that is over the line right now. A rate that crosses the line later still suspends sending.",
+			"setting": {
+				"description": "Off: a suspension the reputation check imposed lifts by itself once the rate behind it is back under the line. On: sending resumes only after a platform admin lifts it.",
+				"label": "Wait for a platform admin to lift a suspension"
+			},
+			"trigger": {
+				"bounce_rate": "bounce rate",
+				"complaint_rate": "complaint rate",
+				"gmail_spam_rate": "Gmail spam rate for {domain}"
 			}
 		}
 	},

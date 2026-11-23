@@ -19,9 +19,11 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
-import { api, internal } from '../_generated/api';
+import { api, components, internal } from '../_generated/api';
+import { newBetterAuthHarness } from './testModules';
+import { _resetSingletonOrgCacheForTests } from '../lib/sessionOrganization';
 import type { Id } from '../_generated/dataModel';
 
 // Mutable holder for the calling identity. `requireAuthenticatedIdentity`
@@ -132,6 +134,21 @@ async function seedInstanceSettings(
 	);
 }
 
+/**
+ * Stopping or resuming sending notifies owners and admins, and that fan-out
+ * reads the organization, so a status change runs on a harness that has one.
+ */
+async function harnessWithOrganization() {
+	_resetSingletonOrgCacheForTests();
+	const t = newBetterAuthHarness(modules);
+	await t.mutation(components.betterAuth.adapter.create, {
+		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: 1 } },
+	} as never);
+	return t;
+}
+
+afterEach(() => vi.useRealTimers());
+
 const roster = (t: ReturnType<typeof convexTest>) =>
 	t.run(async (ctx) => ctx.db.query('platformAdmins').collect());
 
@@ -214,7 +231,7 @@ describe('platformAdmin.getOrganizationDetail', () => {
 
 describe('platformAdmin.setOrganizationStatus', () => {
 	it('works for a platform admin (transitions abuseStatus + reports prev/new)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harnessWithOrganization();
 		const settingsId = await seedInstanceSettings(t, 'clean');
 		await seedAdmin(t, 'caller-user', 'admin');
 		setCaller('caller-user');
@@ -233,6 +250,39 @@ describe('platformAdmin.setOrganizationStatus', () => {
 			expect(settings!.abuseStatus).toBe('suspended');
 			expect(settings!.abuseStatusReason).toBe('abuse detected');
 			expect(settings!.abuseStatusChangedBy).toBe('caller-user');
+		});
+	});
+
+	it('a lift reports what the reputation check will not suspend on, and until when', async () => {
+		const now = Date.UTC(2026, 10, 20, 12);
+		vi.useFakeTimers();
+		vi.setSystemTime(now);
+		const t = await harnessWithOrganization();
+		await seedInstanceSettings(t, 'suspended');
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sendingReputation', {
+				scope: 'org',
+				periodStart: Date.now(),
+				shardKey: 0,
+				totalSent: 1000,
+				totalDelivered: 880,
+				totalBounced: 120,
+				totalHardBounced: 0,
+				totalComplaints: 0,
+				lastCalculatedAt: Date.now(),
+			});
+		});
+		await seedAdmin(t, 'caller-user', 'admin');
+		setCaller('caller-user');
+
+		const result = await t.mutation(api.platformAdmin.mutations.setOrganizationStatus, {
+			abuseStatus: 'clean',
+			reason: 'list cleaned',
+		});
+
+		expect(result.hold).toEqual({
+			until: Date.UTC(2026, 10, 27, 12),
+			triggers: [{ code: 'bounce_rate' }],
 		});
 	});
 

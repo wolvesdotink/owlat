@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildShortcutBindings } from '../shortcutRegistry';
 import { SHORTCUT_CATALOG } from '../shortcutCatalog';
 import {
+	NAVIGATION_SHORTCUT_ROUTES,
 	clashesById,
 	isShortcutEntryAvailable,
 	isShortcutScopeAvailable,
@@ -9,6 +10,7 @@ import {
 	shortcutSettingsSections,
 } from '../shortcutSettingsRows';
 import type { SettingsEnvironment } from '~/lib/settingsRegistry';
+import { ROUTE_FEATURE_RULES, blockedFeature } from '~/lib/routeFeatureGates';
 
 const env = (
 	flags: string[],
@@ -186,5 +188,30 @@ describe('clashesById', () => {
 		]);
 		expect(clashes.get('a')).toEqual(['b', 'c']);
 		expect(clashes.get('c')).toEqual(['a', 'b']);
+	});
+});
+
+describe('`g` chords and switched-off features', () => {
+	const gated = [
+		...new Set(
+			ROUTE_FEATURE_RULES.flatMap((rule) => [
+				...(rule.required === undefined ? [] : [rule.required].flat()),
+				...(rule.anyOf ?? []),
+			])
+		),
+	];
+	const all = EVERYTHING;
+
+	it.each(gated)('never offers a chord to a page that bounces with %s off', (off) => {
+		const environment: SettingsEnvironment = {
+			...all,
+			isFeatureEnabled: (flag) => flag !== off && all.isFeatureEnabled(flag),
+		};
+		const bounced = SHORTCUT_CATALOG.filter(
+			(def) => NAVIGATION_SHORTCUT_ROUTES[def.id] && isShortcutEntryAvailable(def, environment)
+		).filter((def) =>
+			blockedFeature(NAVIGATION_SHORTCUT_ROUTES[def.id]!, environment.isFeatureEnabled)
+		);
+		expect(bounced.map((def) => def.id)).toEqual([]);
 	});
 });

@@ -21,14 +21,11 @@ import {
 } from '@coolicons/vue';
 
 /**
- * The single, adaptive "Getting started" surface. It REPLACES the three
- * previously-stacked onboarding affordances (self-host banner + instance go-live
- * checklist + per-user checklist), each of which had its own visibility gate and
- * dismissal scope. One card, one dismiss, contents that adapt to the viewer
- * (admin vs member) and the instance mode (fresh vs migration).
+ * The single, adaptive "Getting started" surface: one card, one dismiss, and
+ * contents that adapt to the viewer (admin vs member), the instance mode (fresh
+ * vs migration) and the features this workspace has on.
  *
- * The honest completion logic is unchanged and still derived server-side; this
- * component only unifies the presentation and the dismissal model. See
+ * Completion is derived server-side; this component only presents it. See
  * `~/utils/gettingStarted` for the pure selection logic.
  */
 
@@ -60,6 +57,8 @@ const { t } = useI18n();
  * key or a key plus the values it interpolates.
  */
 const localize = useLocalized();
+
+const { isEnabled: isFeatureEnabled, isLoading: isLoadingFlags } = useFeatureFlag();
 
 const config = useRuntimeConfig();
 const isSelfHost = config.public.deploymentMode === 'selfhost';
@@ -194,6 +193,7 @@ const isLoading = computed(
 		isLoadingSettings.value ||
 		isLoadingAiConfig.value ||
 		isLoadingMemberSignals.value ||
+		isLoadingFlags.value ||
 		(isInstanceViewer.value && isLoadingInstance.value)
 );
 
@@ -211,6 +211,7 @@ const model = computed(() =>
 		personalCompleted: personalCompleted.value,
 		sendPathReady: sendPathReady.value,
 		sendCapacityToday: sendCapacityToday.value,
+		isFeatureEnabled,
 		reopened: isReopened.value,
 	})
 );

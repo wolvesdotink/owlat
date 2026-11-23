@@ -26,8 +26,9 @@
  * Kept as pure functions so the consolidation is unit-testable without mounting
  * Vue or a Convex client.
  */
+import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import { isFeatureReachable } from '~/lib/routeFeatureGates';
 import {
-	isChecklistComplete,
 	visibleChecklistSteps,
 	type ChecklistStepId,
 	type OnboardingMode,
@@ -237,6 +238,11 @@ export interface GettingStartedInput {
 	 */
 	sendCapacityToday: number | null;
 	/**
+	 * The workspace's feature flags. A step whose page a switched-off feature
+	 * closes is left out and not counted: the workspace cannot do it.
+	 */
+	isFeatureEnabled: (flag: FeatureFlagKey) => boolean;
+	/**
 	 * The person explicitly asked to see the checklist (palette, account menu).
 	 * Each section the viewer may see then shows despite its stored dismissal or
 	 * completion, so a finished or hidden checklist can always be opened again.
@@ -336,6 +342,8 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	if (input.isLoading) return EMPTY_MODEL;
 
 	const sections: GettingStartedSection[] = [];
+	const reachable = (step: { href: string }) =>
+		isFeatureReachable(step.href, input.isFeatureEnabled);
 
 	// Instance go-live section — admins only.
 	const reopened = input.reopened === true;
@@ -350,7 +358,7 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 				...READY_TO_SEND_STEP,
 				completed: input.instanceFlags.sendPathReady && input.instanceFlags.setupDomain,
 			},
-			...INSTANCE_STEPS.map((step) => ({
+			...INSTANCE_STEPS.filter(reachable).map((step) => ({
 				...step,
 				completed: input.instanceFlags[step.id],
 				// The send step is the one whose feasibility depends on live warm-up
@@ -374,29 +382,28 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	// Personal section — everyone with an unfinished personal checklist.
 	// A member is asked for their own three steps only; the rest of the personal
 	// list (AI provider, mailbox provisioning, the first test send) is an admin's.
-	const personalComplete = isChecklistComplete(input.mode, input.personalCompleted, input.role);
+	const personalSteps = visibleChecklistSteps(input.mode, input.role).filter(reachable);
+	const personalComplete = personalSteps.every((step) => input.personalCompleted.has(step.id));
 	const personalActive = reopened || (!input.userDismissed && !personalComplete);
 	if (personalActive) {
-		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode, input.role).map(
-			(step) => {
-				const completed = input.personalCompleted.has(step.id);
-				// A send step with no transport behind it is blocked, not open: the
-				// member has nothing to do until the instance can send. The block lifts
-				// on its own the moment `sendPathReady` flips (the same edge that
-				// notifies them — see `auth/sendReadyNotices.ts`).
-				const blocked = !completed && !input.sendPathReady && SEND_BLOCKED_STEP_IDS.has(step.id);
-				return {
-					id: step.id,
-					title: step.title,
-					description: step.description,
-					href: step.href,
-					cta: step.cta,
-					icon: step.icon,
-					completed,
-					...(blocked ? { blocked: true, blockedReason: SEND_BLOCKED_REASON } : {}),
-				};
-			}
-		);
+		const steps: GettingStartedStep[] = personalSteps.map((step) => {
+			const completed = input.personalCompleted.has(step.id);
+			// A send step with no transport behind it is blocked, not open: the
+			// member has nothing to do until the instance can send. The block lifts
+			// on its own the moment `sendPathReady` flips (the same edge that
+			// notifies them — see `auth/sendReadyNotices.ts`).
+			const blocked = !completed && !input.sendPathReady && SEND_BLOCKED_STEP_IDS.has(step.id);
+			return {
+				id: step.id,
+				title: step.title,
+				description: step.description,
+				href: step.href,
+				cta: step.cta,
+				icon: step.icon,
+				completed,
+				...(blocked ? { blocked: true, blockedReason: SEND_BLOCKED_REASON } : {}),
+			};
+		});
 		// Last row: the door back into the guided welcome, so the flow the member
 		// skipped once is never unreachable. Not a step — see FINISH_SETUP_STEP.
 		// A member's own steps already open that flow, so they do not get it twice.

@@ -28,6 +28,9 @@ export function sendingDomainUrl(domain: string): string {
 
 export const DELIVERABILITY_URL = '/dashboard/admin/delivery/deliverability';
 
+/** The delivery hub, whose banner says why sending is suspended and how it resumes. */
+export const DELIVERY_HUB_URL = '/dashboard/admin/delivery';
+
 /** A Team Inbox conversation. */
 export function teamThreadUrl(threadId: string): string {
 	return `/dashboard/inbox/${threadId}`;

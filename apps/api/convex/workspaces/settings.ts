@@ -44,6 +44,7 @@ import { beginWorkspaceDeletion } from './deletion/job';
 import { registerDefaultSenderDomain } from '../domains/systemSenderDomain';
 import { logError } from '../lib/runtimeLog';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
+import { requirePlatformAdmin } from '../lib/platformAdminAccess';
 
 // all-members: the singleton settings row drives every member's dashboard
 // (feature flags, sender defaults, theme, timezone). It holds no credential:
@@ -90,6 +91,11 @@ export const update = authedMutation({
 		// Require STARTTLS before accepting MAIL FROM. Defaults ON; owners/admins
 		// can disable it for legacy senders that cannot negotiate TLS.
 		isInboundTlsRequired: v.optional(v.boolean()),
+		// A suspension the reputation check imposed waits for a platform admin to
+		// lift it instead of lifting once the evidence clears. Platform admins
+		// only: they are the ones who lift it, and an owner could otherwise turn a
+		// platform admin's check off.
+		isSendingResumeManual: v.optional(v.boolean()),
 		// Deep body search — index a ~8KB body excerpt instead
 		// of only the 200-char snippet. Defaults OFF because it widens the
 		// sealed-at-rest plaintext carve-out; turning it back off schedules the
@@ -108,10 +114,19 @@ export const update = authedMutation({
 		emailTheme: v.optional(emailThemeValidator),
 	},
 	handler: async (ctx, args, session) => {
-		requirePermission(
-			hasPermission(session.role, 'settings:manage'),
-			'Only owners and admins can update organization settings'
-		);
+		// The resume switch is the platform admins' (whatever their workspace
+		// role); every other field needs settings:manage.
+		const { isSendingResumeManual, ...workspaceFields } = args;
+		const isResumeSwitchOnly =
+			isSendingResumeManual !== undefined &&
+			Object.values(workspaceFields).every((value) => value === undefined);
+		if (!isResumeSwitchOnly) {
+			requirePermission(
+				hasPermission(session.role, 'settings:manage'),
+				'Only owners and admins can update organization settings'
+			);
+		}
+		if (isSendingResumeManual !== undefined) await requirePlatformAdmin(ctx);
 		const now = Date.now();
 		if (
 			args.relayMinorUnitsPerThousand !== undefined &&

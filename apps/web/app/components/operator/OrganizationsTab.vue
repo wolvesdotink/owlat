@@ -4,6 +4,7 @@ import type { FunctionReturnType } from 'convex/server';
 import { formatNumber } from '~/utils/formatters';
 import OperatorSendingStatusCard from '~/components/operator/SendingStatusCard.vue';
 import { abuseStatusVariant, formatRate, riskLevelVariant } from '~/utils/operatorConsole';
+import type { SendingStatusView } from '~/utils/suspensionLift';
 
 type AbuseStatus = 'clean' | 'warned' | 'suspended' | 'banned';
 
@@ -18,6 +19,7 @@ defineProps<{
 	allOrgs: FunctionReturnType<typeof api.platformAdmin.queries.listAllOrganizations> | undefined;
 	/** Any console write is in flight; every action waits for it. */
 	busy: boolean;
+	sending?: SendingStatusView | null;
 }>();
 
 const emit = defineEmits<{ setStatus: [initial: AbuseStatus] }>();
@@ -46,6 +48,7 @@ const formatPercent = (value: number | undefined) => formatRate(value, locale.va
 			:abuse-status-reason="abuseStatusReason"
 			:is-warned="isWarned"
 			:busy="busy"
+			:sending="sending"
 			@set-status="(initial) => emit('setStatus', initial)"
 		/>
 

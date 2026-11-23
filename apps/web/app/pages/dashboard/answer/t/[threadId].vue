@@ -45,7 +45,6 @@ import { ChatConversationIcon, RobotIcon, SparklesIcon } from '@coolicons/vue';
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'inbox',
 	answerMode: true,
 });
 

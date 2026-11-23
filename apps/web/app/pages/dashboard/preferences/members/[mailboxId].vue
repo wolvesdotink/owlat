@@ -9,7 +9,6 @@ useHead({ title: () => t('dashboard.preferences.members.detail.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const mailboxId = useRouteId<'mailboxes'>('mailboxId');
@@ -36,9 +35,7 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 		<UiPageHeader :title="t('dashboard.preferences.members.detail.title')">
 			<template v-if="mailbox" #description>
 				<I18nT keypath="dashboard.preferences.members.detail.intro" tag="p" scope="global">
-					<template #address
-						><code>{{ mailbox.address }}</code></template
-					>
+					<template #address><code>{{ mailbox.address }}</code></template>
 				</I18nT>
 			</template>
 		</UiPageHeader>

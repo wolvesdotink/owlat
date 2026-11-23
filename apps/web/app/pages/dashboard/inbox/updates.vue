@@ -42,7 +42,6 @@ useHead({ title: () => t('dashboard.inbox.updates.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'inbox',
 });
 
 const route = useRoute();

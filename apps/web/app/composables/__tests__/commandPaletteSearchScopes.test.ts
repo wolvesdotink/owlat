@@ -8,6 +8,8 @@ import { effectScope, nextTick, ref, type Ref } from 'vue';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useCommandPaletteMailScope } from '../useCommandPaletteMailScope';
 import { useCommandPaletteInboxScope } from '../useCommandPaletteInboxScope';
+import { useCommandPaletteObjectItems } from '../useCommandPaletteObjectItems';
+import { useCommandPaletteScope } from '../useCommandPaletteScope';
 
 interface QueryHandle {
 	args: () => unknown;
@@ -209,5 +211,39 @@ describe('useCommandPaletteInboxScope', () => {
 
 		queries[0]!.isRefetching.value = true;
 		expect(inbox.isSearching.value).toBe(true);
+	});
+});
+
+describe('palette search with features switched off', () => {
+	const mailOff = (flag: string) => flag !== 'postbox' && flag !== 'mail.external';
+
+	it('never lands on Mail scope without mail', () => {
+		vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: mailOff }));
+		vi.stubGlobal('useRoute', () => ({ path: '/dashboard' }));
+		const palette = scope.run(() => useCommandPaletteScope(() => 'all', null))!;
+
+		palette.resetScope('mail');
+		expect(palette.scope.value).toBe('everything');
+		for (let press = 0; press < 3; press += 1) {
+			palette.cycleScope();
+			expect(palette.scope.value).not.toBe('mail');
+		}
+	});
+
+	it('leaves out hits whose page is switched off', () => {
+		vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (flag: string) => flag !== 'campaigns' }));
+		const items = scope.run(() =>
+			useCommandPaletteObjectItems({ onRemember: vi.fn(), onNavigate: vi.fn(), term: () => 'x' })
+		)!;
+		const hit = (type: string, url: string) => ({ id: url, type, title: url, subtitle: '', url });
+
+		expect(
+			items
+				.buildResultItems([
+					hit('campaign', '/dashboard/campaigns/c1'),
+					hit('contact', '/dashboard/contacts/k1'),
+				])
+				.map((item) => item.label)
+		).toEqual(['/dashboard/contacts/k1']);
 	});
 });

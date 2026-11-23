@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireSelf, requirePermission, hasPermission } from '../lib/sessionOrganization';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 /**
  * Get the onboarding progress with computed step completion based on actual data.
@@ -64,8 +65,15 @@ export const getWithActualProgress = authedQuery({
 			createdApiKey: apiKey !== null,
 			setupDomain: verifiedDomain !== null,
 		};
-		const completedSteps = Object.values(flags).filter(Boolean).length;
-		const totalSteps = Object.keys(flags).length;
+		// A step on a switched-off feature is one this workspace cannot do: the
+		// checklist leaves it out (`utils/gettingStarted.ts`), so it is not
+		// counted here either, or the checklist could never complete.
+		const campaignsEnabled = await isFeatureEnabled(ctx, 'campaigns');
+		const counted = Object.entries(flags)
+			.filter(([step]) => campaignsEnabled || step !== 'sentCampaign')
+			.map(([, done]) => done);
+		const completedSteps = counted.filter(Boolean).length;
+		const totalSteps = counted.length;
 		const isComplete = completedSteps === totalSteps;
 
 		// Instance-wide dismissal: dismissed if ANY admin dismissed the surface.

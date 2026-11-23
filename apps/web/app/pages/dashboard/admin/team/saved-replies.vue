@@ -15,7 +15,6 @@ useHead({ title: () => t('dashboard.admin.team.savedReplies.pageTitle') });
 definePageMeta({
 	layout: 'admin',
 	middleware: ['auth', 'admin'],
-	requiresAnyFeature: ['postbox', 'mail.external', 'inbox'],
 });
 
 const { showAdminGate, isAdmin } = usePermissions();
