@@ -73,16 +73,14 @@ const reasonLabel = (send: { errorCode: string | null; bounceType: 'hard' | 'sof
 							<div class="text-sm text-text-tertiary truncate">
 								{{ send.contact.email }}
 							</div>
+							<div class="text-sm text-text-secondary truncate" data-testid="undelivered-reason">
+								{{ reasonLabel(send) }}
+							</div>
 						</div>
 					</div>
 					<div class="flex items-center gap-4 shrink-0">
-						<div class="text-right">
-							<div class="text-sm text-text-secondary" data-testid="undelivered-reason">
-								{{ reasonLabel(send) }}
-							</div>
-							<div class="text-xs text-text-tertiary">
-								{{ formatCompactRelativeTime(send.at, { emptyLabel: '—' }) }}
-							</div>
+						<div class="text-sm text-text-secondary">
+							{{ formatCompactRelativeTime(send.at, { emptyLabel: '—' }) }}
 						</div>
 						<UiTooltip :text="t('dashboard.campaigns.detail.report.viewSendDetails')">
 							<NuxtLink
