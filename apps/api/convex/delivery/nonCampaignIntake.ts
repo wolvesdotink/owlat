@@ -41,6 +41,7 @@ import { attachmentRefValidator, normalizeEngagementScore } from './workerEnvelo
 import { runSendIntakeGates, type SendIntakeRejectionReason } from './sendIntakeGates';
 import { loadContactMarketingIneligibility } from '../lib/marketingEligibility';
 import { findStepRunSend } from '../automations/stepRunSend';
+import { stepRunEndedBeforeSend } from '../automations/stepRunGate';
 import {
 	checkEmailDomainVerification,
 	type EmailDomainVerificationStatus,
@@ -62,11 +63,15 @@ import { extractEmail } from '../lib/emailAddress';
  * the From address is not on a verified sending domain, the same verdict the
  * campaign pre-flight and the Template API intake apply. It is about the
  * deployment, not the recipient; `detail` says which domain and what to do.
+ * And `automation_step_ended`, for automation sends only: the step's run ended,
+ * its automation stopped being active or its step was removed after the step
+ * was claimed. The intake has already ended the step run; `detail` says which.
  */
 export type NonCampaignIntakeRejectionReason =
 	| SendIntakeRejectionReason
 	| 'recipient_ineligible'
-	| 'sender_domain_unverified';
+	| 'sender_domain_unverified'
+	| 'automation_step_ended';
 
 /**
  * The discriminated outcome, modelled on `transactional/dispatch.ts`'s
@@ -215,6 +220,12 @@ export const intake = internalMutation({
 		if (args.automationStepRunId !== undefined) {
 			const existing = await findStepRunSend(ctx, args.automationStepRunId);
 			if (existing) return { ok: true, sendId: existing, queued: true };
+			// The claim checked the run, the automation and the step, but the email
+			// step ran an action since. Re-read here, in the transaction that would
+			// write the Send, and before the deployment gates, so a step of a paused
+			// automation ends instead of waiting for a provider.
+			const ended = await stepRunEndedBeforeSend(ctx, args.automationStepRunId);
+			if (ended !== null) return { ok: false, reason: 'automation_step_ended', detail: ended };
 		}
 
 		// The shared pre-row gate sequence: abuse → provider-ready → suppression.

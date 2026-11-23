@@ -106,6 +106,8 @@ const REFUSAL_MESSAGE: Record<
 	// follow-up is a transactional `team_reply`, so this stays unreachable
 	// unless that scope changes.
 	recipient_ineligible: () => 'The recipient can no longer receive email from this workspace',
+	// Automation sends only.
+	automation_step_ended: (detail) => detail ?? 'The send was stopped',
 	no_delivery_provider: (detail) => detail ?? 'No delivery provider configured',
 	abuse_blocked: () => 'Sending is disabled while this instance is suspended.',
 	sender_domain_unverified: (detail) =>
