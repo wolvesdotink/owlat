@@ -288,6 +288,30 @@ describe('v1 auth gate', () => {
 		expect(answers[2]).toEqual(answers[0]);
 	});
 
+	it('429 names the failed-key throttle apart from the per-key limit', async () => {
+		const t = setupTest();
+		let res: Response | undefined;
+		// The throttle's burst is well under 60 failures; the loop stops at the first 429.
+		for (let attempt = 0; attempt < 60; attempt++) {
+			res = await t.fetch('/api/v1/contacts', {
+				method: 'GET',
+				headers: { Authorization: `Bearer ${makeKey()}` },
+			});
+			if (res.status !== 401) break;
+		}
+		expect(res?.status).toBe(429);
+		const body = await res!.json();
+		expect(body.error).toEqual({
+			category: 'rate_limited',
+			message:
+				'Too many failed API key attempts from this address. Wait for the Retry-After interval before trying again.',
+			data: { reason: 'too_many_failed_attempts' },
+		});
+		expectDocumentedReason('listContacts', res!, body, 'too_many_failed_attempts');
+		expect(Number(res!.headers.get('Retry-After'))).toBeGreaterThan(0);
+		expect(res!.headers.get('X-RateLimit-Limit')).toBeNull();
+	});
+
 	it('GET /api/v1/contacts → 401 for an inactive key', async () => {
 		const t = setupTest();
 		const key = makeKey('b'.repeat(40));

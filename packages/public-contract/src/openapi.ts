@@ -34,11 +34,12 @@ const RATE_LIMIT_HEADERS: JsonObject = {
 		schema: { type: 'integer' },
 	},
 	'X-RateLimit-Remaining': {
-		description: 'Requests left in the current window.',
+		description:
+			'A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.',
 		schema: { type: 'integer' },
 	},
 	'X-RateLimit-Reset': {
-		description: 'When the window resets, as a Unix timestamp.',
+		description: 'A Unix timestamp one second after the response; not when the limit refills.',
 		schema: { type: 'integer' },
 	},
 };

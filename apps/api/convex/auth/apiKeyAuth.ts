@@ -148,6 +148,8 @@ export async function authenticateApiRequest(
 		| {
 				success: false;
 				error: 'rate_limited';
+				/** `failed_auth`: this IP's failed-key throttle; `key`: the key's own limit. */
+				bucket: 'failed_auth' | 'key';
 				retryAfter: number;
 		  }
 	>(internal.auth.apiAuth.validateAndCheckRateLimit, { keyHash, ip: clientIp });
@@ -162,6 +164,18 @@ export async function authenticateApiRequest(
 				error: 'Invalid API key',
 				status: 401,
 				reason: 'invalid_key',
+			};
+		}
+		if (result.bucket === 'failed_auth') {
+			// No key authenticated, so no per-key headers, and no thresholds named:
+			// the sentence must not help a caller pace a sweep over key hashes.
+			return {
+				success: false,
+				error:
+					'Too many failed API key attempts from this address. Wait for the Retry-After interval before trying again.',
+				status: 429,
+				reason: 'too_many_failed_attempts',
+				retryAfter: Math.ceil(result.retryAfter / 1000),
 			};
 		}
 		// Rate limited

@@ -11,6 +11,7 @@ export const ERROR_REASON_STATUS: Record<ApiErrorReason, number> = {
 	malformed_key: 401,
 	invalid_key: 401,
 	missing_scope: 403,
+	too_many_failed_attempts: 429,
 	feature_disabled: 403,
 	abuse_blocked: 403,
 	no_delivery_provider: 422,

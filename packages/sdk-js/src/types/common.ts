@@ -25,12 +25,15 @@ export interface RateLimitInfo {
 	limit: number;
 
 	/**
-	 * Remaining requests in current window.
+	 * The server's `X-RateLimit-Remaining`: a fixed value (`0` on a `429`,
+	 * otherwise one less than `limit`), not a count of the requests left.
+	 * Back off by `RateLimitError.retryAfter` instead.
 	 */
 	remaining: number;
 
 	/**
-	 * Unix timestamp when the rate limit resets.
+	 * The server's `X-RateLimit-Reset`: a Unix timestamp one second after the
+	 * response, not when the limit refills.
 	 */
 	reset: number;
 }

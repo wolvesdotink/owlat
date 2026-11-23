@@ -1,5 +1,11 @@
 package com.owlat.sdk.model;
 
+/**
+ * The rate-limit headers of a response. Only {@link #getLimit()} describes the
+ * limit: the server sends {@code X-RateLimit-Remaining} and
+ * {@code X-RateLimit-Reset} as fixed values, so back off by
+ * {@code RateLimitException.getRetryAfter()} instead.
+ */
 public class RateLimitInfo {
 
     private final int limit;
@@ -16,10 +22,12 @@ public class RateLimitInfo {
         return limit;
     }
 
+    /** {@code X-RateLimit-Remaining}: 0 on a 429, otherwise one less than the limit. */
     public int getRemaining() {
         return remaining;
     }
 
+    /** {@code X-RateLimit-Reset}: a Unix timestamp one second after the response. */
     public int getReset() {
         return reset;
     }

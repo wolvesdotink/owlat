@@ -119,13 +119,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -271,7 +271,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -323,13 +347,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -472,7 +496,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -522,13 +570,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -661,7 +709,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -723,13 +795,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -882,7 +954,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -930,13 +1026,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1074,7 +1170,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1148,13 +1268,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1336,7 +1456,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1421,13 +1565,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1705,7 +1849,11 @@
 															"properties": {
 																"reason": {
 																	"type": "string",
-																	"enum": ["recipient_rate_limited", "daily_send_limit"],
+																	"enum": [
+																		"too_many_failed_attempts",
+																		"recipient_rate_limited",
+																		"daily_send_limit"
+																	],
 																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
 																}
 															}
@@ -1764,13 +1912,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1913,7 +2061,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1976,13 +2148,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -2122,7 +2294,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -2181,13 +2377,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value, one less than the limit; not a count of the requests left. Back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -2325,7 +2521,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}

@@ -418,6 +418,31 @@ describe('authenticateApiRequest', () => {
 		}
 	});
 
+	it('answers the failed-key throttle in its own words, without the per-key headers', async () => {
+		const request = new Request('https://example.com', {
+			headers: { Authorization: `Bearer lm_live_${'a'.repeat(40)}` },
+		});
+		const mockCtx = {
+			runQuery: vi.fn(),
+			runMutation: vi.fn().mockResolvedValue({
+				success: false,
+				error: 'rate_limited',
+				retryAfter: 30_000,
+				bucket: 'failed_auth',
+			}),
+		};
+
+		const result = await authenticateApiRequest(mockCtx, request);
+		expect(result).toEqual({
+			success: false,
+			status: 429,
+			error:
+				'Too many failed API key attempts from this address. Wait for the Retry-After interval before trying again.',
+			reason: 'too_many_failed_attempts',
+			retryAfter: 30,
+		});
+	});
+
 	it('returns success with keyId and rateLimit for valid key', async () => {
 		const validKey = 'lm_live_' + 'a'.repeat(40);
 		const request = new Request('https://example.com', {

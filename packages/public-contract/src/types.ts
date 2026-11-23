@@ -491,14 +491,16 @@ export type TransactionalRefusalReason = (typeof TRANSACTIONAL_REFUSAL_REASONS)[
  * Why a key-authenticated call was refused before it ran, in
  * `error.data.reason`: no usable `Authorization` header, a key that is not an
  * Owlat key, a key that does not authenticate (unknown, revoked and expired
- * keys answer alike), or a key without the operation's scope, which
- * `error.data.scope` names.
+ * keys answer alike), a key without the operation's scope, which
+ * `error.data.scope` names, or too many failed key attempts from the caller's
+ * address.
  */
 export const API_KEY_ERROR_REASONS = [
 	'missing_credentials',
 	'malformed_key',
 	'invalid_key',
 	'missing_scope',
+	'too_many_failed_attempts',
 ] as const;
 
 /** Why a key-authenticated call was refused before it ran. */
