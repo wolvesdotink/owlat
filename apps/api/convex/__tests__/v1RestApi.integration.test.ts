@@ -26,7 +26,10 @@ import * as contactsApi from '../contacts/api';
 import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
 import type { DispatchRejectionReason } from '../transactional/dispatch';
-import { getTransactionalSend } from '../transactional/sendStatusHttp';
+import { getTransactionalSend, listTransactionalSends } from '../transactional/sendStatusHttp';
+import { readSendListPage } from '../transactional/sendList';
+import type { QueryCtx } from '../_generated/server';
+import { withCreationTime } from './helpers/creationTimeSeam';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
@@ -1336,6 +1339,382 @@ describe('GET /api/v1/transactional/{sendId} (getTransactionalSend → transacti
 	});
 });
 
+// ─── GET /api/v1/transactional (list) ────────────────────────────────────────
+
+const MINUTE = 60_000;
+const DAY_MS = 24 * 60 * MINUTE;
+
+/** A template API send whose row was created (queued) at `at`. */
+async function seedSendAt(
+	t: ReturnType<typeof convexTest>,
+	at: number,
+	fields: Record<string, unknown> = {}
+): Promise<string> {
+	return await withCreationTime(at, async () => (await seedApiSend(t, fields)).sendId);
+}
+
+async function listSends(
+	t: ReturnType<typeof convexTest>,
+	key: string,
+	query: Record<string, string> = {}
+): Promise<Response> {
+	const search = new URLSearchParams(query).toString();
+	return await t.fetch(`/api/v1/transactional${search ? `?${search}` : ''}`, {
+		method: 'GET',
+		headers: authHeaders(key),
+	});
+}
+
+/** The sendIds of one list page, in the order the route answered. */
+async function listedIds(res: Response): Promise<string[]> {
+	expect(res.status).toBe(200);
+	return ((await res.json()).data as Array<{ sendId: string }>).map((send) => send.sendId);
+}
+
+describe('GET /api/v1/transactional (listTransactionalSends → transactional:send)', () => {
+	const T0 = Date.UTC(2026, 10, 10, 12, 0, 0);
+	const WINDOW = {
+		since: new Date(T0 - DAY_MS).toISOString(),
+		until: new Date(T0 + DAY_MS).toISOString(),
+	};
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/transactional', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expect((await res.json()).error.data).toEqual({ reason: 'missing_credentials' });
+	});
+
+	it('403 for a key that cannot send, so no key reads addresses it could not read before', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0);
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'transactional:send')
+		);
+		const res = await listSends(t, key, WINDOW);
+		expect(res.status).toBe(403);
+		expect((await res.json()).error.data).toEqual({
+			reason: 'missing_scope',
+			scope: 'transactional:send',
+		});
+	});
+
+	it('403 forbidden while the transactional feature is off', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: Date.now(),
+				featureFlags: { transactional: false },
+			});
+		});
+		const res = await listSends(t, key, WINDOW);
+		expect(res.status).toBe(403);
+		expectDocumentedReason('listTransactionalSends', res, await res.json(), 'feature_disabled');
+	});
+
+	it('lists the API sends newest first, each as the status route answers it', async () => {
+		const t = setupTest();
+		const oldest = await seedSendAt(t, T0 - 2 * MINUTE, { email: 'grace@example.com' });
+		const bounced = await seedSendAt(t, T0 - MINUTE, {
+			status: 'bounced',
+			bouncedAt: SENT_AT + 3000,
+			bounceType: 'hard',
+			bounceCause: 'recipient',
+			errorMessage: '550 5.1.1 User unknown',
+		});
+		const newest = await seedSendAt(t, T0, { status: 'delivered', deliveredAt: SENT_AT + 2000 });
+		// Neither a send no API call made nor an erased one is listed, as neither
+		// can be read by id.
+		await seedSendAt(t, T0 - 30_000, { kind: 'automation', transactionalEmailId: undefined });
+		await seedSendAt(t, T0 - 20_000, {
+			email: '[erased]',
+			deletedAt: T0,
+			deletedBy: 'system',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+
+		const res = await listSends(t, key, WINDOW);
+		await expectContractSuccess('listTransactionalSends', res);
+		const body = await res.json();
+		expect(body.pagination).toEqual({ limit: 25, cursor: null, isDone: true });
+		expect(body.data.map((send: { sendId: string }) => send.sendId)).toEqual([
+			newest,
+			bounced,
+			oldest,
+		]);
+		for (const item of body.data) {
+			const single = await t.fetch(`/api/v1/transactional/${item.sendId}`, {
+				method: 'GET',
+				headers: authHeaders(key),
+			});
+			expect(item).toEqual((await single.json()).data);
+		}
+		expect(body.data[1]).toMatchObject({
+			bounceType: 'hard',
+			bounceCause: 'recipient',
+			errorMessage: '550 5.1.1 User unknown',
+		});
+		expect(JSON.stringify(body)).not.toContain('secret-token-123');
+	});
+
+	it('filters by recipient, matched the way the send route stores the address', async () => {
+		const t = setupTest();
+		const ada = await seedSendAt(t, T0 - MINUTE);
+		await seedSendAt(t, T0, { email: 'grace@example.com' });
+		const adaAgain = await seedSendAt(t, T0 + MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, { ...WINDOW, email: '  Ada@Example.COM ' });
+		expect(await listedIds(res)).toEqual([adaAgain, ada]);
+	});
+
+	it('filters by status', async () => {
+		const t = setupTest();
+		const failed = await seedSendAt(t, T0 - MINUTE, {
+			status: 'failed',
+			errorCode: 'MTA_UNREACHABLE',
+		});
+		await seedSendAt(t, T0, { status: 'delivered' });
+		const failedLater = await seedSendAt(t, T0 + MINUTE, {
+			email: 'grace@example.com',
+			status: 'failed',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, { ...WINDOW, status: 'failed' });
+		expect(await listedIds(res)).toEqual([failedLater, failed]);
+	});
+
+	it('filters by when the send was queued: since is inclusive, until is not', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0 - MINUTE - 1);
+		const atSince = await seedSendAt(t, T0 - MINUTE);
+		const inside = await seedSendAt(t, T0);
+		await seedSendAt(t, T0 + MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, {
+			since: new Date(T0 - MINUTE).toISOString(),
+			until: new Date(T0 + MINUTE).toISOString(),
+		});
+		expect(await listedIds(res)).toEqual([inside, atSince]);
+	});
+
+	it('covers the last 30 days without a window', async () => {
+		const t = setupTest();
+		await seedSendAt(t, Date.now() - 31 * DAY_MS);
+		const recent = await seedSendAt(t, Date.now() - 60 * MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		expect(await listedIds(await listSends(t, key))).toEqual([recent]);
+	});
+
+	it('pages newest first, and a cursor keeps its place while new sends arrive', async () => {
+		const t = setupTest();
+		const base = Date.now() - 60 * MINUTE;
+		const ids: string[] = [];
+		for (let i = 0; i < 5; i++) ids.push(await seedSendAt(t, base + i * MINUTE));
+		const key = await seedKey(t, ['transactional:send']);
+
+		const first = await (await listSends(t, key, { limit: '2' })).json();
+		expect(first.data.map((s: { sendId: string }) => s.sendId)).toEqual([ids[4], ids[3]]);
+		expect(first.pagination).toMatchObject({ limit: 2, isDone: false });
+
+		// A send queued between two page reads belongs before the first page.
+		await seedSendAt(t, Date.now());
+
+		const second = await (
+			await listSends(t, key, { limit: '2', cursor: first.pagination.cursor })
+		).json();
+		expect(second.data.map((s: { sendId: string }) => s.sendId)).toEqual([ids[2], ids[1]]);
+		const third = await (
+			await listSends(t, key, { limit: '2', cursor: second.pagination.cursor })
+		).json();
+		expect(third.data.map((s: { sendId: string }) => s.sendId)).toEqual([ids[0]]);
+		expect(third.pagination).toEqual({ limit: 2, cursor: null, isDone: true });
+	});
+
+	it('refuses a cursor sent with filters other than the ones it was issued for', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0);
+		await seedSendAt(t, T0 + MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		const first = await (await listSends(t, key, { ...WINDOW, limit: '1' })).json();
+		const res = await listSends(t, key, {
+			...WINDOW,
+			limit: '1',
+			status: 'failed',
+			cursor: first.pagination.cursor,
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toMatchObject({
+			category: 'invalid_input',
+			data: { field: 'cursor' },
+		});
+	});
+
+	it('clamps the page size to 100', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, { limit: '500' });
+		expect((await res.json()).pagination.limit).toBe(100);
+	});
+
+	it.each([
+		[
+			'a window over 30 days',
+			{ since: '2026-10-01T00:00:00.000Z', until: '2026-11-01T00:00:01.000Z' },
+			'since',
+		],
+		[
+			'a since after its until',
+			{ since: '2026-11-02T00:00:00.000Z', until: '2026-11-01T00:00:00.000Z' },
+			'since',
+		],
+		['a since that is no timestamp', { since: 'yesterday' }, 'since'],
+		['an until that is no timestamp', { until: '2026-13-45' }, 'until'],
+		['an unknown status', { status: 'lost' }, 'status'],
+		['a malformed address', { email: 'not-an-address' }, 'email'],
+		['an address and a status at once', { email: 'ada@example.com', status: 'failed' }, 'status'],
+		['a cursor this route did not issue', { cursor: 'not-a-cursor' }, 'cursor'],
+		['a non-positive limit', { limit: '0' }, undefined],
+		// An empty filter is not "no filter": it must not answer every recipient.
+		['an empty address', { email: '' }, 'email'],
+		['an empty status', { status: '' }, 'status'],
+	])('400 invalid_input for %s', async (_label, query, field) => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, query as Record<string, string>);
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error.category).toBe('invalid_input');
+		if (field) expect(body.error.data).toEqual({ field });
+	});
+
+	it.each([
+		[
+			'a recipient',
+			{ email: 'ada@example.com' },
+			'by_kind_deleted_email',
+			[['eq', 'email', 'ada@example.com']],
+		],
+		[
+			'a status',
+			{ status: 'failed' as const },
+			'by_kind_deleted_status',
+			[['eq', 'status', 'failed']],
+		],
+		['the window alone', {}, 'by_kind_deleted', []],
+	])(
+		'reads one index range per page for %s, however many other sends exist',
+		async (_label, filter, index, equals) => {
+			const t = setupTest();
+			// Rows the page must not have to step over: other kinds, erased sends,
+			// other recipients and other states, inside the window.
+			for (let i = 0; i < 40; i++) {
+				await seedSendAt(t, T0 + i, {
+					kind: i % 4 === 0 ? 'automation' : 'transactional',
+					...(i % 4 === 1 ? { email: '[erased]', deletedAt: T0, deletedBy: 'system' } : {}),
+					...(i % 4 === 2 ? { email: `other${i}@example.com`, status: 'delivered' } : {}),
+					...(i % 4 === 3 ? { status: 'delivered', email: 'grace@example.com' } : {}),
+				});
+			}
+			await seedSendAt(t, T0 + 100, { status: 'failed' });
+			await seedSendAt(t, T0 + 101, { status: 'failed' });
+			const calls: Array<{
+				index: string;
+				range: Array<[string, string, unknown]>;
+				filtered: boolean;
+			}> = [];
+			const page = await t.run(async (ctx) => {
+				const db = recordingDb(ctx.db, calls);
+				return await readSendListPage(db, {
+					email: null,
+					status: null,
+					...filter,
+					since: T0 - DAY_MS,
+					until: T0 + DAY_MS,
+					limit: 2,
+					cursor: null,
+				});
+			});
+			expect(page.page).toHaveLength(2);
+			expect(calls).toEqual([
+				{
+					index,
+					range: [
+						['eq', 'kind', 'transactional'],
+						['eq', 'deletedAt', undefined],
+						...equals,
+						['gte', '_creationTime', T0 - DAY_MS],
+						['lt', '_creationTime', T0 + DAY_MS],
+					],
+					filtered: false,
+				},
+			]);
+		}
+	);
+});
+
+const RANGE_BOUNDS = new Set(['eq', 'gt', 'gte', 'lt', 'lte']);
+
+/**
+ * A database whose `query(...).withIndex(...)` calls are recorded: the index,
+ * every bound of its range, and whether a `.filter` followed, which would
+ * read rows the page then drops.
+ */
+function recordingDb(
+	db: QueryCtx['db'],
+	calls: Array<{ index: string; range: Array<[string, string, unknown]>; filtered: boolean }>
+): QueryCtx['db'] {
+	return new Proxy(db, {
+		get(target, prop, receiver) {
+			if (prop !== 'query') return Reflect.get(target, prop, receiver);
+			return (table: string) => {
+				const initializer = target.query(table as never);
+				return new Proxy(initializer, {
+					get(inner, innerProp, innerReceiver) {
+						if (innerProp !== 'withIndex') return Reflect.get(inner, innerProp, innerReceiver);
+						return (index: string, build: (q: unknown) => unknown) => {
+							const call = {
+								index,
+								range: [] as Array<[string, string, unknown]>,
+								filtered: false,
+							};
+							calls.push(call);
+							const recorder = (q: any): any =>
+								new Proxy(q, {
+									get(qt, op) {
+										const fn = Reflect.get(qt, op);
+										if (typeof fn !== 'function' || !RANGE_BOUNDS.has(String(op))) return fn;
+										return (field: string, value: unknown) => {
+											call.range.push([String(op), field, value]);
+											return recorder(fn.call(qt, field, value));
+										};
+									},
+								});
+							const query = (inner.withIndex as any)(index, (q: unknown) => build(recorder(q)));
+							const watch = (q: any): any =>
+								new Proxy(q, {
+									get(qt, op) {
+										const fn = Reflect.get(qt, op);
+										if (typeof fn !== 'function') return fn;
+										if (op === 'filter') call.filtered = true;
+										return (...args: unknown[]) => {
+											const out = fn.apply(qt, args);
+											return out && typeof out === 'object' && 'paginate' in out ? watch(out) : out;
+										};
+									},
+								});
+							return watch(query);
+						};
+					},
+				});
+			};
+		},
+	});
+}
+
 // ─── POST /api/v1/topics/{id}/contacts (add) ─────────────────────────────────
 
 describe('POST /api/v1/topics/{id}/contacts (addContactToTopic → topics:write)', () => {
@@ -2392,6 +2771,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	deleteContact: contactsApi.deleteContact,
 	sendEvent,
 	sendTransactional,
+	listTransactionalSends,
 	getTransactionalSend,
 	addContactToTopic,
 	removeContactFromTopic,

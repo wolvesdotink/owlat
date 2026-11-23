@@ -149,6 +149,11 @@ console.log(result.contactCreated); // true if a new contact was created
 const send = await owlat.transactional.get(result.transactionalEmailId);
 console.log(send.status); // 'queued' | 'sent' | 'delivered' | 'failed' | ...
 console.log(send.errorCode); // e.g. 'MTA_UNREACHABLE' once it failed
+
+// Without the id: the sends to one address (or in one state), newest first,
+// within at most the last 30 days.
+const { data: sends } = await owlat.transactional.list({ email: 'user@example.com' });
+console.log(sends[0]?.bounceCause, sends[0]?.errorMessage); // why a bounce bounced
 ```
 
 #### Safe retries with an idempotency key

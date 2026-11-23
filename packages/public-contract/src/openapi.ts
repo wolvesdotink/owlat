@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import { apiErrorResponseSchema, paginationMetaSchema } from './common';
+import { apiErrorResponseSchema, cursorPaginationMetaSchema, paginationMetaSchema } from './common';
 import { OPERATION_EXAMPLES, type OperationExample } from './examples';
 import {
 	KEYED_ERROR_STATUSES,
@@ -95,7 +95,8 @@ function withoutSafeIntegerBounds(node: unknown): unknown {
 function successBody(operation: PublicOperation): JsonObject {
 	const { name, paginated } = operation.success;
 	const data = paginated ? { type: 'array', items: ref(name) } : ref(name);
-	const properties: JsonObject = paginated ? { data, pagination: ref('PaginationMeta') } : { data };
+	const pagination = paginated === 'cursor' ? 'CursorPaginationMeta' : 'PaginationMeta';
+	const properties: JsonObject = paginated ? { data, pagination: ref(pagination) } : { data };
 	return {
 		type: 'object',
 		properties,
@@ -311,6 +312,7 @@ export function buildOpenApiDocument(
 	const responses = componentSchemas(
 		[
 			['ApiErrorResponse', apiErrorResponseSchema],
+			['CursorPaginationMeta', cursorPaginationMetaSchema],
 			['PaginationMeta', paginationMetaSchema],
 			['SendingDomainSetup', sendingDomainSetupSchema],
 			['SendingHoldLift', sendingHoldLiftSchema],

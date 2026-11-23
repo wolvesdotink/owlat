@@ -11,6 +11,7 @@
 import type { PublicOperationId } from './operations';
 import type {
 	AddContactToTopicRequest,
+	CursorPaginatedResponse,
 	AddToTopicResponse,
 	ApiResponse,
 	Contact,
@@ -120,6 +121,33 @@ export const OPERATION_EXAMPLES = {
 				language: 'en-US',
 			},
 		} satisfies ApiResponse<SendTransactionalResponse>,
+	},
+	listTransactionalSends: {
+		response: {
+			data: [
+				{
+					sendId: 'k57s3nd00000000000000000000001',
+					status: 'bounced',
+					email: 'ada@example.com',
+					templateId: 'k57t3mpl4te0000000000000000000',
+					slug: 'password-reset',
+					language: 'en',
+					queuedAt: '2026-11-21T07:30:00.000Z',
+					sentAt: '2026-11-21T07:30:02.000Z',
+					deliveredAt: null,
+					openedAt: null,
+					clickedAt: null,
+					bouncedAt: '2026-11-21T07:30:05.000Z',
+					complainedAt: null,
+					failedAt: null,
+					bounceType: 'hard',
+					bounceCause: 'recipient',
+					errorCode: null,
+					errorMessage: '550 5.1.1 The email account that you tried to reach does not exist',
+				},
+			],
+			pagination: { limit: 25, cursor: null, isDone: true },
+		} satisfies CursorPaginatedResponse<TransactionalSendStatus>,
 	},
 	getTransactionalSend: {
 		response: {

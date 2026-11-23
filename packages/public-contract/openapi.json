@@ -1909,6 +1909,292 @@
 						}
 					}
 				}
+			},
+			"get": {
+				"operationId": "listTransactionalSends",
+				"tags": ["Transactional"],
+				"summary": "List the transactional sends, newest first, each with its delivery status, filtered by recipient or by status, within a window of at most 30 days. Needs the same scope as sending.",
+				"security": [
+					{
+						"apiKey": ["transactional:send"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"description": "Items per page, at most 100; a larger value is clamped.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"description": "The previous page's `pagination.cursor`. Omit it for the first page.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "email",
+						"in": "query",
+						"required": false,
+						"description": "Only sends to this recipient address, matched exactly after trimming and lowercasing. Cannot be combined with `status`.",
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"required": false,
+						"description": "Only sends in this delivery state. Cannot be combined with `email`.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"queued",
+								"sent",
+								"failed",
+								"delivered",
+								"opened",
+								"clicked",
+								"bounced",
+								"complained"
+							]
+						}
+					},
+					{
+						"name": "since",
+						"in": "query",
+						"required": false,
+						"description": "ISO 8601 timestamp: only sends queued at or after it. Defaults to 30 days before `until`, and may be at most that long before it.",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "until",
+						"in": "query",
+						"required": false,
+						"description": "ISO 8601 timestamp: only sends queued before it. Defaults to now.",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "One page of sends, newest first.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"type": "array",
+											"items": {
+												"$ref": "#/components/schemas/TransactionalSendStatus"
+											}
+										},
+										"pagination": {
+											"$ref": "#/components/schemas/CursorPaginationMeta"
+										}
+									},
+									"required": ["data", "pagination"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": [
+										{
+											"sendId": "k57s3nd00000000000000000000001",
+											"status": "bounced",
+											"email": "ada@example.com",
+											"templateId": "k57t3mpl4te0000000000000000000",
+											"slug": "password-reset",
+											"language": "en",
+											"queuedAt": "2026-11-21T07:30:00.000Z",
+											"sentAt": "2026-11-21T07:30:02.000Z",
+											"deliveredAt": null,
+											"openedAt": null,
+											"clickedAt": null,
+											"bouncedAt": "2026-11-21T07:30:05.000Z",
+											"complainedAt": null,
+											"failedAt": null,
+											"bounceType": "hard",
+											"bounceCause": "recipient",
+											"errorCode": null,
+											"errorMessage": "550 5.1.1 The email account that you tried to reach does not exist"
+										}
+									],
+									"pagination": {
+										"limit": 25,
+										"cursor": null,
+										"isDone": true
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope", "feature_disabled"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
 			}
 		},
 		"/api/v1/transactional/{sendId}": {
@@ -3416,6 +3702,23 @@
 					}
 				},
 				"required": ["email"]
+			},
+			"CursorPaginationMeta": {
+				"type": "object",
+				"properties": {
+					"limit": {
+						"type": "integer"
+					},
+					"cursor": {
+						"description": "Cursor of the next page, or null once isDone is true. It belongs to the filters of the request that returned it.",
+						"type": ["string", "null"]
+					},
+					"isDone": {
+						"type": "boolean"
+					}
+				},
+				"required": ["limit", "cursor", "isDone"],
+				"additionalProperties": false
 			},
 			"DeleteContactResponse": {
 				"type": "object",

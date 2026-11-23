@@ -10938,7 +10938,7 @@
 								"label": "Themen — schreiben"
 							},
 							"transactionalSend": {
-								"description": "Transaktions-E-Mails senden.",
+								"description": "Transaktions-E-Mails senden und die Sendungen mit Empfängern und Zustellstatus auflisten.",
 								"label": "Transaktional — senden"
 							}
 						},

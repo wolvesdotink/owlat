@@ -106,6 +106,31 @@ describe('sending domains', () => {
 	});
 });
 
+describe('the send list', () => {
+	it('pages without a total, since counting the matches would read them all', () => {
+		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;
+		const list = (committed['paths'] as Record<string, any>)['/api/v1/transactional'].get;
+		const body = list.responses['200'].content['application/json'].schema;
+		expect(body.properties).toEqual({
+			data: { type: 'array', items: { $ref: '#/components/schemas/TransactionalSendStatus' } },
+			pagination: { $ref: '#/components/schemas/CursorPaginationMeta' },
+		});
+		expect(Object.keys(schemas['CursorPaginationMeta'].properties)).toEqual([
+			'limit',
+			'cursor',
+			'isDone',
+		]);
+		expect(list.parameters.map((parameter: { name: string }) => parameter.name)).toEqual([
+			'limit',
+			'cursor',
+			'email',
+			'status',
+			'since',
+			'until',
+		]);
+	});
+});
+
 describe('delivery status', () => {
 	it('lists every reason code the status can name, and only those', () => {
 		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;

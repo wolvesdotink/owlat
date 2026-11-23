@@ -386,6 +386,42 @@ describe('TransactionalResource', () => {
 		});
 	});
 
+	describe('list', () => {
+		it('GETs the first page without a query string', async () => {
+			const page = { data: [], pagination: { limit: 25, cursor: null, isDone: true } };
+			const spy = mockFetch({ status: 200, body: page, headers: TEST_RATE_LIMIT_HEADERS });
+			await expect(createTestClient().transactional.list()).resolves.toEqual(page);
+			expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/v1\/transactional$/);
+		});
+
+		it('sends an empty filter for the server to refuse, rather than listing everyone', async () => {
+			const spy = mockFetch({
+				status: 200,
+				body: { data: [], pagination: { limit: 25, cursor: null, isDone: true } },
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			await createTestClient().transactional.list({ email: '' });
+			expect(new URL(String(spy.mock.calls[0][0])).searchParams.get('email')).toBe('');
+		});
+
+		it('encodes the address and passes the cursor on', async () => {
+			const spy = mockFetch({
+				status: 200,
+				body: { data: [], pagination: { limit: 2, cursor: null, isDone: true } },
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			await createTestClient().transactional.list({
+				email: 'ada+reset@example.com',
+				limit: 2,
+				cursor: 'next/page=',
+			});
+			const sent = new URL(String(spy.mock.calls[0][0]));
+			expect(sent.searchParams.get('email')).toBe('ada+reset@example.com');
+			expect(sent.searchParams.get('cursor')).toBe('next/page=');
+			expect(sent.searchParams.get('limit')).toBe('2');
+		});
+	});
+
 	describe('a refused send', () => {
 		it('carries the refusal code as a typed reason', async () => {
 			mockFetch({

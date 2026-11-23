@@ -24,7 +24,7 @@ import {
 } from '../contacts/api';
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
-import { getTransactionalSend } from '../transactional/sendStatusHttp';
+import { getTransactionalSend, listTransactionalSends } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
 import { listDomains } from './domainsHttp';
@@ -175,6 +175,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/transactional',
 		method: 'POST',
 		handler: sendTransactional,
+	});
+
+	// GET /api/v1/transactional - List sends, by recipient, status or window
+	http.route({
+		path: '/api/v1/transactional',
+		method: 'GET',
+		handler: listTransactionalSends,
 	});
 
 	// GET /api/v1/transactional/{sendId} - Delivery status of one send

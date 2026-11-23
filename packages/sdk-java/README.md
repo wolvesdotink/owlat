@@ -159,6 +159,11 @@ SendTransactionalResponse response = owlat.transactional().send(
 TransactionalSendStatus send = owlat.transactional().get(response.getTransactionalEmailId());
 send.getStatus();    // "queued", "sent", "delivered", "failed", ...
 send.getErrorCode(); // e.g. "MTA_UNREACHABLE" once it failed
+
+// Without the id: the sends to one address (or in one state), newest first,
+// within at most the last 30 days.
+CursorPaginatedResponse<TransactionalSendStatus> sends = owlat.transactional().list(
+    ListTransactionalSendsParams.builder().email("user@example.com").build());
 ```
 
 ### Events

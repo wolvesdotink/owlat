@@ -10,6 +10,7 @@
 
 import type { z } from 'zod';
 import {
+	cursorPaginatedEnvelope,
 	dataEnvelope,
 	DEFAULT_PAGE_SIZE,
 	healthStatusSchema,
@@ -37,7 +38,13 @@ import {
 	transactionalSendStatusSchema,
 } from './transactional';
 import { ERROR_REASON_STATUS } from './errors';
-import { API_KEY_ERROR_REASONS, TRANSACTIONAL_REFUSAL_REASONS, type ApiErrorReason } from './types';
+import {
+	API_KEY_ERROR_REASONS,
+	SEND_LIST_MAX_WINDOW_DAYS,
+	TRANSACTIONAL_REFUSAL_REASONS,
+	TRANSACTIONAL_SEND_STATUSES,
+	type ApiErrorReason,
+} from './types';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -79,15 +86,16 @@ export interface PublicOperation {
 	request: { name: string; schema: z.ZodType } | null;
 	/**
 	 * The success status and what its envelope carries: `{ data }` with one
-	 * item, or `{ data: [...], pagination }` when `paginated`. `name` is the
-	 * item's name in the document's components.
+	 * item, or `{ data: [...], pagination }` when `paginated`. A `cursor` list
+	 * has no `totalItems` in its pagination. `name` is the item's name in the
+	 * document's components.
 	 */
 	success: {
 		status: number;
 		description: string;
 		name: string;
 		data: z.ZodType;
-		paginated: boolean;
+		paginated: boolean | 'cursor';
 	};
 	/** Error statuses the operation answers with, beyond the ones every keyed call can. */
 	errors: readonly number[];
@@ -114,6 +122,35 @@ const PAGE_CURSOR: QueryParameter = {
 	description: "The previous page's `pagination.cursor`. Omit it for the first page.",
 	schema: { type: 'string' },
 };
+
+const SEND_ID: PathParameter = {
+	name: 'sendId',
+	description: 'The `transactionalEmailId` the send call answered with.',
+};
+
+const SEND_LIST_FILTERS: readonly QueryParameter[] = [
+	{
+		name: 'email',
+		description:
+			'Only sends to this recipient address, matched exactly after trimming and lowercasing. Cannot be combined with `status`.',
+		schema: { type: 'string', format: 'email' },
+	},
+	{
+		name: 'status',
+		description: 'Only sends in this delivery state. Cannot be combined with `email`.',
+		schema: { type: 'string', enum: [...TRANSACTIONAL_SEND_STATUSES] },
+	},
+	{
+		name: 'since',
+		description: `ISO 8601 timestamp: only sends queued at or after it. Defaults to ${SEND_LIST_MAX_WINDOW_DAYS} days before \`until\`, and may be at most that long before it.`,
+		schema: { type: 'string', format: 'date-time' },
+	},
+	{
+		name: 'until',
+		description: 'ISO 8601 timestamp: only sends queued before it. Defaults to now.',
+		schema: { type: 'string', format: 'date-time' },
+	},
+];
 
 export const PUBLIC_OPERATIONS = [
 	{
@@ -293,18 +330,34 @@ export const PUBLIC_OPERATIONS = [
 		reasons: TRANSACTIONAL_REFUSAL_REASONS,
 	},
 	{
+		operationId: 'listTransactionalSends',
+		method: 'GET',
+		path: '/api/v1/transactional',
+		tag: 'Transactional',
+		summary: `List the transactional sends, newest first, each with its delivery status, filtered by recipient or by status, within a window of at most ${SEND_LIST_MAX_WINDOW_DAYS} days. Needs the same scope as sending.`,
+		scope: 'transactional:send',
+		pathParameters: [],
+		queryParameters: [PAGE_LIMIT, PAGE_CURSOR, ...SEND_LIST_FILTERS],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'One page of sends, newest first.',
+			name: 'TransactionalSendStatus',
+			data: transactionalSendStatusSchema,
+			paginated: 'cursor',
+		},
+		errors: [],
+		reasons: ['feature_disabled'],
+	},
+	{
 		operationId: 'getTransactionalSend',
 		method: 'GET',
 		path: '/api/v1/transactional/{sendId}',
 		tag: 'Transactional',
 		summary: 'Get the delivery status of one transactional send. Needs the same scope as sending.',
 		scope: 'transactional:send',
-		pathParameters: [
-			{
-				name: 'sendId',
-				description: 'The `transactionalEmailId` the send call answered with.',
-			},
-		],
+		pathParameters: [SEND_ID],
 		queryParameters: [],
 		idempotent: false,
 		request: null,
@@ -438,9 +491,9 @@ export type PublicOperationId = (typeof PUBLIC_OPERATIONS)[number]['operationId'
 
 /** The schema of an operation's whole success body, envelope included. */
 export function successBodySchema(operation: PublicOperation): z.ZodType {
-	return operation.success.paginated
-		? paginatedEnvelope(operation.success.data)
-		: dataEnvelope(operation.success.data);
+	const { paginated, data } = operation.success;
+	if (paginated === 'cursor') return cursorPaginatedEnvelope(data);
+	return paginated ? paginatedEnvelope(data) : dataEnvelope(data);
 }
 
 /** The operation with this ID. */

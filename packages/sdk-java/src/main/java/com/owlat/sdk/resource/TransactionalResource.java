@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.owlat.sdk.RequestOptions;
 import com.owlat.sdk.internal.HttpClient;
 import com.owlat.sdk.model.ApiResponse;
+import com.owlat.sdk.model.CursorPaginatedResponse;
+import com.owlat.sdk.model.transactional.ListTransactionalSendsParams;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.owlat.sdk.model.transactional.SendTransactionalResponse;
 import com.owlat.sdk.model.transactional.TransactionalSendStatus;
@@ -52,5 +54,29 @@ public class TransactionalResource extends BaseResource {
                 .get(BASE_PATH + "/" + URLEncoder.encode(sendId, StandardCharsets.UTF_8),
                         new TypeReference<ApiResponse<TransactionalSendStatus>>() {})
                 .getData();
+    }
+
+    /** The first page of the last 30 days' sends. */
+    public CursorPaginatedResponse<TransactionalSendStatus> list() {
+        return list(null);
+    }
+
+    /**
+     * List the sends this API created, newest first, each as {@link #get}
+     * answers it: the sends to one address, or the sends in one state, within a
+     * window of at most 30 days. Needs the {@code transactional:send} scope.
+     *
+     * <p>Pass the {@code cursor} from the previous response's
+     * {@link com.owlat.sdk.model.CursorPaginationMeta#getCursor()}, with the
+     * same filters, to fetch the next page, and stop once
+     * {@link com.owlat.sdk.model.CursorPaginationMeta#isDone()} is true.
+     *
+     * @throws com.owlat.sdk.exception.ValidationException if a filter is
+     *         malformed, email and status are combined, the window is over 30
+     *         days, or the cursor belongs to other filters
+     */
+    public CursorPaginatedResponse<TransactionalSendStatus> list(ListTransactionalSendsParams params) {
+        String path = BASE_PATH + (params == null ? "" : params.toQueryString());
+        return httpClient.get(path, new TypeReference<CursorPaginatedResponse<TransactionalSendStatus>>() {});
     }
 }

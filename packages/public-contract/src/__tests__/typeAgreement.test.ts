@@ -8,6 +8,7 @@ import { describe, expectTypeOf, it } from 'vitest';
 import type { z } from 'zod';
 import type {
 	apiErrorResponseSchema,
+	cursorPaginationMetaSchema,
 	healthStatusSchema,
 	jsonPrimitiveSchema,
 	paginationMetaSchema,
@@ -76,6 +77,9 @@ describe('schema and type agreement', () => {
 		expectTypeOf<z.output<typeof deliveryStatusSchema>>().toEqualTypeOf<T.DeliveryStatus>();
 		expectTypeOf<z.output<typeof healthStatusSchema>>().toEqualTypeOf<T.HealthStatus>();
 		expectTypeOf<z.output<typeof paginationMetaSchema>>().toEqualTypeOf<T.PaginationMeta>();
+		expectTypeOf<
+			z.output<typeof cursorPaginationMetaSchema>
+		>().toEqualTypeOf<T.CursorPaginationMeta>();
 		expectTypeOf<z.output<typeof apiErrorResponseSchema>>().toEqualTypeOf<T.ApiErrorResponse>();
 		expectTypeOf<z.output<typeof jsonPrimitiveSchema>>().toEqualTypeOf<T.JsonPrimitive>();
 	});

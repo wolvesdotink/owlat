@@ -71,6 +71,11 @@ const CALLS: Record<
 		path: '/api/v1/transactional',
 		result: example('sendTransactional').response.data,
 	},
+	listTransactionalSends: {
+		call: (client) => client.transactional.list({ email: 'ada@example.com' }),
+		path: '/api/v1/transactional',
+		result: example('listTransactionalSends').response,
+	},
 	getTransactionalSend: {
 		call: (client) => client.transactional.get(SEND_ID),
 		path: `/api/v1/transactional/${SEND_ID}`,
@@ -143,6 +148,27 @@ describe('SDK calls against the public contract', () => {
 		} else {
 			expect(init?.body ?? undefined).toBeUndefined();
 		}
+	});
+
+	it('sends the send list filters under the names the contract documents', async () => {
+		const sent = new Set<string>();
+		for (const params of [
+			{
+				email: 'ada@example.com',
+				since: '2026-11-01T00:00:00.000Z',
+				until: '2026-11-02T00:00:00.000Z',
+				limit: 10,
+				cursor: 'c1',
+			},
+			{ status: 'failed' as const },
+		]) {
+			const spy = mockFetch({ body: example('listTransactionalSends').response });
+			await createTestClient().transactional.list(params);
+			for (const name of new URL(String(spy.mock.calls[0]![0])).searchParams.keys()) sent.add(name);
+			spy.mockRestore();
+		}
+		const documented = publicOperation('listTransactionalSends').queryParameters.map((p) => p.name);
+		expect([...sent].sort()).toEqual([...documented].sort());
 	});
 
 	it('sends list query parameters under the names the contract documents', async () => {

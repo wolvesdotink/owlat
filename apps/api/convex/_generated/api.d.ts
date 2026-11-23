@@ -1966,6 +1966,8 @@ import type * as transactional_sendCaps from '../transactional/sendCaps.js';
 import type * as transactional_sendCapSettings from '../transactional/sendCapSettings.js';
 import type * as transactional_sendCapsPolicy from '../transactional/sendCapsPolicy.js';
 import type * as transactional_sendDataRetention from '../transactional/sendDataRetention.js';
+import type * as transactional_sendList from '../transactional/sendList.js';
+import type * as transactional_sendListQuery from '../transactional/sendListQuery.js';
 import type * as transactional_sendOptions from '../transactional/sendOptions.js';
 import type * as transactional_sender from '../transactional/sender.js';
 import type * as transactional_senderResolution from '../transactional/senderResolution.js';
@@ -4247,6 +4249,8 @@ declare const fullApi: ApiFromModules<{
 	'transactional/sendCapSettings': typeof transactional_sendCapSettings;
 	'transactional/sendCapsPolicy': typeof transactional_sendCapsPolicy;
 	'transactional/sendDataRetention': typeof transactional_sendDataRetention;
+	'transactional/sendList': typeof transactional_sendList;
+	'transactional/sendListQuery': typeof transactional_sendListQuery;
 	'transactional/sendOptions': typeof transactional_sendOptions;
 	'transactional/sender': typeof transactional_sender;
 	'transactional/senderResolution': typeof transactional_senderResolution;

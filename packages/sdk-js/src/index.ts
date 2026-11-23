@@ -11,6 +11,8 @@ export type {
 	RateLimitInfo,
 	ApiResponse,
 	PaginatedResponse,
+	CursorPaginatedResponse,
+	CursorPaginationMeta,
 	RequestOptions,
 	JsonPrimitive,
 	// Errors
@@ -24,6 +26,7 @@ export type {
 	UpdateContactParams,
 	DeleteContactResponse,
 	// Transactional
+	ListTransactionalSendsParams,
 	SendTransactionalParams,
 	SendTransactionalResponse,
 	TransactionalAttachment,

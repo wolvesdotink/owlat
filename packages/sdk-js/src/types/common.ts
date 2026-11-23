@@ -8,6 +8,8 @@ export type {
 	ApiErrorResponse,
 	ApiKeyErrorReason,
 	ApiResponse,
+	CursorPaginatedResponse,
+	CursorPaginationMeta,
 	JsonPrimitive,
 	ListQuery as PaginationParams,
 	PaginatedResponse,
