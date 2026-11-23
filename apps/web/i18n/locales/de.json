@@ -2874,7 +2874,6 @@
 					"minutesSeconds": "{minutes} Min. {seconds} Sek.",
 					"seconds": "{seconds} Sek."
 				},
-				"errorCode": "Code:",
 				"errorDetails": "Fehlerdetails",
 				"events": {
 					"bounced": "Unzustellbar",
@@ -12234,6 +12233,7 @@
 						"title": "Öffentliches Archiv"
 					},
 					"backToCampaigns": "Zurück zu den Kampagnen",
+					"bouncedEmpty": "Keine Sendung war unzustellbar",
 					"cancelledLine": "Vor dem Versand abgebrochen",
 					"clickedEmpty": "Bisher hat kein Kontakt Links in dieser E-Mail geklickt",
 					"comparison": {
@@ -12250,6 +12250,14 @@
 					"duplicateOperation": "Kampagne duplizieren",
 					"duplicating": "Wird dupliziert …",
 					"errorTitle": "Dieser Bericht konnte nicht geladen werden",
+					"failedEmpty": "Keine Sendung ist fehlgeschlagen",
+					"failures": {
+						"ariaLabel": "Sendungen, die nicht angekommen sind",
+						"notSent": "{count} konnte nicht gesendet werden | {count} konnten nicht gesendet werden",
+						"bounced": "{count} unzustellbar | {count} unzustellbar",
+						"showWho": "Zeigen, wer",
+						"sendCount": "{count} Sendung | {count} Sendungen"
+					},
 					"heatmap": {
 						"subtitle": "Visuelle Darstellung der Linkinteraktionen",
 						"title": "Heatmap der Linkklicks"
@@ -12280,7 +12288,9 @@
 						"sending": "Wird gesendet"
 					},
 					"tabs": {
+						"bounced": "Unzustellbar ({count})",
 						"clicked": "Geklickt ({count})",
+						"failed": "Fehlgeschlagen ({count})",
 						"opened": "Geöffnet ({count})"
 					},
 					"timeline": {
@@ -18052,6 +18062,54 @@
 			"files": "Eine Datei | {count} Dateien",
 			"saveSelection": "Auswahl als Antwort speichern",
 			"teamFilesNotAttached": "„{name}“ hat Dateien. Eine Antwort im Team-Postfach kann sie nicht aus einer gespeicherten Antwort übernehmen, häng sie also von Hand an."
+		},
+		"sendFailure": {
+			"code": "Code: {code}",
+			"hideProviderText": "Meldung des Anbieters ausblenden",
+			"labels": {
+				"blocklisted": "Auf der Sperrliste",
+				"contactDeleted": "Kontakt gelöscht",
+				"content": "Inhalt abgelehnt",
+				"credentials": "Anmeldung beim Anbieter abgelehnt",
+				"deferredTooLong": "Über die Frist zurückgestellt",
+				"deliveryHold": "Über die Frist angehalten",
+				"hardBounce": "Harter Bounce",
+				"mailServerUnreachable": "Mailserver nicht erreichbar",
+				"noFeedback": "Kein Zustellbericht",
+				"providerRefused": "Vom Anbieter abgelehnt",
+				"providerUnavailable": "Fehler beim Anbieter",
+				"recipientInvalid": "Ungültige Adresse",
+				"sender": "Absender abgelehnt",
+				"sendingSuspended": "Versand gesperrt",
+				"softBounce": "Weicher Bounce",
+				"transportMissing": "Kein Versandweg",
+				"unconfirmed": "Nicht bestätigt",
+				"unknown": "Anderer Fehler",
+				"unsubscribed": "Abgemeldet"
+			},
+			"providerText": "Meldung des Anbieters",
+			"reasons": {
+				"blocklisted": "Übersprungen, weil die Adresse auf der Sperrliste steht. Das macht Owlat von selbst, du musst nichts tun.",
+				"contactDeleted": "Übersprungen, weil der Kontakt gelöscht wurde, bevor die Nachricht rausging.",
+				"content": "Der Anbieter hat den Inhalt der Nachricht abgelehnt, zum Beispiel als Spam. Ändere den Inhalt, bevor du sie noch einmal sendest.",
+				"credentials": "Der Zustellanbieter hat die Anmeldung von Owlat nicht akzeptiert, deshalb ging nichts über ihn raus. Aktualisiere den Schlüssel oder das Passwort des Versandwegs.",
+				"deferredTooLong": "Empfangende Server haben Owlat immer wieder gebeten, es später zu versuchen. Owlat hat es von selbst erneut versucht, bis keine Versuche mehr übrig waren.",
+				"deliveryHold": "Die Zustellung blieb angehalten, bis die Zustellfrist abgelaufen war. Owlat hält Mails von selbst an, solange eine Sicherheitsprüfung der Zustellung offen ist.",
+				"hardBounce": "Der empfangende Server hat die Nachricht endgültig abgelehnt. Gibt es die Adresse nicht, schreibt Owlat sie von selbst nicht mehr an. Wenn viele Adressen auf einmal unzustellbar sind, zeigt der Zustellstatus, ob deine Einrichtung die Ursache ist.",
+				"mailServerUnreachable": "Der Mailserver war vor Ablauf der Zustellfrist nicht erreichbar, obwohl Owlat es immer wieder versucht hat.",
+				"noFeedback": "Der Anbieter hat die Nachricht angenommen, aber seine Zustellberichte erreichen Owlat nicht, weil der Webhook-Schlüssel fehlt. Ob sie angekommen ist, ist unbekannt.",
+				"providerRefused": "Der Zustellanbieter hat abgelehnt, die Nachricht zu senden. Seinen Grund findest du in der Meldung des Anbieters.",
+				"providerUnavailable": "Der Zustellanbieter hat immer wieder mit einem Fehler geantwortet. Owlat hat es von selbst erneut versucht, bevor es aufgegeben hat.",
+				"recipientInvalid": "Der Anbieter hat die Adresse als ungültig abgelehnt. Prüfe die Adresse beim Kontakt.",
+				"sender": "Der Anbieter hat die Absenderadresse oder ihre Domain abgelehnt. Die Domain muss verifiziert sein, bevor sie senden kann.",
+				"sendingSuspended": "Der Versand war für diesen Workspace gesperrt, bis die Zustellfrist abgelaufen war.",
+				"softBounce": "Der empfangende Server hat die Nachricht vorerst abgewiesen, zum Beispiel weil das Postfach voll ist. Owlat pausiert eine Adresse, die immer wieder so abweist, von selbst.",
+				"transportMissing": "Als die Nachricht fällig war, war kein Versandweg bereit, deshalb ist sie nie rausgegangen.",
+				"unconfirmed": "Owlat konnte nicht bestätigen, ob die Nachricht rausgegangen ist. Sie wurde nicht noch einmal gesendet, damit niemand sie doppelt bekommt.",
+				"unknown": "Der Versand ist aus einem Grund fehlgeschlagen, den Owlat nicht kennt. Die Meldung des Anbieters enthält die Details.",
+				"unsubscribed": "Übersprungen, weil sich der Kontakt abgemeldet hat, bevor die Nachricht rausging. Das macht Owlat von selbst."
+			},
+			"showProviderText": "Meldung des Anbieters zeigen"
 		},
 		"sendReadiness": {
 			"audienceFits": "Deine Zielgruppe von {audience} passt in die heutige Kapazität.",

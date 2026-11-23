@@ -9,10 +9,14 @@ import CampaignReportComparison from '~/components/campaigns/CampaignReportCompa
 import CampaignSendHoldNotice from '~/components/campaigns/CampaignSendHoldNotice.vue';
 import CampaignSendTimeReport from '~/components/campaigns/CampaignSendTimeReport.vue';
 import CampaignReportArchiveLink from '~/components/campaigns/report/ReportArchiveLink.vue';
-import CampaignReportContacts from '~/components/campaigns/report/ReportContacts.vue';
+import CampaignReportContacts, {
+	type ContactTab,
+} from '~/components/campaigns/report/ReportContacts.vue';
+import CampaignReportFailures from '~/components/campaigns/report/ReportFailures.vue';
 import CampaignReportHeader from '~/components/campaigns/report/ReportHeader.vue';
 import CampaignReportOpensTimeline from '~/components/campaigns/report/ReportOpensTimeline.vue';
 import { selectPreviousComparable } from '~/utils/campaignReport';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import { ChartBarVerticalIcon, FlameIcon } from '@coolicons/vue';
 
@@ -73,6 +77,24 @@ const { data: stats, isLoading: statsLoading } = useConvexQuery(
 	api.delivery.sends.getStatsByCampaign,
 	() => ({ campaignId: campaignId.value })
 );
+
+// The sends that did not arrive, grouped by reason. Reads only the campaign's
+// failed and bounced rows, so a clean campaign costs two empty index ranges.
+const { data: failureSummary } = useConvexQuery(
+	api.delivery.sendFailures.getFailureSummary,
+	() => ({ campaignId: campaignId.value })
+);
+
+// The contacts card's tab, which the failure line's "Show who" also sets.
+const contactsTab = ref<ContactTab>('opened');
+const contactsCard = ref<{ $el: HTMLElement } | null>(null);
+const showUndelivered = (kind: 'failed' | 'bounced') => {
+	contactsTab.value = kind;
+	contactsCard.value?.$el.scrollIntoView({
+		behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+		block: 'start',
+	});
+};
 
 // The multi-day send plan's day-of-N state. `null` for a campaign with no walk
 // in flight, which renders nothing at all — absence of a plan is not a state
@@ -273,6 +295,11 @@ const currentSnapshot = computed(() => ({
 						:unsubscribed="campaign.statsUnsubscribed ?? 0"
 						:bounced="stats.bounced"
 					/>
+					<CampaignReportFailures
+						class="mt-4"
+						:summary="failureSummary"
+						@show-list="showUndelivered"
+					/>
 					<CampaignAutomatedEngagementNote
 						class="mt-3"
 						:automated-opens="stats.automatedOpens"
@@ -335,9 +362,13 @@ const currentSnapshot = computed(() => ({
 
 				<!-- Contacts List -->
 				<CampaignReportContacts
+					ref="contactsCard"
+					v-model:tab="contactsTab"
 					:campaign-id="campaignId"
 					:unique-opens="stats?.uniqueOpens"
 					:unique-clicks="stats?.uniqueClicks"
+					:failed-count="failureSummary?.failed.total"
+					:bounced-count="failureSummary?.bounced.total"
 				/>
 			</div>
 		</UiQueryBoundary>

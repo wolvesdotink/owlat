@@ -15,6 +15,8 @@ import {
 	TriangleWarningIcon,
 	type IconComponent,
 } from '@coolicons/vue';
+import SendFailureReason from '~/components/dashboard/SendFailureReason.vue';
+import { failureClassOfSend } from '~/lib/sendFailureReasons';
 
 interface TimelineEvent {
 	key: string;
@@ -45,6 +47,8 @@ const props = defineProps<{
 	clickedLinks?: ClickedLink[];
 	errorMessage?: string;
 	errorCode?: string;
+	/** A bounced send's class; its sentence says what Owlat already did about it. */
+	bounceType?: 'hard' | 'soft';
 	providerMessageId?: string;
 	dataVariables?: Record<string, unknown>;
 	/** The names the caller supplied; kept after the values are removed. */
@@ -205,6 +209,19 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 	return events;
 });
 
+// The reason leads with a sentence; the raw code and provider text stay one
+// click away inside it.
+const failureClass = computed(() =>
+	failureClassOfSend({
+		status: props.status,
+		bounceType: props.bounceType,
+		errorCode: props.errorCode,
+	})
+);
+const hasFailure = computed(
+	() => Boolean(props.errorMessage || props.errorCode) || props.status === 'bounced'
+);
+
 const showDataVariables = ref(false);
 const variableNames = computed(
 	() => props.dataVariableNames ?? Object.keys(props.dataVariables ?? {})
@@ -324,24 +341,18 @@ const copyMessageId = async () => {
 		</div>
 
 		<!-- Error Details -->
-		<div v-if="errorMessage || errorCode" class="card p-6 bg-error-subtle border-error/20">
+		<div v-if="hasFailure" class="card p-6 bg-error-subtle border-error/20">
 			<div class="flex items-center gap-3 mb-3">
 				<TriangleWarningIcon class="w-5 h-5 text-error" />
 				<h3 class="text-lg font-medium text-error">
 					{{ t('components.dashboard.emailSendTimeline.errorDetails') }}
 				</h3>
 			</div>
-			<div class="space-y-2 text-sm">
-				<p v-if="errorCode" class="text-text-secondary">
-					<span class="font-medium">{{
-						t('components.dashboard.emailSendTimeline.errorCode')
-					}}</span>
-					{{ errorCode }}
-				</p>
-				<p v-if="errorMessage" class="text-text-primary">
-					{{ errorMessage }}
-				</p>
-			</div>
+			<SendFailureReason
+				:failure-class="failureClass"
+				:error-code="errorCode"
+				:provider-text="errorMessage"
+			/>
 		</div>
 
 		<!-- Provider Message ID -->

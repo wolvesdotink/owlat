@@ -758,6 +758,7 @@ import type * as delivery_sendLifecycle_outcomeAccounting from '../delivery/send
 import type * as delivery_sendLifecycle_reducers from '../delivery/sendLifecycle/reducers.js';
 import type * as delivery_sendLifecycle_types from '../delivery/sendLifecycle/types.js';
 import type * as delivery_sendRetryPlan from '../delivery/sendRetryPlan.js';
+import type * as delivery_sendFailures from '../delivery/sendFailures.js';
 import type * as delivery_sends from '../delivery/sends.js';
 import type * as delivery_snds from '../delivery/snds.js';
 import type * as delivery_sndsConfig from '../delivery/sndsConfig.js';
@@ -2754,6 +2755,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendLifecycle/reducers': typeof delivery_sendLifecycle_reducers;
 	'delivery/sendLifecycle/types': typeof delivery_sendLifecycle_types;
 	'delivery/sendRetryPlan': typeof delivery_sendRetryPlan;
+	'delivery/sendFailures': typeof delivery_sendFailures;
 	'delivery/sends': typeof delivery_sends;
 	'delivery/snds': typeof delivery_snds;
 	'delivery/sndsConfig': typeof delivery_sndsConfig;

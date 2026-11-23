@@ -1,8 +1,9 @@
 /**
  * The campaign report's sections reach the page's state: Duplicate runs the
  * page's operation, the archive card copies the archive link, the opens
- * timeline charts the first 48 hours, and the Opened / Clicked tabs page
- * through the page's queries with Previous and Next.
+ * timeline charts the first 48 hours, the Opened / Clicked tabs page
+ * through the page's queries with Previous and Next, and sends that did not
+ * arrive are counted beside the funnel with their reasons and their lists.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -49,6 +50,60 @@ const clicked = (i: number) => ({
 	contact: contact(i),
 });
 
+const failed = (i: number) => ({
+	_id: `failed_${i}`,
+	at: START + i * HOUR,
+	errorCode: i === 0 ? 'X_SOMETHING_NEW' : 'AUTH_FAILED',
+	errorMessage: '535 5.7.8 Username and Password not accepted',
+	bounceType: null,
+	contact: contact(i),
+});
+const bounced = (i: number) => ({
+	_id: `bounced_${i}`,
+	at: START + i * HOUR,
+	errorCode: null,
+	errorMessage: '550 5.1.1 No such user',
+	bounceType: 'hard',
+	contact: contact(i),
+});
+
+/** Three credential failures and one hard bounce. */
+const FAILURES = {
+	failed: {
+		total: 25,
+		reasons: [
+			{
+				errorCode: 'AUTH_FAILED',
+				count: 24,
+				exampleMessage: '535 5.7.8 Username and Password not accepted',
+			},
+			{ errorCode: 'RECIPIENT_SUPPRESSED', count: 1, exampleMessage: null },
+		],
+	},
+	bounced: {
+		total: 25,
+		reasons: [{ bounceType: 'hard', count: 25, exampleMessage: '550 5.1.1 No such user' }],
+	},
+};
+const NO_FAILURES = {
+	failed: { total: 0, reasons: [] },
+	bounced: { total: 0, reasons: [] },
+};
+
+let failureSummary: typeof FAILURES | typeof NO_FAILURES;
+/** The funnel's counters; absent (still loading) unless a test sets them. */
+let stats: Record<string, number> | undefined;
+const STATS = {
+	total: 100,
+	queued: 0,
+	failed: 25,
+	delivered: 70,
+	bounced: 25,
+	uniqueOpens: 25,
+	uniqueClicks: 0,
+	automatedOpens: 0,
+	automatedClicks: 0,
+};
 let timeline: { timestamp: number; count: number }[];
 let duplicateRuns: unknown[];
 let copied: string[];
@@ -97,6 +152,20 @@ function mountReport(campaign: Record<string, unknown>) {
 			const name = getFunctionName(reference);
 			if (name === 'campaigns/campaigns:getWithRelations') return queryResult(campaign);
 			if (name === 'delivery/sends:getOpensTimeline') return queryResult(timeline);
+			if (name === 'delivery/sendFailures:getFailureSummary') return queryResult(failureSummary);
+			if (name === 'delivery/sends:getStatsByCampaign') return queryResult(stats);
+			if (name === 'delivery/sendFailures:getUndeliveredContacts') {
+				const data = computed(() => {
+					const current = args?.() as
+						| 'skip'
+						| { offset: number; limit: number; status: 'failed' | 'bounced' }
+						| undefined;
+					return current && current !== 'skip'
+						? page<unknown>(current.status === 'failed' ? failed : bounced, current)
+						: undefined;
+				});
+				return { ...queryResult(undefined), data };
+			}
 			if (
 				name === 'delivery/sends:getOpenedContacts' ||
 				name === 'delivery/sends:getClickedContacts'
@@ -156,6 +225,8 @@ const SENT = {
 };
 
 beforeEach(() => {
+	failureSummary = NO_FAILURES;
+	stats = undefined;
 	timeline = [];
 	duplicateRuns = [];
 	copied = [];
@@ -236,5 +307,75 @@ describe('campaign report wiring', () => {
 		await button(wrapper, 'Next').trigger('click');
 		expect(wrapper.text()).toContain('21-25 of 25');
 		expect(button(wrapper, 'Next').attributes('disabled')).toBeDefined();
+	});
+
+	it('leaves a report where every send arrived as it was', () => {
+		stats = { ...STATS, failed: 0, bounced: 0 };
+		const wrapper = mountReport(SENT);
+		expect(wrapper.find('[data-testid="report-failures"]').exists()).toBe(false);
+		expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
+			'Opened (25)',
+			'Clicked (0)',
+		]);
+	});
+
+	it('counts the sends that could not be sent and the bounces, with their reasons', async () => {
+		failureSummary = FAILURES;
+		stats = STATS;
+		const wrapper = mountReport(SENT);
+		const section = wrapper.find('[data-testid="report-failures"]');
+		expect(section.text()).toContain('25 could not be sent');
+		expect(section.text()).toContain('25 bounced');
+		expect(section.text()).not.toContain('Username and Password');
+
+		const [failedToggle] = section.findAll('[data-testid="report-failures-toggle"]');
+		await failedToggle!.trigger('click');
+		const credentials = section.find('[data-class="credentials"]');
+		expect(credentials.text()).toContain('Provider sign-in refused');
+		expect(credentials.text()).toContain("did not accept Owlat's sign-in");
+		expect(credentials.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery/transport');
+		// The skip the system made by itself says so and links nowhere.
+		const blocklisted = section.find('[data-class="blocklisted"]');
+		expect(blocklisted.text()).toContain('there is nothing to do');
+		expect(blocklisted.find('a').exists()).toBe(false);
+		// The provider's text is one click away, never the headline.
+		expect(credentials.text()).not.toContain('Username and Password');
+		await credentials.find('button[aria-expanded]').trigger('click');
+		expect(credentials.text()).toContain('535 5.7.8 Username and Password not accepted');
+		expect(credentials.text()).toContain('Code: AUTH_FAILED');
+	});
+
+	it('opens the Failed list from the failure line, each row linking to its send', async () => {
+		failureSummary = FAILURES;
+		stats = STATS;
+		const wrapper = mountReport(SENT);
+		expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
+			'Opened (25)',
+			'Clicked (0)',
+			'Failed (25)',
+			'Bounced (25)',
+		]);
+
+		await button(wrapper, 'Show who').trigger('click');
+		expect(wrapper.find('#campaign-report-tab-failed').attributes('aria-selected')).toBe('true');
+		const reasons = wrapper.findAll('[data-testid="undelivered-reason"]').map((r) => r.text());
+		expect(reasons[0]).toBe('Other error');
+		expect(reasons[1]).toBe('Provider sign-in refused');
+		expect(
+			wrapper.find('a[data-to="/dashboard/campaigns/campaign_1/sends/failed_0"]').exists()
+		).toBe(true);
+		await button(wrapper, 'Next').trigger('click');
+		expect(wrapper.text()).toContain('11-20 of 25');
+	});
+
+	it('lists the bounces under their own tab', async () => {
+		failureSummary = FAILURES;
+		stats = STATS;
+		const wrapper = mountReport(SENT);
+		await wrapper.find('#campaign-report-tab-bounced').trigger('click');
+		expect(wrapper.find('[data-testid="undelivered-reason"]').text()).toBe('Hard bounce');
+		expect(
+			wrapper.find('a[data-to="/dashboard/campaigns/campaign_1/sends/bounced_0"]').exists()
+		).toBe(true);
 	});
 });

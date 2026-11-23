@@ -1,92 +1,118 @@
 <script setup lang="ts">
-// The campaign report's contacts card: the Opened / Clicked tabs and the page
-// of contacts under the active one. This section owns the tab, the queries and
-// the offsets.
+// The campaign report's contacts card: the Opened / Clicked / Failed / Bounced
+// tabs and the page of contacts under the active one. This section owns the
+// queries and the offsets; the page may choose the tab (the failure line's
+// "Show who" does).
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import CampaignReportClickedList from '~/components/campaigns/report/ReportClickedList.vue';
 import CampaignReportOpenedList from '~/components/campaigns/report/ReportOpenedList.vue';
+import CampaignReportUndeliveredList from '~/components/campaigns/report/ReportUndeliveredList.vue';
 import { formatNumber } from '~/utils/formatters';
-import { CursorClickIcon, EyeIcon } from '@coolicons/vue';
+import {
+	CircleCloseIcon,
+	CursorClickIcon,
+	EyeIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
+export type ContactTab = 'opened' | 'clicked' | 'failed' | 'bounced';
 
 const props = defineProps<{
 	campaignId: Id<'campaigns'>;
 	/** The campaign's own totals, shown on a tab until its list has loaded. */
 	uniqueOpens: number | undefined;
 	uniqueClicks: number | undefined;
+	failedCount: number | undefined;
+	bouncedCount: number | undefined;
 }>();
+
+const selectedTab = defineModel<ContactTab>('tab', { default: 'opened' });
 
 const { t } = useI18n();
 
-// Tab state for contacts list
-type ContactTab = 'opened' | 'clicked';
-const selectedTab = ref<ContactTab>('opened');
-
-// Pagination state
-const openedOffset = ref(0);
-const clickedOffset = ref(0);
 const pageSize = 10;
+const offsets = ref<Record<ContactTab, number>>({ opened: 0, clicked: 0, failed: 0, bounced: 0 });
 
-// Fetch contacts who opened / clicked — only the active tab's list scans
-// emailSends; the other is skipped until its tab is selected.
-const {
-	data: openedContacts,
-	isLoading: openedLoading,
-	error: openedError,
-	refetch: refetchOpened,
-} = useConvexQuery(api.delivery.sends.getOpenedContacts, () =>
-	selectedTab.value === 'opened'
-		? { campaignId: props.campaignId, limit: pageSize, offset: openedOffset.value }
-		: 'skip'
+// Only the active tab's list is read; the others are skipped until chosen.
+const pageArgs = (tab: ContactTab) => () =>
+	selectedTab.value === tab
+		? { campaignId: props.campaignId, limit: pageSize, offset: offsets.value[tab] }
+		: ('skip' as const);
+
+const opened = useConvexQuery(api.delivery.sends.getOpenedContacts, pageArgs('opened'));
+const clicked = useConvexQuery(api.delivery.sends.getClickedContacts, pageArgs('clicked'));
+const undeliveredArgs = (tab: 'failed' | 'bounced') => () => {
+	const args = pageArgs(tab)();
+	return args === 'skip' ? args : { ...args, status: tab };
+};
+const failed = useConvexQuery(
+	api.delivery.sendFailures.getUndeliveredContacts,
+	undeliveredArgs('failed')
+);
+const bounced = useConvexQuery(
+	api.delivery.sendFailures.getUndeliveredContacts,
+	undeliveredArgs('bounced')
 );
 
-const {
-	data: clickedContacts,
-	isLoading: clickedLoading,
-	error: clickedError,
-	refetch: refetchClicked,
-} = useConvexQuery(api.delivery.sends.getClickedContacts, () =>
-	selectedTab.value === 'clicked'
-		? { campaignId: props.campaignId, limit: pageSize, offset: clickedOffset.value }
-		: 'skip'
+const queries = { opened, clicked, failed, bounced };
+
+// The inactive tabs' lists are skipped, so their counts come from the
+// campaign's own totals until the list has loaded.
+const counts = computed<Record<ContactTab, number>>(() => ({
+	opened: opened.data.value?.total ?? props.uniqueOpens ?? 0,
+	clicked: clicked.data.value?.total ?? props.uniqueClicks ?? 0,
+	failed: failed.data.value?.total ?? props.failedCount ?? 0,
+	bounced: bounced.data.value?.total ?? props.bouncedCount ?? 0,
+}));
+
+const TAB_ICONS: Record<ContactTab, IconComponent> = {
+	opened: EyeIcon,
+	clicked: CursorClickIcon,
+	failed: TriangleWarningIcon,
+	bounced: CircleCloseIcon,
+};
+
+// Failed and Bounced appear only when there is something in them, so a report
+// where every send arrived keeps its two tabs.
+const tabs = computed<ContactTab[]>(() =>
+	(['opened', 'clicked', 'failed', 'bounced'] as const).filter(
+		(tab) =>
+			tab === 'opened' || tab === 'clicked' || counts.value[tab] > 0 || selectedTab.value === tab
+	)
 );
 
-// The inactive tab's list is skipped until it is chosen, so its count comes
-// from the campaign's own totals until the list has loaded.
-const openedCount = computed(() => openedContacts.value?.total ?? props.uniqueOpens ?? 0);
-const clickedCount = computed(() => clickedContacts.value?.total ?? props.uniqueClicks ?? 0);
-
-const CONTACT_TABS: ContactTab[] = ['opened', 'clicked'];
 const contactTabId = (tab: ContactTab) => `campaign-report-tab-${tab}`;
 const contactTabRefs: Partial<Record<ContactTab, HTMLButtonElement | null>> = {};
 const onContactTabKeydown = (event: KeyboardEvent) => {
-	const index = CONTACT_TABS.indexOf(selectedTab.value);
+	const list = tabs.value;
+	const index = list.indexOf(selectedTab.value);
 	let next: number | null = null;
-	const count = CONTACT_TABS.length;
+	const count = list.length;
 	if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % count;
 	else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index - 1 + count) % count;
 	else if (event.key === 'Home') next = 0;
 	else if (event.key === 'End') next = count - 1;
 	if (next === null) return;
 	event.preventDefault();
-	const tab = CONTACT_TABS[next]!;
+	const tab = list[next]!;
 	selectedTab.value = tab;
 	contactTabRefs[tab]?.focus();
 };
 
-// Pagination handlers
-const loadMoreOpened = () => {
-	if (openedContacts.value?.hasMore) openedOffset.value += pageSize;
+const loadNext = (tab: ContactTab) => {
+	if (queries[tab].data.value?.hasMore) offsets.value[tab] += pageSize;
 };
-const loadMoreClicked = () => {
-	if (clickedContacts.value?.hasMore) clickedOffset.value += pageSize;
+const loadPrevious = (tab: ContactTab) => {
+	offsets.value[tab] = Math.max(0, offsets.value[tab] - pageSize);
 };
-const loadPrevOpened = () => {
-	if (openedOffset.value > 0) openedOffset.value = Math.max(0, openedOffset.value - pageSize);
-};
-const loadPrevClicked = () => {
-	if (clickedOffset.value > 0) clickedOffset.value = Math.max(0, clickedOffset.value - pageSize);
-};
+
+const active = computed(() => queries[selectedTab.value]);
+const undeliveredTab = computed(() =>
+	selectedTab.value === 'failed' || selectedTab.value === 'bounced' ? selectedTab.value : null
+);
+const undeliveredQuery = computed(() => (undeliveredTab.value === 'bounced' ? bounced : failed));
 </script>
 
 <template>
@@ -94,87 +120,70 @@ const loadPrevClicked = () => {
 		<!-- Tabs -->
 		<div role="tablist" class="flex border-b border-border-subtle" @keydown="onContactTabKeydown">
 			<button
-				:id="contactTabId('opened')"
-				:ref="(el) => (contactTabRefs.opened = el as HTMLButtonElement | null)"
+				v-for="tab in tabs"
+				:id="contactTabId(tab)"
+				:key="tab"
+				:ref="(el) => (contactTabRefs[tab] = el as HTMLButtonElement | null)"
 				type="button"
 				role="tab"
-				:aria-selected="selectedTab === 'opened'"
+				:aria-selected="selectedTab === tab"
 				aria-controls="campaign-report-contacts"
-				:tabindex="selectedTab === 'opened' ? 0 : -1"
+				:tabindex="selectedTab === tab ? 0 : -1"
 				:class="[
 					'flex-1 px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
-					selectedTab === 'opened'
+					selectedTab === tab
 						? 'text-text-primary font-semibold border-b-2 border-brand'
 						: 'text-text-secondary font-medium hover:text-text-primary',
 				]"
-				@click="selectedTab = 'opened'"
+				@click="selectedTab = tab"
 			>
-				<EyeIcon class="w-4 h-4" aria-hidden="true" />
+				<component :is="TAB_ICONS[tab]" class="w-4 h-4" aria-hidden="true" />
 				{{
-					t('dashboard.campaigns.detail.report.tabs.opened', {
-						count: formatNumber(openedCount),
-					})
-				}}
-			</button>
-			<button
-				:id="contactTabId('clicked')"
-				:ref="(el) => (contactTabRefs.clicked = el as HTMLButtonElement | null)"
-				type="button"
-				role="tab"
-				:aria-selected="selectedTab === 'clicked'"
-				aria-controls="campaign-report-contacts"
-				:tabindex="selectedTab === 'clicked' ? 0 : -1"
-				:class="[
-					'flex-1 px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
-					selectedTab === 'clicked'
-						? 'text-text-primary font-semibold border-b-2 border-brand'
-						: 'text-text-secondary font-medium hover:text-text-primary',
-				]"
-				@click="selectedTab = 'clicked'"
-			>
-				<CursorClickIcon class="w-4 h-4" aria-hidden="true" />
-				{{
-					t('dashboard.campaigns.detail.report.tabs.clicked', {
-						count: formatNumber(clickedCount),
+					t(`dashboard.campaigns.detail.report.tabs.${tab}`, {
+						count: formatNumber(counts[tab]),
 					})
 				}}
 			</button>
 		</div>
 
 		<div id="campaign-report-contacts" role="tabpanel" :aria-labelledby="contactTabId(selectedTab)">
-			<!-- A failed read is not "nobody opened / clicked". -->
+			<!-- A failed read is not "nobody opened / clicked / failed". -->
 			<UiQueryBoundary
-				v-if="selectedTab === 'opened' && openedError"
-				:error="openedError"
-				@retry="refetchOpened"
+				v-if="active.error.value"
+				:error="active.error.value"
+				@retry="active.refetch"
 			/>
-			<!-- Opened Contacts Tab -->
 			<CampaignReportOpenedList
 				v-else-if="selectedTab === 'opened'"
 				:campaign-id="campaignId"
-				:contacts="openedContacts"
-				:loading="openedLoading"
-				:offset="openedOffset"
+				:contacts="opened.data.value"
+				:loading="opened.isLoading.value"
+				:offset="offsets.opened"
 				:page-size="pageSize"
-				@previous="loadPrevOpened"
-				@next="loadMoreOpened"
+				@previous="loadPrevious('opened')"
+				@next="loadNext('opened')"
 			/>
-
-			<UiQueryBoundary
-				v-if="selectedTab === 'clicked' && clickedError"
-				:error="clickedError"
-				@retry="refetchClicked"
-			/>
-			<!-- Clicked Contacts Tab -->
 			<CampaignReportClickedList
 				v-else-if="selectedTab === 'clicked'"
 				:campaign-id="campaignId"
-				:contacts="clickedContacts"
-				:loading="clickedLoading"
-				:offset="clickedOffset"
+				:contacts="clicked.data.value"
+				:loading="clicked.isLoading.value"
+				:offset="offsets.clicked"
 				:page-size="pageSize"
-				@previous="loadPrevClicked"
-				@next="loadMoreClicked"
+				@previous="loadPrevious('clicked')"
+				@next="loadNext('clicked')"
+			/>
+			<CampaignReportUndeliveredList
+				v-else-if="undeliveredTab"
+				:key="undeliveredTab"
+				:campaign-id="campaignId"
+				:kind="undeliveredTab"
+				:contacts="undeliveredQuery.data.value"
+				:loading="undeliveredQuery.isLoading.value"
+				:offset="offsets[undeliveredTab]"
+				:page-size="pageSize"
+				@previous="loadPrevious(undeliveredTab)"
+				@next="loadNext(undeliveredTab)"
 			/>
 		</div>
 	</div>

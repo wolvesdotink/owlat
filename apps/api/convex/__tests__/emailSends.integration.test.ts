@@ -540,3 +540,163 @@ describe('campaign report delivered rule', () => {
 		expect(clicked.total).toBe(stats.clicked);
 	});
 });
+
+// ============ failed and bounced sends ============
+
+describe('campaign report failed and bounced sends', () => {
+	async function seedUndelivered() {
+		const t = convexTest(schema, modules);
+		const ids = await t.run(async (ctx) => {
+			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
+			const otherCampaignId = await ctx.db.insert('campaigns', createTestCampaign());
+			const insert = async (overrides: Record<string, unknown>) => {
+				const contactId = await ctx.db.insert('contacts', createTestContact());
+				return await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({ campaignId, contactId, queuedAt: 1_000, ...overrides })
+				);
+			};
+			const authOld = await insert({
+				status: 'failed',
+				failedAt: 2_000,
+				errorCode: 'AUTH_FAILED',
+				errorMessage: '535 5.7.8 Username and Password not accepted',
+			});
+			const authNew = await insert({
+				status: 'failed',
+				failedAt: 3_000,
+				errorCode: 'AUTH_FAILED',
+				errorMessage: '535 5.7.8 Username and Password not accepted',
+			});
+			const suppressed = await insert({
+				status: 'failed',
+				failedAt: 2_500,
+				errorCode: 'RECIPIENT_SUPPRESSED',
+				errorMessage: 'Recipient suppressed (blocklist) before dispatch',
+			});
+			const hard = await insert({
+				status: 'bounced',
+				sentAt: 1_500,
+				bouncedAt: 4_000,
+				bounceType: 'hard',
+				errorMessage: '550 5.1.1 No such user',
+			});
+			// A bounce written before `bounceType` existed.
+			const legacySoft = await insert({ status: 'bounced', bouncedAt: 5_000 });
+			// Sends that arrived, and another campaign's failure, are not listed.
+			await insert({ status: 'delivered', sentAt: 1_500, deliveredAt: 1_600 });
+			await insert({ status: 'opened', sentAt: 1_500, openedAt: 1_700 });
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId: otherCampaignId,
+					contactId: await ctx.db.insert('contacts', createTestContact()),
+					status: 'failed',
+					errorCode: 'AUTH_FAILED',
+				})
+			);
+			return { campaignId, authOld, authNew, suppressed, hard, legacySoft };
+		});
+		return { t, ...ids };
+	}
+
+	it('groups the failed sends by error code and the bounces by class', async () => {
+		const { t, campaignId } = await seedUndelivered();
+
+		const summary = await t.query(api.delivery.sendFailures.getFailureSummary, { campaignId });
+
+		expect(summary.failed).toEqual({
+			total: 3,
+			reasons: [
+				{
+					errorCode: 'AUTH_FAILED',
+					count: 2,
+					exampleMessage: '535 5.7.8 Username and Password not accepted',
+				},
+				{
+					errorCode: 'RECIPIENT_SUPPRESSED',
+					count: 1,
+					exampleMessage: 'Recipient suppressed (blocklist) before dispatch',
+				},
+			],
+		});
+		expect(summary.bounced.total).toBe(2);
+		expect(summary.bounced.reasons).toEqual(
+			expect.arrayContaining([
+				{ bounceType: 'hard', count: 1, exampleMessage: '550 5.1.1 No such user' },
+				{ bounceType: 'soft', count: 1, exampleMessage: null },
+			])
+		);
+	});
+
+	it('lists one status of one campaign, newest first, a page at a time', async () => {
+		const { t, campaignId, authOld, authNew, suppressed } = await seedUndelivered();
+
+		const first = await t.query(api.delivery.sendFailures.getUndeliveredContacts, {
+			campaignId,
+			status: 'failed',
+			limit: 2,
+		});
+		expect(first.total).toBe(3);
+		expect(first.hasMore).toBe(true);
+		expect(first.sends.map((s) => s._id)).toEqual([authNew, suppressed]);
+		expect(first.sends[0]).toMatchObject({
+			at: 3_000,
+			errorCode: 'AUTH_FAILED',
+			errorMessage: '535 5.7.8 Username and Password not accepted',
+			bounceType: null,
+		});
+
+		const second = await t.query(api.delivery.sendFailures.getUndeliveredContacts, {
+			campaignId,
+			status: 'failed',
+			limit: 2,
+			offset: 2,
+		});
+		expect(second.sends.map((s) => s._id)).toEqual([authOld]);
+		expect(second.hasMore).toBe(false);
+	});
+
+	it('lists the bounces with their class, the legacy one read as soft', async () => {
+		const { t, campaignId, hard, legacySoft } = await seedUndelivered();
+
+		const page = await t.query(api.delivery.sendFailures.getUndeliveredContacts, {
+			campaignId,
+			status: 'bounced',
+		});
+
+		expect(page.sends.map((s) => [s._id, s.bounceType])).toEqual([
+			[legacySoft, 'soft'],
+			[hard, 'hard'],
+		]);
+	});
+
+	it('caps a page at the page limit whatever the caller asks for', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert('campaigns', createTestCampaign());
+			for (let i = 0; i < 60; i++) {
+				await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({
+						campaignId: id,
+						contactId: await ctx.db.insert('contacts', createTestContact()),
+						status: 'failed',
+						errorCode: 'SERVER_ERROR',
+					})
+				);
+			}
+			return id;
+		});
+
+		const page = await t.query(api.delivery.sendFailures.getUndeliveredContacts, {
+			campaignId,
+			status: 'failed',
+			limit: 1_000,
+		});
+
+		expect(page.total).toBe(60);
+		expect(page.sends).toHaveLength(50);
+		expect(page.hasMore).toBe(true);
+	});
+});
