@@ -30,8 +30,8 @@
  * THE END OF THE WAIT. The give-up firing runs the step once more at
  * `waitingUntil`, so a fix made just before the end still sends. A waited step
  * claimed later than {@link WAIT_END_GRACE_MS} after its end (nothing ran at
- * the end, for example while the deployment was down) fails with its reason
- * without running: the setup may have been fixed only after the wait ended,
+ * the end, for example while the deployment was down, or recovery takes over
+ * an attempt that died) fails with its reason without running: the setup may have been fixed only after the wait ended,
  * and the mail would go out later than the wait allows.
  *
  * NO SECOND SEND. A step runs only through the claim, which a `pending` row

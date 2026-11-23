@@ -287,7 +287,8 @@ export const claimStepRun = internalMutation({
 			return { kind: 'ended', reason: 'Retries exhausted' };
 		}
 
-		if (stepRun.status === 'pending' && isWaitLongOver(stepRun, now)) {
+		// A re-check, a release or a recovered attempt of a step that waited.
+		if (isWaitLongOver(stepRun, now)) {
 			await failStepAndCancelRun(ctx, stepRun, stepRun.errorMessage ?? 'Configuration wait ended', {
 				countRunFailure: true,
 				stepFault: true,

@@ -351,6 +351,35 @@ describe('a waiting step never sends twice or to someone it should not', () => {
 		expect((await runOf(t, runId)).endReason).toBe('step_failed');
 	});
 
+	it('an interrupted re-check recovered long after the wait ended fails instead of sending', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId } = await seedRun(t, automationId);
+		await startAndSettle(t, runId);
+		// A re-check claimed the step shortly before its wait ended and died
+		// before sending; recovery only gets to it an hour after the end, once
+		// the setup was fixed.
+		const [stepRun] = await stepRunsOf(t, runId);
+		const endedAt = Date.now() - 60 * MINUTE_MS;
+		await t.run(async (ctx) => {
+			await ctx.db.patch(stepRun!._id, {
+				status: 'executing',
+				retryCount: 0,
+				waitingUntil: endedAt,
+				leaseExpiresAt: Date.now() - 1,
+			});
+		});
+		await NO_DEFAULT_SENDER.fix(t);
+
+		await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		await runDueScheduled(t);
+
+		expect(await sends(t)).toHaveLength(0);
+		const [settled] = await stepRunsOf(t, runId);
+		expect(settled?.status).toBe('failed');
+		expect(settled?.failureReason).toBe('no_default_sender');
+	});
+
 	it('a re-check racing a second firing of the same step sends once', async () => {
 		const t = await setup(NO_DEFAULT_SENDER);
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
