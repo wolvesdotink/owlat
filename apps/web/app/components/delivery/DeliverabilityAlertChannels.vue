@@ -13,7 +13,7 @@
  */
 import { api } from '@owlat/api';
 import { BellIcon } from '@coolicons/vue';
-import { DELIVERABILITY_ALERT_WEBHOOK_PRESET } from '~/composables/useWebhookForm';
+import { DELIVERABILITY_ALERT_WEBHOOK_PRESET } from '~/utils/webhookPresets';
 
 const K = 'components.delivery.deliverabilityAlertChannels';
 const PUSH_DOCS_URL =

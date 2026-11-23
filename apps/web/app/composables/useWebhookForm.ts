@@ -2,6 +2,7 @@ import { computed, ref, reactive } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useWebhookActions } from './useWebhookActions';
+import { DELIVERABILITY_ALERT_WEBHOOK_PRESET } from '~/utils/webhookPresets';
 
 const CREATED_SECRET_KEY = 'webhook-created-secret';
 
@@ -73,12 +74,6 @@ export const WEBHOOK_EVENTS = [
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]['value'];
 
-/**
- * The webhook the Deliverability Center's "Add alert webhook" opens the form
- * for: both deliverability alert events and nothing else, so the operator's
- * on-call endpoint is not flooded with email events.
- */
-export const DELIVERABILITY_ALERT_WEBHOOK_PRESET = 'deliverability-alerts';
 const DELIVERABILITY_ALERT_EVENTS: WebhookEvent[] = [
 	'deliverability.alert_raised',
 	'deliverability.alert_resolved',

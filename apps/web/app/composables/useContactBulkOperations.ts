@@ -3,12 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { BATCH_SIZES } from '~/constants/operations';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo';
-import {
-	buildContactsCsv,
-	downloadCsv,
-	fetchPropertyValuesChunked,
-	type CsvContact,
-} from '~/utils/contactsCsv';
+import type { CsvContact } from '~/utils/contactsCsv';
 
 export function useContactBulkOperations(deps: {
 	bulkSelection: ReturnType<typeof useBulkSelection<Id<'contacts'>>>;
@@ -263,6 +258,10 @@ export function useContactBulkOperations(deps: {
 						api.contacts.organization.listForExportByOrganization,
 						{ search: deps.debouncedSearch.value || undefined }
 					);
+					// The CSV writer (papaparse) is not part of the contacts page; it is
+					// loaded here, after the search above was read.
+					const { buildContactsCsv, downloadCsv, fetchPropertyValuesChunked } =
+						await import('~/utils/contactsCsv');
 					const contactsToExport =
 						allContacts?.filter((c: { _id: string }) =>
 							selectedContactIds!.includes(c._id as Id<'contacts'>)

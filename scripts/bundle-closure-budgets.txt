@@ -280,8 +280,13 @@ deferred 77 ../node_modules/.cache/owlat-i18n/boot/de.json
 deferred 69 ../node_modules/.cache/owlat-i18n/boot/en.json
 deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
+deferred 19 FileUploadModal
+deferred 12 KnowledgeEntryForm
+deferred 18 PostboxMailboxConnectForm
 deferred 36 PostboxUndoSendToast
 deferred 6 SendFailureReason
+deferred 12 TestEmailModal
+deferred 6 UnsavedChangesDialog
 deferred 3 backendConnection
 deferred 58 components/AppCommandPalette.vue
 deferred 21 components/KeyboardShortcutsHelp.vue
@@ -321,6 +326,7 @@ deferred 21 components/transactional/CreateEmailModal.vue
 deferred 19 components/transactional/SenderDialog.vue
 deferred 5 components/transactional/SenderRow.vue
 deferred 14 components/transactional/TemplateSenderCard.vue
+deferred 10 contactsCsv
 deferred 2 en
 deferred 16 layouts/admin.vue
 deferred 3 layouts/compose.vue

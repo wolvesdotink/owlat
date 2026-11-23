@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
@@ -15,6 +16,13 @@ import CampaignWarmupCard from '~/components/campaigns/edit/WarmupCard.vue';
 import { CircleWarningIcon, PaperPlaneIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
+// The test-email dialog opens on a click, so it loads after the page (the
+// route's bundle budget). Not suspensible: it renders on the first pass, and
+// the page's Suspense would otherwise hold the whole page until it arrives.
+const CampaignsTestEmailModal = defineAsyncComponent({
+	loader: () => import('~/components/campaigns/TestEmailModal.vue'),
+	suspensible: false,
+});
 
 useHead({ title: () => t('dashboard.campaigns.detail.edit.pageTitle') });
 
