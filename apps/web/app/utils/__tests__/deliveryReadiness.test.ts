@@ -794,6 +794,40 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		expect(r.gates.find((g) => g.key === 'unsubscribe')).toBeUndefined();
 	});
 
+	it('says a bounce rate over the limit asks for attention and links to the suppressions', () => {
+		const r = deriveDeliveryReadiness(streamInput(viaProvider, { bounceRate: 0.031 }));
+		const g = gate(r, 'bounces');
+		expect(g.status).toBe('attention');
+		expect(g.streams).toEqual(['marketing']);
+		expect(g.actionHref).toBe('/dashboard/audience/suppressions');
+		expect(localized(g.actionLabel!)).toBe('Review suppressions');
+		expect(localized(g.detail)).toBe(
+			'3.10% of your mail bounced, over the 2% limit. Remove addresses that bounce before the next campaign.'
+		);
+		expect(verdict(r, 'marketing').level).toBe('attention');
+		expect(verdict(r, 'transactional').level).toBe('ready');
+	});
+
+	it('passes the bounce gate under the limit, read off the reputation the page loads', () => {
+		const sources = readinessInputFromSources(
+			{ canSend: true },
+			[{ status: 'verified', missing: [] }],
+			null,
+			null,
+			null,
+			{
+				streams: { transactional: viaProvider, campaign: viaProvider },
+				mailServer: null,
+				transactionalSender: verifiedSender,
+				reputation: { bounceRate: 0.004, complaintRate: 0 },
+			}
+		);
+		const g = gate(deriveDeliveryReadiness(sources), 'bounces');
+		expect(g.status).toBe('ready');
+		expect(g.actionHref).toBeNull();
+		expect(localized(g.detail)).toBe('0.40% of your mail bounced, under the 2% limit.');
+	});
+
 	it('gives each stream its own transport gate when only one of them can send', () => {
 		const r = deriveDeliveryReadiness(
 			input({
