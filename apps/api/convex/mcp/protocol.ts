@@ -122,7 +122,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
 	{
 		name: 'read_thread',
 		title: 'Read conversation',
-		description: `Read the conversation a message belongs to, with each message's sender, recipients, date, subject, plain-text body and attachment names. Returns the newest messages, oldest first. Reading does not mark anything as read. ${UNTRUSTED_DESCRIPTION}`,
+		description: `Read the conversation a message belongs to, with each message's sender, recipients, date, subject, plain-text body and attachment names. Returns the newest messages, oldest first. When has_older_messages is true, pass the first returned message's message_id as before_message_id to read the messages before it. Reading does not mark anything as read. ${UNTRUSTED_DESCRIPTION}`,
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -132,6 +132,11 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
 					minimum: 1,
 					maximum: THREAD_MESSAGES_MAX,
 					description: `How many of the newest messages to return, ${THREAD_MESSAGES_DEFAULT} if absent.`,
+				},
+				before_message_id: {
+					type: 'string',
+					description:
+						'A message_id from this conversation: return the messages older than it instead of the newest.',
 				},
 			},
 			required: ['message_id'],
@@ -178,7 +183,7 @@ export type ToolArgs =
 	| { tool: 'list_folders'; mailboxId: string }
 	| { tool: 'list_labels'; mailboxId: string }
 	| { tool: 'search_mail'; query: string; mailboxId?: string; limit: number; cursor?: string }
-	| { tool: 'read_thread'; messageId: string; maxMessages: number }
+	| { tool: 'read_thread'; messageId: string; maxMessages: number; beforeMessageId?: string }
 	| { tool: 'get_action_status'; actionId: string }
 	| WriteToolArgs;
 
@@ -354,7 +359,17 @@ export function parseToolCall(params: Record<string, unknown>): ParsedToolCall {
 			if (!max.ok) {
 				return invalid(`max_messages must be an integer from 1 to ${THREAD_MESSAGES_MAX}.`);
 			}
-			return { ok: true, call: { tool: name, messageId: messageId.value, maxMessages: max.value } };
+			const before = optionalString(args, 'before_message_id');
+			if (!before.ok) return invalid('before_message_id must be a message_id.');
+			return {
+				ok: true,
+				call: {
+					tool: name,
+					messageId: messageId.value,
+					maxMessages: max.value,
+					...(before.value !== undefined ? { beforeMessageId: before.value } : {}),
+				},
+			};
 		}
 		case 'get_action_status': {
 			const actionId = requiredId(args, 'action_id');

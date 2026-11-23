@@ -105,7 +105,8 @@ const {
 		const result = await updateBlock({
 			blockId: blockId.value,
 			name: ctx.name.value.trim(),
-			description: description.value.trim() || undefined,
+			// An empty string removes the description; undefined would keep it.
+			description: description.value.trim(),
 			content: JSON.stringify({
 				blocks: ctx.blocks.value.map((b) => ({
 					id: b.id,

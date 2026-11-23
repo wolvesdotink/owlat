@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { rollUpDeliveryHealth, type DeliveryHealthInputs } from '../health';
-import { DELIVERY_HEALTH_REASONS, type DeliveryHealthReason } from '../healthCopy';
+import {
+	DELIVERY_HEALTH_EXPLANATIONS,
+	DELIVERY_HEALTH_REASONS,
+	type DeliveryHealthReason,
+} from '../healthCopy';
 
 /** A fully-healthy baseline: provider configured, all domains verified, low risk. */
 const HEALTHY: DeliveryHealthInputs = {
@@ -164,5 +168,32 @@ describe('rollUpDeliveryHealth', () => {
 			level: 'ok',
 			reasonCode: 'healthy',
 		});
+	});
+});
+
+describe('DELIVERY_HEALTH_EXPLANATIONS', () => {
+	it('explains every reason the roll-up can name, and no other', () => {
+		expect(Object.keys(DELIVERY_HEALTH_EXPLANATIONS).sort()).toEqual(
+			[...DELIVERY_HEALTH_REASONS].sort()
+		);
+	});
+
+	it.each([...DELIVERY_HEALTH_REASONS])('words %s as one sentence', (reason) => {
+		const { sentence } = DELIVERY_HEALTH_EXPLANATIONS[reason];
+		expect(sentence.trim()).toBe(sentence);
+		expect(sentence).toMatch(/^[A-Z].*\.$/);
+		// One sentence: no full stop before the last character.
+		expect(sentence.slice(0, -1)).not.toMatch(/\.\s/);
+	});
+
+	it('points every problem at a page in the app, and a healthy verdict at none', () => {
+		for (const reason of DELIVERY_HEALTH_REASONS) {
+			const { fix } = DELIVERY_HEALTH_EXPLANATIONS[reason];
+			if (reason === 'healthy') {
+				expect(fix).toBeNull();
+				continue;
+			}
+			expect(fix?.route).toMatch(/^\/dashboard\//);
+		}
 	});
 });

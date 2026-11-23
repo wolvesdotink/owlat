@@ -221,9 +221,12 @@ function buildSearchEverything(ctx: ActionCtx): Tool {
 function buildGetCampaignStats(ctx: ActionCtx): Tool {
 	return tool({
 		description:
-			"Look up performance stats for marketing campaigns matching a name/subject query — sends, deliveries, opens, clicks, bounces, unsubscribes, and open/click rates. `sendHold` is set when the workspace's sending is suspended: `held` means the campaign waits and resumes once sending is restored, `stopped` means the hold outlasted the delivery deadline and the remaining recipients were not mailed.",
+			"Look up performance stats for marketing campaigns matching a name/subject query, or, called without `campaign`, for the latest campaigns (any still sending first, then the most recently sent): use that for questions about the last, latest or most recent campaign. Returns sends, deliveries, opens, clicks, bounces, unsubscribes, and open/click rates. `sendHold` is set when the workspace's sending is suspended: `held` means the campaign waits and resumes once sending is restored, with the reason recorded for the suspension, `stopped` means the hold outlasted the delivery deadline and the remaining recipients were not mailed.",
 		inputSchema: z.object({
-			campaign: z.string().describe('Campaign name, subject, or keyword.'),
+			campaign: z
+				.string()
+				.optional()
+				.describe('Campaign name, subject, or keyword. Leave it out for the latest campaigns.'),
 		}),
 		execute: async ({ campaign }) => {
 			const r = await ctx.runQuery(internal.assistant.insights.campaignStats, {
@@ -256,6 +259,15 @@ function buildGetEmailStats(ctx: ActionCtx): Tool {
 		execute: async ({ days }) => {
 			return ctx.runQuery(internal.assistant.insights.emailStats, { days });
 		},
+	});
+}
+
+function buildGetDeliveryHealth(ctx: ActionCtx): Tool {
+	return tool({
+		description:
+			"Check whether the workspace's email sending is healthy and, if not, why and how to fix it. Use it first when someone asks why mail is not arriving or not going out, why opens or deliveries dropped, or whether sending is healthy. Returns the overall level (ok, warn, error), the main reason with an explanation, the page that shows the problem (`fix.route`) and who can make the fix (`fix.who`: most fixes need a workspace admin, a suspension needs a platform admin of the instance, and missing feedback settings are set in the deployment's environment by whoever runs it), each sending domain's verification status, the 30-day bounce and complaint rates against their limits, and `sendHold` with the recorded reason when sending is suspended or banned.",
+		inputSchema: z.object({}),
+		execute: async () => ctx.runQuery(internal.assistant.insights.deliveryHealth, {}),
 	});
 }
 
@@ -399,6 +411,14 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scrubOutput: true,
 		isRetrieval: false,
 		build: buildGetEmailStats,
+	},
+	{
+		name: 'getDeliveryHealth',
+		scope: 'workspace:read',
+		spend: null,
+		scrubOutput: true,
+		isRetrieval: false,
+		build: buildGetDeliveryHealth,
 	},
 	{
 		name: 'draftEmailReply',

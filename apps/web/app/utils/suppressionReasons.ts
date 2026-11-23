@@ -138,3 +138,8 @@ export function suppressionReasonPresentation(
 	if (reason === 'bounced' && bounceType === 'soft') return SOFT_BOUNCE_PRESENTATION;
 	return SUPPRESSION_REASON_PRESENTATION[reason];
 }
+
+/** Whether a value read from outside, such as a URL query parameter, names a reason. */
+export function isBlockReason(value: unknown): value is BlockReason {
+	return typeof value === 'string' && Object.hasOwn(SUPPRESSION_REASON_PRESENTATION, value);
+}

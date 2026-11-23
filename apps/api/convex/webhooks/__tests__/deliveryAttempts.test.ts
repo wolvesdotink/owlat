@@ -35,6 +35,7 @@ import {
 	deliverabilityAlertRaisedWebhookSchema,
 	deliverabilityAlertResolvedWebhookSchema,
 } from '@owlat/public-contract/schemas';
+import { DELIVERABILITY_NEXT_ACTIONS } from '@owlat/shared';
 
 vi.mock('../../lib/ssrfGuard', async (importOriginal) => ({
 	...(await importOriginal<typeof SsrfGuard>()),
@@ -530,6 +531,7 @@ describe('deliverability alert events', () => {
 				domain: null,
 				emailMayNotArrive: true,
 				isTest: false,
+				nextAction: DELIVERABILITY_NEXT_ACTIONS['deployment.port25'],
 			},
 		});
 		expect(deliverabilityAlertResolvedWebhookSchema.parse(resolved)).toMatchObject({

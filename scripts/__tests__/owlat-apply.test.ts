@@ -382,3 +382,82 @@ describe('owlat restart', () => {
 		expect(result.stdout).toContain('owlat --help');
 	});
 });
+
+describe('the command reference commands', () => {
+	it('toggles a feature pack through the setup image, like feature', async () => {
+		const install = await makeInstall();
+
+		const result = await install.invoke(['pack', 'marketing', 'on']);
+
+		expect(result.code, result.stderr).toBe(0);
+		const pack = (await install.calls()).find((line) => line.startsWith('run '));
+		expect(pack).toMatch(/^run --rm -v \S+:\/opt\/owlat setup-image:test pack marketing on \|/);
+	});
+
+	it('creates the first admin through the setup image on the host network, like sample-data', async () => {
+		const install = await makeInstall();
+
+		const result = await install.invoke([
+			'bootstrap-org',
+			'--email',
+			'admin@example.com',
+			'--password',
+			'fixture-only',
+		]);
+
+		expect(result.code, result.stderr).toBe(0);
+		const bootstrap = (await install.calls()).find((line) => line.startsWith('run '));
+		expect(bootstrap).toContain('run --rm --network host -v ');
+		expect(bootstrap).toContain(
+			'setup-image:test bootstrap-org --email admin@example.com --password fixture-only |'
+		);
+	});
+
+	it.each(['seed', 'reset'])(
+		'refuses %s on an install without dev mode, before anything runs',
+		async (cmd) => {
+			for (const env of [undefined, 'OWLAT_DEV_MODE=false\n', 'OWLAT_DEV_MODE=\n']) {
+				const install = await makeInstall(env === undefined ? {} : { env });
+
+				const result = await install.invoke([cmd, '--assume-yes']);
+
+				expect(result.code).toBe(2);
+				expect(result.stderr).toContain('OWLAT_DEV_MODE=true');
+				expect(result.stderr).toContain('owlat sample-data install');
+				expect(await install.calls()).toEqual([]);
+			}
+		}
+	);
+
+	it.each(['seed', 'reset'])(
+		'runs %s on a dev install, leaving the confirmation to the setup CLI',
+		async (cmd) => {
+			const install = await makeInstall({ env: 'OWLAT_DEV_MODE="true"\n' });
+
+			const result = await install.invoke([cmd]);
+
+			expect(result.code, result.stderr).toBe(0);
+			const call = (await install.calls()).find((line) => line.startsWith('run '));
+			expect(call).toContain('run --rm --network host -v ');
+			expect(call).toContain('-e OWLAT_ASSUME_YES=0 ');
+			expect(call).toContain(`setup-image:test ${cmd} |`);
+		}
+	);
+
+	it.each([
+		[['setup', '--legacy', '--assume-yes'], '--assume-yes'],
+		[['quickstart', '--legacy'], ''],
+		[['doctor', '--legacy'], 'doctor'],
+	])('hands %j to the bash wizard without --legacy', async (args, expected) => {
+		const install = await makeInstall();
+		await writeFile(
+			join(install.dir, 'scripts', 'setup.sh'),
+			`printf '%s\\n' "setup.sh: $*" >> "${install.log}"\n`
+		);
+
+		const result = await install.invoke(args);
+
+		expect(result.code, result.stderr).toBe(0);
+		expect(await install.calls()).toContain(`setup.sh: ${expected}`);
+	});
+});

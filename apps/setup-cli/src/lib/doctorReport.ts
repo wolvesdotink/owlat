@@ -52,6 +52,7 @@ export const DOCTOR_CHECK_IDS = [
 	'version.drift',
 	'mta.egress_address',
 	'env.acme',
+	'compose.docker',
 ] as const;
 
 export type DoctorCheckId = (typeof DOCTOR_CHECK_IDS)[number];
@@ -82,6 +83,7 @@ export type DoctorRemediation =
 	| 'publish_dns_records'
 	| 'start_stack'
 	| 'install_docker_compose'
+	| 'connect_docker'
 	| 'inspect_container'
 	| 'recreate_containers';
 
@@ -111,6 +113,7 @@ const CHECK_META: Record<
 	'compose.override': { component: 'compose', remediation: 'run_setup' },
 	'compose.services': { component: 'compose', remediation: 'start_stack' },
 	'compose.cli': { component: 'compose', remediation: 'install_docker_compose' },
+	'compose.docker': { component: 'compose', remediation: 'connect_docker' },
 	'containers.health': { component: 'containers', remediation: 'inspect_container' },
 	'version.drift': { component: 'version', remediation: 'recreate_containers' },
 };

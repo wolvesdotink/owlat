@@ -89,6 +89,7 @@ function runTool(
 				clientId,
 				messageId: call.messageId,
 				maxMessages: call.maxMessages,
+				...(call.beforeMessageId !== undefined ? { beforeMessageId: call.beforeMessageId } : {}),
 			});
 		case 'get_action_status':
 			return ctx.runQuery(internal.mcp.actions.getStatus, { clientId, actionId: call.actionId });
