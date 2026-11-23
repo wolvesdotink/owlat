@@ -187,13 +187,13 @@ describe('request deadline covers the response body', () => {
 		});
 	});
 
-	it('still reports a malformed body as a parse error, not a transport fault', async () => {
+	it('still reports a malformed body as an unexpected response, not a transport fault', async () => {
 		const body = heldBody();
 		mockHeadersThenBody(200, body);
 		const http = createHttpClient(API_KEY, BASE_URL, 500, { maxRetries: 0 });
 		const call = http.get('/test');
 		body.deliver('{not json');
-		await expect(call).rejects.toMatchObject({ code: 'parse_error' });
+		await expect(call).rejects.toMatchObject({ code: 'unexpected_response' });
 	});
 });
 
@@ -352,12 +352,13 @@ describe('body deadline edge cases', () => {
 		await expect(client().get('/test')).resolves.toMatchObject({ data: { id: 'x' } });
 	});
 
-	it('falls back to a generic error for a non-JSON error body', async () => {
+	it('reports a non-JSON error body as an unexpected response', async () => {
 		vi.spyOn(globalThis, 'fetch').mockImplementation(
 			async () => new Response('<html>Bad Gateway</html>', { status: 400 })
 		);
 		await expect(client().get('/test')).rejects.toMatchObject({
-			message: 'Unknown error',
+			code: 'unexpected_response',
+			bodyExcerpt: '<html>Bad Gateway</html>',
 			statusCode: 400,
 		});
 	});
