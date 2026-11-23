@@ -14,6 +14,7 @@ definePageMeta({
 
 const {
 	mailboxes,
+	currentMailbox,
 	mailboxId,
 	selectMailbox,
 	isLoading: mailboxesLoading,
@@ -26,18 +27,21 @@ const {
 	},
 });
 
+// Forwarding runs on mail Owlat receives itself; a connected mailbox's mail
+// arrives at its provider, so a rule here would never run.
+const isConnected = computed(() => currentMailbox.value?.kind === 'external');
+
 const {
 	data,
 	isLoading,
 	error: listError,
 	refetch: refetchList,
 } = useConvexQuery(api.mail.forwarding.list, () =>
-	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
+	mailboxId.value && !isConnected.value ? { mailboxId: mailboxId.value } : 'skip'
 );
 const rules = computed(() => data.value ?? []);
 
 const newAddress = ref('');
-const keepLocal = ref(true);
 const error = ref<string | null>(null);
 const submitting = ref(false);
 
@@ -60,7 +64,6 @@ async function handleCreate() {
 	const result = await createMutation.run({
 		mailboxId: mailboxId.value,
 		forwardTo: trimmed,
-		keepLocalCopy: keepLocal.value,
 	});
 	submitting.value = false;
 	if (!result.ok) return;
@@ -96,8 +99,20 @@ async function confirmRemove() {
 			</p>
 		</header>
 
+		<p
+			v-if="mailboxId && isConnected"
+			class="card p-6 text-text-secondary"
+			data-testid="connected-mailbox-notice"
+		>
+			{{
+				t('dashboard.preferences.forwarding.connectedNotice', {
+					address: currentMailbox?.address,
+				})
+			}}
+		</p>
+
 		<form
-			v-if="mailboxId"
+			v-if="mailboxId && !isConnected"
 			class="card p-4 mb-4 flex flex-wrap items-end gap-x-2 gap-y-3"
 			@submit.prevent="handleCreate"
 		>
@@ -114,18 +129,13 @@ async function confirmRemove() {
 					:placeholder="t('dashboard.preferences.forwarding.addressPlaceholder')"
 				/>
 			</div>
-			<UiCheckbox
-				v-model="keepLocal"
-				class="pb-2"
-				:label="t('dashboard.preferences.forwarding.keepLocalCopy')"
-			/>
 			<UiButton type="submit" class="ml-auto" :disabled="!newAddress.trim()" :loading="submitting">
 				{{ t('common.add') }}
 			</UiButton>
 		</form>
 		<p v-if="error" class="text-sm text-error mb-4">{{ error }}</p>
 
-		<section v-if="mailboxId" class="card !p-0">
+		<section v-if="mailboxId && !isConnected" class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
 				<h2 class="font-semibold">{{ t('dashboard.preferences.forwarding.activeRules') }}</h2>
 			</header>
@@ -143,16 +153,7 @@ async function confirmRemove() {
 					:key="rule._id"
 					class="px-5 py-3 flex items-center justify-between gap-3"
 				>
-					<div class="flex-1 min-w-0">
-						<p class="font-mono text-sm break-all">→ {{ rule.forwardTo }}</p>
-						<p class="text-xs text-text-tertiary">
-							{{
-								rule.keepLocalCopy
-									? t('dashboard.preferences.forwarding.keepLocalCopy')
-									: t('dashboard.preferences.forwarding.forwardOnly')
-							}}
-						</p>
-					</div>
+					<p class="flex-1 min-w-0 font-mono text-sm break-all">→ {{ rule.forwardTo }}</p>
 					<UiSwitch
 						:model-value="rule.isEnabled"
 						:label="t('dashboard.preferences.forwarding.ruleSwitch', { address: rule.forwardTo })"
