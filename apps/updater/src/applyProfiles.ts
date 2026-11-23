@@ -63,8 +63,8 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 		getActiveProfiles(flags, { deliveryProvider })
 	);
 
-	// The four file operations below are awaited, not the sync twins they used
-	// to be (and not because either is faster here). A fully synchronous handler
+	// The four file operations below are awaited, not their sync twins (and not
+	// because either is faster here). A fully synchronous handler
 	// never yields, so a SIGTERM arriving during it cannot be observed until it
 	// is over — which means the critical-section protection around this endpoint
 	// would be describing a race that could not happen, while the real one, the

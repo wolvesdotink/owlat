@@ -96,8 +96,11 @@ describe('useAuth sign-out', () => {
 	it('keeps them when the sign-out fails', async () => {
 		writeCachedFeatureFlags('https://convex.example', { postbox: true });
 		signOutResult.value = { data: null, error: { message: 'nope' } };
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const { useAuth } = await import('../useAuth');
-		await expect(useAuth().signOut()).rejects.toThrow('nope');
+		// The flow's own line (its key, outside a component), never the server's text.
+		await expect(useAuth().signOut()).rejects.toThrow('shared.useAuth.signOutFailed');
+		warn.mockRestore();
 		expect(localStorage.getItem(FEATURE_FLAG_CACHE_KEY)).not.toBeNull();
 		expect(wipeOfflineCache).not.toHaveBeenCalled();
 	});

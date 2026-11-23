@@ -93,7 +93,7 @@ const DELETION_EMAIL: Record<AppLocale, DeletionEmailCopy> = {
 		deletedItems: [
 			'Alle Kontakte und ihre Daten',
 			'E-Mail-Vorlagen und Kampagnen',
-			'Automatisierungen und Workflows',
+			'Automationen und Workflows',
 			'Auswertungen und Berichte',
 			'API-Schlüssel und Webhooks',
 			'Team-Einstellungen und Konfigurationen',

@@ -2,8 +2,8 @@
  * `bun run dev:seed` — opt-in dummy accounts + demo data for the LOCAL dev stack.
  *
  * `bun run dev:stack` runs it after its first push (`--no-seed` skips that);
- * against any other local backend it runs only when asked, once
- * `bun run dev:api` is up. Re-running it is safe: it is idempotent.
+ * against any other local backend it runs only when asked, once that backend
+ * is up. Re-running it is safe: it is idempotent.
  *
  * The target is one deployment for both the CLI and the HTTP calls
  * (scripts/dev-stack/convexTarget.ts): this checkout's `bun run dev:stack`
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
 		await fetch(siteUrl);
 	} catch {
 		fail(
-			`Local Convex backend is not reachable at ${siteUrl}.\n  Start it first: bun run dev:stack (or bun run dev:api)`
+			`Local Convex backend is not reachable at ${siteUrl}.\n  Start it first: bun run dev:stack`
 		);
 	}
 

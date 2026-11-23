@@ -161,12 +161,11 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	describeReferenceArm: sesReferenceArm,
 
 	/**
-	 * The relay-identity backfill. What the drain in `providerRoutes.ts` used to
-	 * do inline — the same indexed read on the frozen
-	 * `sendingDomainSesIdentities` sibling, the same scheduled
-	 * `sesRelay.provision` — moved behind the contract so the drain can ask it
-	 * of whichever kind the route actually named — a capability question, not an
-	 * identity one.
+	 * The relay-identity backfill: the indexed read on the frozen
+	 * `sendingDomainSesIdentities` sibling and the scheduled `sesRelay.provision`
+	 * sit behind the contract, not inline in the drain in `providerRoutes.ts`, so
+	 * the drain can ask it of whichever kind the route actually named — a
+	 * capability question, not an identity one.
 	 *
 	 * THE EXISTENCE CHECK IS CONDITIONAL ON THE CALLER'S INTENT, not on this
 	 * adapter's taste — see {@link EnsureRelayIdentityOptions}. The drain asks

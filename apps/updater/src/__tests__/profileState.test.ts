@@ -7,8 +7,8 @@ import type * as Security from '../security.js';
 
 /**
  * GET /profile-state — the read-only half of the profile control plane (plan
- * FU4). The banner that says "Services out of sync — Apply & restart" used to
- * live in per-tab memory, so a reload lost it while services were still
+ * FU4). The banner that says "Services out of sync — Apply & restart" cannot
+ * live in per-tab memory, where a reload loses it while services are still
  * drifted; this endpoint reports the APPLIED state (COMPOSE_PROFILES from .env
  * plus `compose ps`) so the drift can be recomputed server-side at any time.
  *

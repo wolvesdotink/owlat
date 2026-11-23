@@ -113,6 +113,7 @@ const contactName = computed(() => {
 					:clicked-links="send.clickedLinks"
 					:error-message="send.errorMessage"
 					:error-code="send.errorCode"
+					:bounce-type="send.bounceType"
 					:provider-message-id="send.providerMessageId"
 					:show-queued="true"
 				/>

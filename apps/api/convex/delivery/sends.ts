@@ -12,7 +12,7 @@ import { hasClicked, hasOpened, hasReachedDelivered } from './sendEngagement';
 // through the `by_campaign` index and stop at this many rows, so a large
 // campaign can't exceed the per-query document read limit. Campaigns with more
 // recipients should use the denormalized stats on the campaign record.
-const CAMPAIGN_REPORT_SEND_SCAN_LIMIT = 10_000;
+export const CAMPAIGN_REPORT_SEND_SCAN_LIMIT = 10_000;
 
 /**
  * Shared prologue of the campaign report queries: require the campaign to

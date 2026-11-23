@@ -8,6 +8,7 @@ import {
 	removeMember as removeOrgMember,
 	updateMemberRole as updateOrgMemberRole,
 } from '~/lib/auth-client';
+import { authErrorCopy } from '~/utils/authErrorCopy';
 import { mapToBetterAuthRole, planOwnershipTransfer, type OrganizationMember } from './roster';
 
 export function useOrganizationMemberActions(options: {
@@ -34,7 +35,7 @@ export function useOrganizationMemberActions(options: {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.removeMemberFailed')
+				authErrorCopy(t, result.error, 'shared.useOrganization.errors.removeMemberFailed')
 			);
 		}
 
@@ -60,7 +61,9 @@ export function useOrganizationMemberActions(options: {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useOrganization.errors.updateRoleFailed'));
+			throw new Error(
+				authErrorCopy(t, result.error, 'shared.useOrganization.errors.updateRoleFailed')
+			);
 		}
 
 		// Refresh members list
@@ -109,7 +112,7 @@ export function useOrganizationMemberActions(options: {
 			});
 			if (result.error) {
 				throw new Error(
-					result.error.message || t('shared.useOrganization.errors.transferOwnershipFailed')
+					authErrorCopy(t, result.error, 'shared.useOrganization.errors.transferOwnershipFailed')
 				);
 			}
 			lastData = result.data;

@@ -98,7 +98,7 @@ route 29 pages/dashboard/automations/[id]/index.vue
 route 55 pages/dashboard/automations/index.vue
 route 11 pages/dashboard/automations/new.vue
 route 63 pages/dashboard/campaigns/[id]/edit.vue
-route 34 pages/dashboard/campaigns/[id]/report.vue
+route 36 pages/dashboard/campaigns/[id]/report.vue
 route 14 pages/dashboard/campaigns/[id]/sends/[sendId].vue
 route 55 pages/dashboard/campaigns/index.vue
 route 352 pages/dashboard/campaigns/new.vue
@@ -280,6 +280,7 @@ deferred 69 ../node_modules/.cache/owlat-i18n/boot/en.json
 deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
 deferred 36 PostboxUndoSendToast
+deferred 6 SendFailureReason
 deferred 3 backendConnection
 deferred 58 components/AppCommandPalette.vue
 deferred 21 components/KeyboardShortcutsHelp.vue
@@ -292,6 +293,9 @@ deferred 45 components/automations/steps/email/Editor.vue
 deferred 3 components/automations/triggers/contact_updated/Editor.vue
 deferred 3 components/automations/triggers/event_received/Editor.vue
 deferred 3 components/automations/triggers/topic_subscribed/Editor.vue
+deferred 7 components/campaigns/report/ReportFailureReasons.vue
+deferred 4 components/campaigns/report/ReportFailures.vue
+deferred 9 components/campaigns/report/ReportUndeliveredList.vue
 deferred 5 components/conditions/contact_property/Editor.vue
 deferred 4 components/conditions/email_activity/Editor.vue
 deferred 5 components/conditions/topic_membership/Editor.vue

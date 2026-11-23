@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
@@ -9,10 +10,13 @@ import CampaignReportComparison from '~/components/campaigns/CampaignReportCompa
 import CampaignSendHoldNotice from '~/components/campaigns/CampaignSendHoldNotice.vue';
 import CampaignSendTimeReport from '~/components/campaigns/CampaignSendTimeReport.vue';
 import CampaignReportArchiveLink from '~/components/campaigns/report/ReportArchiveLink.vue';
-import CampaignReportContacts from '~/components/campaigns/report/ReportContacts.vue';
+import CampaignReportContacts, {
+	type ContactTab,
+} from '~/components/campaigns/report/ReportContacts.vue';
 import CampaignReportHeader from '~/components/campaigns/report/ReportHeader.vue';
 import CampaignReportOpensTimeline from '~/components/campaigns/report/ReportOpensTimeline.vue';
 import { selectPreviousComparable } from '~/utils/campaignReport';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import { ChartBarVerticalIcon, FlameIcon } from '@coolicons/vue';
 
@@ -73,6 +77,31 @@ const { data: stats, isLoading: statsLoading } = useConvexQuery(
 	api.delivery.sends.getStatsByCampaign,
 	() => ({ campaignId: campaignId.value })
 );
+
+// The sends that did not arrive, grouped by reason. Reads only the campaign's
+// failed and bounced rows, so a clean campaign costs two empty index ranges.
+const { data: failureSummary } = useConvexQuery(
+	api.delivery.sendFailures.getFailureSummary,
+	() => ({ campaignId: campaignId.value })
+);
+// The failure line loads only for a campaign that has failed or bounced sends.
+const hasUndelivered = computed(
+	() => (failureSummary.value?.failed.total ?? 0) + (failureSummary.value?.bounced.total ?? 0) > 0
+);
+const CampaignReportFailures = defineAsyncComponent(
+	() => import('~/components/campaigns/report/ReportFailures.vue')
+);
+
+// The contacts card's tab, which the failure line's "Show who" also sets.
+const contactsTab = ref<ContactTab>('opened');
+const contactsCard = ref<{ $el: HTMLElement } | null>(null);
+const showUndelivered = (kind: 'failed' | 'bounced') => {
+	contactsTab.value = kind;
+	contactsCard.value?.$el.scrollIntoView({
+		behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+		block: 'start',
+	});
+};
 
 // The multi-day send plan's day-of-N state. `null` for a campaign with no walk
 // in flight, which renders nothing at all — absence of a plan is not a state
@@ -273,6 +302,12 @@ const currentSnapshot = computed(() => ({
 						:unsubscribed="campaign.statsUnsubscribed ?? 0"
 						:bounced="stats.bounced"
 					/>
+					<CampaignReportFailures
+						v-if="hasUndelivered"
+						class="mt-4"
+						:summary="failureSummary"
+						@show-list="showUndelivered"
+					/>
 					<CampaignAutomatedEngagementNote
 						class="mt-3"
 						:automated-opens="stats.automatedOpens"
@@ -335,9 +370,13 @@ const currentSnapshot = computed(() => ({
 
 				<!-- Contacts List -->
 				<CampaignReportContacts
+					ref="contactsCard"
+					v-model:tab="contactsTab"
 					:campaign-id="campaignId"
 					:unique-opens="stats?.uniqueOpens"
 					:unique-clicks="stats?.uniqueClicks"
+					:failed-count="failureSummary?.failed.total"
+					:bounced-count="failureSummary?.bounced.total"
 				/>
 			</div>
 		</UiQueryBoundary>

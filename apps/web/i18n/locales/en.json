@@ -2875,7 +2875,6 @@
 					"minutesSeconds": "{minutes}m {seconds}s",
 					"seconds": "{seconds}s"
 				},
-				"errorCode": "Code:",
 				"errorDetails": "Error details",
 				"events": {
 					"bounced": "Bounced",
@@ -12259,6 +12258,7 @@
 						"title": "Public archive"
 					},
 					"backToCampaigns": "Back to campaigns",
+					"bouncedEmpty": "No sends bounced",
 					"cancelledLine": "Cancelled before it went out",
 					"clickedEmpty": "No contacts have clicked links in this email yet",
 					"comparison": {
@@ -12275,6 +12275,14 @@
 					"duplicateOperation": "Duplicate campaign",
 					"duplicating": "Duplicating...",
 					"errorTitle": "Couldn't load this report",
+					"failedEmpty": "No sends failed",
+					"failures": {
+						"ariaLabel": "Sends that did not arrive",
+						"notSent": "{count} could not be sent | {count} could not be sent",
+						"bounced": "{count} bounced | {count} bounced",
+						"showWho": "Show who",
+						"sendCount": "{count} send | {count} sends"
+					},
 					"heatmap": {
 						"subtitle": "Visual representation of link engagement",
 						"title": "Link click heatmap"
@@ -12305,7 +12313,9 @@
 						"sending": "Sending"
 					},
 					"tabs": {
+						"bounced": "Bounced ({count})",
 						"clicked": "Clicked ({count})",
+						"failed": "Failed ({count})",
 						"opened": "Opened ({count})"
 					},
 					"timeline": {
@@ -14788,9 +14798,7 @@
 			"errors": {
 				"acceptFailed": "Failed to accept invitation",
 				"unexpected": "An unexpected error occurred",
-				"incompleteLink": "This invitation link is incomplete. Open it again from the invitation email.",
-				"notFound": "This invitation has expired or was already used.",
-				"wrongRecipient": "This invitation was sent to a different address than {email}. Sign in with the invited address to accept it."
+				"incompleteLink": "This invitation link is incomplete. Open it again from the invitation email."
 			},
 			"getStarted": "Get started",
 			"joinTeamInboxOperation": "Join team inbox",
@@ -18086,6 +18094,55 @@
 			"saveSelection": "Save selection as reply",
 			"teamFilesNotAttached": "“{name}” has files. A team inbox reply can’t take them from a saved reply, so attach them by hand."
 		},
+		"sendFailure": {
+			"code": "Code: {code}",
+			"hideProviderText": "Hide error details",
+			"labels": {
+				"addressUnsupported": "Address not supported",
+				"blocklisted": "On the blocklist",
+				"contactDeleted": "Contact deleted",
+				"content": "Content refused",
+				"credentials": "Provider refused the account",
+				"deferredTooLong": "Deferred past the deadline",
+				"deliveryHold": "Held past the deadline",
+				"hardBounce": "Hard bounce",
+				"mailServerUnreachable": "Mail server unreachable",
+				"noFeedback": "No delivery report",
+				"providerRefused": "Refused by the provider",
+				"providerUnavailable": "Provider error",
+				"recipientRefused": "Address refused",
+				"sender": "Sender refused",
+				"sendingSuspended": "Sending suspended",
+				"softBounce": "Soft bounce",
+				"transportMissing": "No delivery transport",
+				"unconfirmed": "Not confirmed",
+				"unknown": "Other error",
+				"unsubscribed": "Unsubscribed"
+			},
+			"reasons": {
+				"addressUnsupported": "The mail server used for this send cannot handle addresses with characters outside plain ASCII, such as ü, in the sender or the recipient.",
+				"blocklisted": "Skipped because the address is on the blocklist. Owlat does this on its own, so there is nothing to do.",
+				"contactDeleted": "Skipped because the contact was deleted before the message went out.",
+				"content": "The provider refused the content of the message, for example as spam. Change the content before you send it again.",
+				"credentials": "The delivery provider refused Owlat's sending credentials or account, so nothing went out through it. Check the settings of the delivery transport.",
+				"deferredTooLong": "Delivery kept being deferred. Owlat retried on its own until the retries or the delivery deadline ran out.",
+				"deliveryHold": "Delivery stayed on hold until the delivery deadline passed. Owlat holds mail on its own while a delivery safety check is open.",
+				"hardBounce": "The receiving server refused the message for good. When the address does not exist, Owlat stops mailing it on its own. If many addresses bounce at once, check delivery health for a problem with your setup.",
+				"mailServerUnreachable": "The mail server could not be reached before the delivery deadline, although Owlat kept retrying.",
+				"noFeedback": "The provider accepted the message, but its delivery reports cannot reach Owlat because the webhook key is not set. Whether it arrived is unknown.",
+				"providerRefused": "The delivery provider reported that it could not send the message. The error details say why.",
+				"providerUnavailable": "Owlat ran into an error while sending through the delivery provider.",
+				"recipientRefused": "The provider refused to send to this address. The error details say why.",
+				"sender": "The provider refused the sender address or its domain. The domain has to be verified before it can send.",
+				"sendingSuspended": "Sending was suspended for this workspace until the delivery deadline passed.",
+				"softBounce": "The receiving server turned the message away for now, for example because the mailbox is full. When the address itself keeps bouncing like this, Owlat pauses it on its own.",
+				"transportMissing": "No delivery transport was ready when the message was due, so it never left.",
+				"unconfirmed": "Owlat could not confirm whether the message went out. It was not sent again, so nobody gets it twice.",
+				"unknown": "The send failed for a reason Owlat does not recognize. The error details say more.",
+				"unsubscribed": "Skipped because the contact unsubscribed before the message went out. Owlat does this on its own."
+			},
+			"showProviderText": "Show error details"
+		},
 		"sendReadiness": {
 			"audienceFits": "Your audience of {audience} fits in today's capacity.",
 			"capacity": {
@@ -19100,6 +19157,29 @@
 					"other": "{count} minutes ago"
 				}
 			}
+		},
+		"authErrors": {
+			"invalidCredentials": "The email address or password is not correct.",
+			"invalidEmail": "Enter a valid email address.",
+			"passwordTooShort": "This password is too short.",
+			"passwordTooLong": "This password is too long.",
+			"emailNotVerified": "Confirm your email address first. The link is in the email we sent you.",
+			"accountExists": "An account with this email address already exists. Sign in instead.",
+			"signUpDisabled": "Registration is turned off on this instance.",
+			"inviteOnly": "You can only register on this instance with an invitation. Ask an admin to invite you.",
+			"setupRequired": "An admin has to finish setting up this instance before anyone can register.",
+			"linkInvalid": "This link has expired or was already used. Request a new one.",
+			"invitationNotFound": "This invitation has expired or was already used.",
+			"wrongRecipient": "This invitation was sent to a different address than {email}. Sign in with the invited address to accept it.",
+			"alreadyMember": "This person is already a member of the workspace.",
+			"alreadyInvited": "This person already has an open invitation.",
+			"notAllowed": "Your role does not allow this.",
+			"roleNotAllowed": "Your role cannot invite people with this role.",
+			"memberNotFound": "This person is no longer a member of the workspace. Reload the list.",
+			"invitationLimit": "The workspace has reached its limit of open invitations.",
+			"membershipLimit": "The workspace has reached its member limit.",
+			"lastOwner": "The workspace needs an owner. Transfer ownership first.",
+			"tooManyAttempts": "Too many attempts. Wait a few minutes, then try again."
 		},
 		"useAuth": {
 			"requestFailed": "Authentication request failed",
