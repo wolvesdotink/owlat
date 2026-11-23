@@ -28,10 +28,10 @@ const contact = (i: number) => ({
 });
 
 /** A page of a 25-row list at the requested offset. */
-function page<T>(make: (i: number) => T, args: { offset: number; limit: number }) {
-	const end = Math.min(args.offset + args.limit, 25);
+function page<T>(make: (i: number) => T, args: { offset: number; limit: number }, total = 25) {
+	const end = Math.min(args.offset + args.limit, total);
 	const sends = Array.from({ length: end - args.offset }, (_, k) => make(args.offset + k));
-	return { sends, total: 25, hasMore: end < 25 };
+	return { sends, total, hasMore: end < total };
 }
 
 const opened = (i: number) => ({
@@ -89,6 +89,8 @@ const NO_FAILURES = {
 };
 
 let failureSummary: typeof FAILURES | typeof NO_FAILURES;
+/** How many failed sends the list query holds; a test may shrink it live. */
+const failedTotal = ref(25);
 /** The funnel's counters; absent (still loading) unless a test sets them. */
 let stats: Record<string, number> | undefined;
 const STATS = {
@@ -159,7 +161,9 @@ function mountReport(campaign: Record<string, unknown>) {
 						| { offset: number; limit: number; status: 'failed' | 'bounced' }
 						| undefined;
 					return current && current !== 'skip'
-						? page<unknown>(current.status === 'failed' ? failed : bounced, current)
+						? current.status === 'failed'
+							? page<unknown>(failed, current, failedTotal.value)
+							: page<unknown>(bounced, current)
 						: undefined;
 				});
 				return { ...queryResult(undefined), data };
@@ -224,6 +228,7 @@ const SENT = {
 
 beforeEach(() => {
 	failureSummary = NO_FAILURES;
+	failedTotal.value = 25;
 	stats = undefined;
 	timeline = [];
 	duplicateRuns = [];
@@ -364,6 +369,23 @@ describe('campaign report wiring', () => {
 		).toBe(true);
 		await button(wrapper, 'Next').trigger('click');
 		expect(wrapper.text()).toContain('11-20 of 25');
+	});
+
+	it('moves back to the last page when the list shrinks under the reader', async () => {
+		failureSummary = FAILURES;
+		stats = STATS;
+		failedTotal.value = 11;
+		const wrapper = mountReport(SENT);
+		await wrapper.find('#campaign-report-tab-failed').trigger('click');
+		await button(wrapper, 'Next').trigger('click');
+		expect(wrapper.text()).toContain('11-11 of 11');
+
+		// One of the eleven is erased: page 2 no longer exists.
+		failedTotal.value = 10;
+		await flushPromises();
+		expect(wrapper.text()).not.toContain('No sends failed');
+		expect(wrapper.text()).toContain('person0@owlat.example');
+		expect(wrapper.text()).toContain('person9@owlat.example');
 	});
 
 	it('lists the bounces under their own tab', async () => {

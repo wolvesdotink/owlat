@@ -108,6 +108,17 @@ const loadPrevious = (tab: ContactTab) => {
 	offsets.value[tab] = Math.max(0, offsets.value[tab] - pageSize);
 };
 
+// A live list can shrink under the reader (an erased contact, a bounce that
+// became a complaint). A page past the end would show the empty state with no
+// Previous, so move back to the last page that still has rows.
+watchEffect(() => {
+	for (const tab of Object.keys(queries) as ContactTab[]) {
+		const total = queries[tab].data.value?.total;
+		if (total === undefined || offsets.value[tab] < total) continue;
+		offsets.value[tab] = Math.max(0, Math.ceil(total / pageSize) - 1) * pageSize;
+	}
+});
+
 const active = computed(() => queries[selectedTab.value]);
 const undeliveredTab = computed(() =>
 	selectedTab.value === 'failed' || selectedTab.value === 'bounced' ? selectedTab.value : null

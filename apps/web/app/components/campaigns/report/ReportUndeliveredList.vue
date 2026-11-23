@@ -73,7 +73,7 @@ const reasonLabel = (send: { errorCode: string | null; bounceType: 'hard' | 'sof
 							<div class="text-sm text-text-tertiary truncate">
 								{{ send.contact.email }}
 							</div>
-							<div class="text-sm text-text-secondary truncate" data-testid="undelivered-reason">
+							<div class="text-sm text-text-secondary" data-testid="undelivered-reason">
 								{{ reasonLabel(send) }}
 							</div>
 						</div>
