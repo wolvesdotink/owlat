@@ -19,16 +19,18 @@ type UndeliveredStatus = 'failed' | 'bounced';
 export const UNDELIVERED_PAGE_LIMIT = 50;
 
 // bounded: one status of one campaign, at most CAMPAIGN_REPORT_SEND_SCAN_LIMIT
-// rows, the same cap the other report queries read under.
+// rows, the same cap the other report queries read under. An erased send
+// (contact erasure) is left out: its send page reads as not found.
 async function readCampaignSendsByStatus(
 	ctx: QueryCtx,
 	campaignId: Id<'campaigns'>,
 	status: UndeliveredStatus
 ): Promise<Doc<'emailSends'>[]> {
-	return await ctx.db
+	const sends = await ctx.db
 		.query('emailSends')
 		.withIndex('by_campaign_and_status', (q) => q.eq('campaignId', campaignId).eq('status', status))
 		.take(CAMPAIGN_REPORT_SEND_SCAN_LIMIT);
+	return sends.filter((send) => send.deletedAt === undefined);
 }
 
 /**
@@ -92,8 +94,9 @@ export const getFailureSummary = authedQuery({
 	},
 });
 
-// One page of a campaign's failed or bounced sends, newest first, with what
-// each send recorded about why.
+// One page of a campaign's failed or bounced sends, newest first, with the
+// code or bounce class each recorded. The provider's text stays on the send
+// page and in the summary's one example per reason.
 // all-members: campaign report data. Every role holds campaigns:manage, and
 // the campaign report pages are open to editors.
 export const getUndeliveredContacts = authedQuery({
@@ -120,7 +123,6 @@ export const getUndeliveredContacts = authedQuery({
 				_id: send._id,
 				at: at(send),
 				errorCode: send.errorCode ?? null,
-				errorMessage: send.errorMessage ?? null,
 				bounceType: args.status === 'bounced' ? bounceClassOf(send) : null,
 				contact: {
 					_id: send.contactId,

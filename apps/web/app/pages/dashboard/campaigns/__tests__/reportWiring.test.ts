@@ -54,7 +54,6 @@ const failed = (i: number) => ({
 	_id: `failed_${i}`,
 	at: START + i * HOUR,
 	errorCode: i === 0 ? 'X_SOMETHING_NEW' : 'AUTH_FAILED',
-	errorMessage: '535 5.7.8 Username and Password not accepted',
 	bounceType: null,
 	contact: contact(i),
 });
@@ -62,7 +61,6 @@ const bounced = (i: number) => ({
 	_id: `bounced_${i}`,
 	at: START + i * HOUR,
 	errorCode: null,
-	errorMessage: '550 5.1.1 No such user',
 	bounceType: 'hard',
 	contact: contact(i),
 });
@@ -331,8 +329,8 @@ describe('campaign report wiring', () => {
 		const [failedToggle] = section.findAll('[data-testid="report-failures-toggle"]');
 		await failedToggle!.trigger('click');
 		const credentials = section.find('[data-class="credentials"]');
-		expect(credentials.text()).toContain('Provider sign-in refused');
-		expect(credentials.text()).toContain("did not accept Owlat's sign-in");
+		expect(credentials.text()).toContain('Provider refused the account');
+		expect(credentials.text()).toContain("refused Owlat's sending credentials");
 		expect(credentials.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery/transport');
 		// The skip the system made by itself says so and links nowhere.
 		const blocklisted = section.find('[data-class="blocklisted"]');
@@ -360,7 +358,7 @@ describe('campaign report wiring', () => {
 		expect(wrapper.find('#campaign-report-tab-failed').attributes('aria-selected')).toBe('true');
 		const reasons = wrapper.findAll('[data-testid="undelivered-reason"]').map((r) => r.text());
 		expect(reasons[0]).toBe('Other error');
-		expect(reasons[1]).toBe('Provider sign-in refused');
+		expect(reasons[1]).toBe('Provider refused the account');
 		expect(
 			wrapper.find('a[data-to="/dashboard/campaigns/campaign_1/sends/failed_0"]').exists()
 		).toBe(true);

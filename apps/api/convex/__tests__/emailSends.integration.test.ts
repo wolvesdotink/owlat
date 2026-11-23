@@ -583,6 +583,14 @@ describe('campaign report failed and bounced sends', () => {
 			});
 			// A bounce written before `bounceType` existed.
 			const legacySoft = await insert({ status: 'bounced', bouncedAt: 5_000 });
+			// An erased send (contact erasure) is left out of both reads.
+			await insert({
+				status: 'failed',
+				failedAt: 9_000,
+				errorCode: 'AUTH_FAILED',
+				deletedAt: 9_500,
+				deletedBy: 'erasure',
+			});
 			// Sends that arrived, and another campaign's failure, are not listed.
 			await insert({ status: 'delivered', sentAt: 1_500, deliveredAt: 1_600 });
 			await insert({ status: 'opened', sentAt: 1_500, openedAt: 1_700 });
@@ -643,7 +651,6 @@ describe('campaign report failed and bounced sends', () => {
 		expect(first.sends[0]).toMatchObject({
 			at: 3_000,
 			errorCode: 'AUTH_FAILED',
-			errorMessage: '535 5.7.8 Username and Password not accepted',
 			bounceType: null,
 		});
 

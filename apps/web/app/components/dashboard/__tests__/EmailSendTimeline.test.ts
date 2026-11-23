@@ -86,7 +86,7 @@ describe('EmailSendTimeline error details', () => {
 		});
 
 		const card = errorCard(w);
-		expect(card.text()).toContain("did not accept Owlat's sign-in");
+		expect(card.text()).toContain("refused Owlat's sending credentials");
 		expect(card.text()).not.toContain('AUTH_FAILED');
 		expect(card.text()).not.toContain('Username and Password');
 		expect(card.find('[data-testid="send-failure-fix"]').attributes('data-to')).toBe(
@@ -133,7 +133,7 @@ describe('EmailSendTimeline error details', () => {
 			errorMessage: '452 4.2.2 Mailbox full',
 		});
 		const card = errorCard(w);
-		expect(card.text()).toContain('Owlat pauses an address');
+		expect(card.text()).toContain('Owlat pauses it on its own');
 		expect(card.find('a').exists()).toBe(false);
 		w.unmount();
 	});

@@ -16,7 +16,8 @@ export const SEND_FAILURE_CLASSES = [
 	'credentials',
 	'transportMissing',
 	'sender',
-	'recipientInvalid',
+	'recipientRefused',
+	'addressUnsupported',
 	'blocklisted',
 	'unsubscribed',
 	'contactDeleted',
@@ -37,9 +38,10 @@ export const SEND_FAILURE_CLASSES = [
 export type SendFailureClass = (typeof SEND_FAILURE_CLASSES)[number];
 
 /**
- * Every code a campaign or transactional send can fail with. The send
- * pipeline writes them (provider adapters, the send completion, the routing
- * re-entry and the lost-send sweep); a code missing here reads as `unknown`.
+ * Every code a campaign or transactional send can fail with that says more
+ * than "it failed". The send pipeline writes them (provider adapters, the send
+ * completion, the routing re-entry and the lost-send sweep); a code missing
+ * here, `WORKPOOL_FAILED` among them, reads as `unknown` with its raw text.
  */
 export const SEND_FAILURE_CODE_CLASSES: Readonly<Record<string, SendFailureClass>> = {
 	AUTH_FAILED: 'credentials',
@@ -47,17 +49,16 @@ export const SEND_FAILURE_CODE_CLASSES: Readonly<Record<string, SendFailureClass
 	SEND_TRANSPORT_UNRESOLVED: 'transportMissing',
 	INVALID_SENDER: 'sender',
 	MANDRILL_REJECT_INVALID_SENDER: 'sender',
-	INVALID_RECIPIENT: 'recipientInvalid',
-	SMTPUTF8_UNSUPPORTED: 'recipientInvalid',
+	INVALID_RECIPIENT: 'recipientRefused',
+	SMTPUTF8_UNSUPPORTED: 'addressUnsupported',
 	RECIPIENT_SUPPRESSED: 'blocklisted',
 	RECIPIENT_UNSUBSCRIBED: 'unsubscribed',
 	CONTACT_DELETED: 'contactDeleted',
 	CONTENT_REJECTED: 'content',
 	PROVIDER_REJECTED: 'providerRefused',
+	PROVIDER_FAILED: 'providerRefused',
 	RATE_LIMIT: 'providerUnavailable',
 	SERVER_ERROR: 'providerUnavailable',
-	PROVIDER_FAILED: 'providerUnavailable',
-	WORKPOOL_FAILED: 'providerUnavailable',
 	DELIVERY_HOLD_EXPIRED: 'deliveryHold',
 	MTA_UNREACHABLE: 'mailServerUnreachable',
 	SENDING_SUSPENDED: 'sendingSuspended',
@@ -116,7 +117,8 @@ export function failureLabelKey(failureClass: SendFailureClass): string {
 
 /**
  * Where a class is fixed. `null` for a class nobody has to fix (the system
- * handled it) or one only the recipient's side can change.
+ * handled it or already retried) or one only the recipient's side can change:
+ * a member is told to ask an admin about every class that has a link.
  */
 export function failureFixLink(failureClass: SendFailureClass): RefusalFixLink | null {
 	switch (failureClass) {
@@ -132,9 +134,6 @@ export function failureFixLink(failureClass: SendFailureClass): RefusalFixLink |
 		case 'mailServerUnreachable':
 			return refusalFixLink('mail_server_not_ready');
 		case 'deliveryHold':
-		case 'deferredTooLong':
-		case 'providerUnavailable':
-		case 'hardBounce':
 			return refusalFixLink('delivery_on_hold');
 		default:
 			return null;
@@ -145,7 +144,7 @@ export function failureFixLink(failureClass: SendFailureClass): RefusalFixLink |
 export interface FailureReasonGroup {
 	failureClass: SendFailureClass;
 	count: number;
-	/** The first code seen in the class, shown beside the provider's text. */
+	/** The code of the reason the provider's text was taken from. */
 	errorCode: string | null;
 	exampleMessage: string | null;
 }
@@ -171,10 +170,14 @@ export function groupFailureReasons(
 			failureClass,
 			count: 0,
 			errorCode: reason.errorCode ?? null,
-			exampleMessage: null,
+			exampleMessage: reason.exampleMessage,
 		};
 		group.count += reason.count;
-		group.exampleMessage ??= reason.exampleMessage;
+		// The code and the text shown beside it come from the same reason.
+		if (group.exampleMessage === null && reason.exampleMessage !== null) {
+			group.errorCode = reason.errorCode ?? null;
+			group.exampleMessage = reason.exampleMessage;
+		}
 		groups.set(failureClass, group);
 	}
 	return [...groups.values()].sort((a, b) => b.count - a.count);

@@ -69,6 +69,12 @@ describe('send failure fixes', () => {
 		expect(failureFixLink(failureClassOfCode('CONTACT_DELETED'))).toBeNull();
 		expect(failureFixLink('softBounce')).toBeNull();
 	});
+
+	it('asks nobody to fix what Owlat already retried', () => {
+		expect(failureFixLink(failureClassOfCode('SERVER_ERROR'))).toBeNull();
+		expect(failureFixLink(failureClassOfCode('DELIVERY_DEADLINE_EXPIRED'))).toBeNull();
+		expect(failureFixLink('hardBounce')).toBeNull();
+	});
 });
 
 describe('send failure classes', () => {
@@ -90,7 +96,7 @@ describe('send failure classes', () => {
 			{
 				failureClass: 'providerUnavailable',
 				count: 6,
-				errorCode: 'RATE_LIMIT',
+				errorCode: 'SERVER_ERROR',
 				exampleMessage: '503 Try later',
 			},
 			{

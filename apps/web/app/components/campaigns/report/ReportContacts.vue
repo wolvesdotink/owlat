@@ -118,7 +118,11 @@ const undeliveredQuery = computed(() => (undeliveredTab.value === 'bounced' ? bo
 <template>
 	<div class="card p-0 overflow-hidden">
 		<!-- Tabs -->
-		<div role="tablist" class="flex border-b border-border-subtle" @keydown="onContactTabKeydown">
+		<div
+			role="tablist"
+			class="flex overflow-x-auto border-b border-border-subtle"
+			@keydown="onContactTabKeydown"
+		>
 			<button
 				v-for="tab in tabs"
 				:id="contactTabId(tab)"
@@ -130,7 +134,7 @@ const undeliveredQuery = computed(() => (undeliveredTab.value === 'bounced' ? bo
 				aria-controls="campaign-report-contacts"
 				:tabindex="selectedTab === tab ? 0 : -1"
 				:class="[
-					'flex-1 px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
+					'flex-1 whitespace-nowrap px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
 					selectedTab === tab
 						? 'text-text-primary font-semibold border-b-2 border-brand'
 						: 'text-text-secondary font-medium hover:text-text-primary',
