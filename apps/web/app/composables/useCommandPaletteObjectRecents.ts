@@ -13,6 +13,7 @@
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import type { PaletteItem } from '~/lib/commandPalette';
+import { isFeatureReachable } from '~/lib/routeFeatureGates';
 import {
 	PALETTE_OBJECT_ICONS,
 	type PaletteObjectRecent,
@@ -126,6 +127,7 @@ export function useRecordPaletteObjectOpen(source: () => PaletteObjectOpen | nul
  */
 export function useCommandPaletteObjectRecents() {
 	const { t } = useI18n();
+	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 	const storageKey = useObjectRecentsKey();
 	const { setActiveMailboxId } = usePostboxActiveMailbox();
 
@@ -140,16 +142,21 @@ export function useCommandPaletteObjectRecents() {
 		void navigateTo(entry.href);
 	}
 
-	/** The rows of the idle palette's "Jump back" group, newest first. */
+	/**
+	 * The rows of the idle palette's "Jump back" group, newest first. A record
+	 * whose feature was switched off since it was opened is left out.
+	 */
 	const jumpBackItems = computed<PaletteItem[]>(() =>
-		jumpBackEntries(entries.value, new Set(onScreen.value.keys())).map((entry) => ({
-			id: `jump:${objectRecentKey(entry)}`,
-			label: entry.title,
-			subtitle: t(`shared.commandPaletteObjectRecents.kinds.${entry.kind}`),
-			icon: PALETTE_OBJECT_ICONS[entry.kind],
-			objectId: entry.id,
-			run: () => reopen(entry),
-		}))
+		jumpBackEntries(entries.value, new Set(onScreen.value.keys()))
+			.filter((entry) => isFeatureReachable(entry.href, isFeatureEnabled))
+			.map((entry) => ({
+				id: `jump:${objectRecentKey(entry)}`,
+				label: entry.title,
+				subtitle: t(`shared.commandPaletteObjectRecents.kinds.${entry.kind}`),
+				icon: PALETTE_OBJECT_ICONS[entry.kind],
+				objectId: entry.id,
+				run: () => reopen(entry),
+			}))
 	);
 
 	const recency = computed(() => objectRecencyIndex(entries.value));

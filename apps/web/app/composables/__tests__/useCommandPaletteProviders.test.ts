@@ -18,6 +18,9 @@ import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { createTestI18n } from '~/__tests__/i18n';
 import { GaugeIcon } from '@coolicons/vue';
+import { ALL_FEATURE_FLAG_KEYS, getDefaultFlags, resolveFlags } from '@owlat/shared/featureFlags';
+import { buildNavigationSections } from '~/lib/dashboardNavigation';
+import { ROUTE_FEATURE_RULES, blockedFeature } from '~/lib/routeFeatureGates';
 
 const { t } = createTestI18n().global;
 
@@ -428,5 +431,58 @@ describe('settings controls', () => {
 		expect(dkim?.subtitle).toBe('Sending domains');
 		dkim?.run();
 		expect(navigations).toEqual(['/dashboard/admin/delivery/domains#sending-domain-list']);
+	});
+});
+
+/**
+ * Every row the composable builds, run for real: none may navigate to a page
+ * the feature middleware would bounce. The sidebar is the real table here, so
+ * its rows are gated as they are in the app.
+ */
+describe('rows and switched-off features', () => {
+	const defaults = resolveFlags(getDefaultFlags());
+	const gated = [
+		...new Set(
+			ROUTE_FEATURE_RULES.flatMap((rule) => [
+				...(rule.required === undefined ? [] : [rule.required].flat()),
+				...(rule.anyOf ?? []),
+			])
+		),
+	];
+	const CASES: ReadonlyArray<readonly [string, string[]]> = [
+		['the defaults', ALL_FEATURE_FLAG_KEYS.filter((flag) => !defaults[flag])],
+		['every flag off', [...ALL_FEATURE_FLAG_KEYS]],
+		...gated.map((flag) => [`only ${flag} off`, [flag]] as const),
+	];
+
+	it.each(CASES)('navigates only to pages that open with %s', async (_name, off) => {
+		disabledFlags = off;
+		role = 'owner';
+		vi.stubGlobal('useDashboardNavigation', () => ({
+			navigationSections: ref(
+				buildNavigationSections({
+					isFeatureEnabled: (flag) => !disabledFlags.includes(flag),
+					isDesktop: false,
+					role,
+				})
+			),
+		}));
+		const rows = await providers();
+		for (const item of [
+			...rows.verbItems.value,
+			...rows.actionItems.value,
+			...rows.contextItems.value,
+			...rows.navItems.value,
+			...rows.settingsItems.value,
+		]) {
+			await item.run();
+		}
+
+		expect(navigations.length).toBeGreaterThan(0);
+		const isEnabled = (flag: string) => !disabledFlags.includes(flag);
+		const bounced = navigations
+			.map((to) => (typeof to === 'string' ? to : (to as { path: string }).path))
+			.filter((href) => blockedFeature(href, isEnabled) !== null);
+		expect(bounced).toEqual([]);
 	});
 });

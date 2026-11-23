@@ -11,7 +11,11 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { PaletteItem } from '~/lib/commandPalette';
 import type { SearchResult } from '~/lib/commandPaletteCore';
+import { isFeatureReachable } from '~/lib/routeFeatureGates';
 import { MailIcon, MegaphoneIcon, SearchIcon, UserIcon, type IconComponent } from '@coolicons/vue';
+
+/** The deep mail search: Mail scope's Enter and the row under the mail hits. */
+export const MAIL_SEARCH_PATH = '/dashboard/postbox/search';
 
 export interface CommandPaletteObjectItemsOptions {
 	/** Record a term in the active scope's recents before navigating away. */
@@ -24,6 +28,10 @@ export interface CommandPaletteObjectItemsOptions {
 
 export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsOptions) {
 	const { t } = useI18n();
+	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+	// The index still holds records of a feature switched off since; a hit on one
+	// would open a page that bounces.
+	const opens = (result: SearchResult) => isFeatureReachable(result.url, isFeatureEnabled);
 	// Selecting a mail hit may cross mailboxes, so the active Postbox mailbox is
 	// pointed at the message's own mailbox before navigating — otherwise the
 	// thread opens against whichever mailbox happened to be selected and reads as
@@ -38,7 +46,7 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 	}
 
 	function buildResultItems(results: SearchResult[]): PaletteItem[] {
-		return results.map((result) => ({
+		return results.filter(opens).map((result) => ({
 			id: `search:${result.id}`,
 			objectId: result.id,
 			label: result.title,
@@ -52,7 +60,7 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 	}
 
 	function buildMailItems(results: SearchResult[]): PaletteItem[] {
-		return results.map((result) => ({
+		return results.filter(opens).map((result) => ({
 			id: `mail:${result.id}`,
 			objectId: result.id,
 			label: result.title.trim() || t('components.appCommandPalette.noSubject'),
@@ -74,7 +82,7 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 	function goToMailSearch(term: string) {
 		options.onRemember(term);
 		options.onNavigate();
-		void navigateTo({ path: '/dashboard/postbox/search', query: { q: term } });
+		void navigateTo({ path: MAIL_SEARCH_PATH, query: { q: term } });
 	}
 
 	function buildSearchMailItem(term: string): PaletteItem {

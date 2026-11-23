@@ -75,9 +75,12 @@ export const ROUTE_FEATURE_RULES: readonly RouteFeatureRule[] = [
 	{ prefix: '/dashboard/preferences/booking', required: 'calendar.booking' },
 ];
 
-/** A link's path: what the router matches, without its query or fragment. */
+/**
+ * A link's path: what the router matches, without its query or fragment, and
+ * lower-cased because the router matches paths case-insensitively.
+ */
 function pathOf(href: string): string {
-	return href.split(/[?#]/, 1)[0]!;
+	return href.split(/[?#]/, 1)[0]!.toLowerCase();
 }
 
 /**

@@ -12,7 +12,8 @@ import { blockedFeature, routeFeatureRule } from '~/lib/routeFeatureGates';
 
 export default defineNuxtRouteMiddleware((to) => {
 	// An ungated path never opens the flag subscription.
-	if (!routeFeatureRule(to.path)) return;
+	const rule = routeFeatureRule(to.path);
+	if (!rule || (rule.required === undefined && !rule.anyOf)) return;
 
 	// Don't bounce if we're already on the dashboard root — avoids redirect loops.
 	if (to.path === '/dashboard') return;

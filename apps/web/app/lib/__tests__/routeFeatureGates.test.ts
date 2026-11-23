@@ -64,6 +64,11 @@ describe('routeFeatureRule', () => {
 		expect(routeFeatureRule('/dashboard/inboxes')).toBeUndefined();
 	});
 
+	it('matches paths case-insensitively, as the router does', () => {
+		expect(blockedFeature('/dashboard/Chat/room1', only())).toBe('chat');
+		expect(blockedFeature('/dashboard/marketing/Deleted', only())).toBeNull();
+	});
+
 	it('reads a link by its path, without query or fragment', () => {
 		expect(blockedFeature('/dashboard/postbox?x=1', only())).toBe('postbox');
 		expect(blockedFeature('/dashboard/preferences/external-account#sending', only())).toBe(

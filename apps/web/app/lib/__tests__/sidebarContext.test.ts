@@ -143,6 +143,14 @@ describe('resolveSwitchTarget', () => {
 		);
 	});
 
+	it('ignores a last-visited route whose feature is now off', () => {
+		const withOverview = [...sections, section('send', ['/dashboard/marketing'])];
+		const campaignsOff = (href: string) => !href.startsWith('/dashboard/campaigns');
+		expect(
+			resolveSwitchTarget('marketing', '/dashboard/campaigns/42', withOverview, campaignsOff)
+		).toBe('/dashboard/marketing');
+	});
+
 	it('ignores a last-visited route the target context does not own', () => {
 		expect(resolveSwitchTarget('inbox', '/dashboard/campaigns', sections)).toBe('/dashboard');
 	});
