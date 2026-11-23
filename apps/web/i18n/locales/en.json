@@ -14390,7 +14390,12 @@
 			"noInbox": {
 				"title": "No inbox to work from yet",
 				"body": "Each inbox you read gets its own workbench here, with what needs you, what moved and what arrived. Connect a mailbox to get started.",
-				"cta": "Connect a mailbox"
+				"cta": "Connect a mailbox",
+				"mailOff": {
+					"title": "Mail is turned off in this workspace",
+					"bodyAdmin": "Each inbox you read gets its own workbench here. Turn on personal mail or external mailboxes in Features to add one.",
+					"bodyMember": "Each inbox you read would get its own workbench here. An admin can turn it on."
+				}
 			}
 		},
 		"answer": {
@@ -16814,7 +16819,7 @@
 					"title": "Email authentication"
 				},
 				"bounces": {
-					"action": "Review suppressions",
+					"action": "Review bounced addresses",
 					"over": "{rate} of your mail bounced, over the {limit} limit. Remove addresses that bounce before the next campaign.",
 					"title": "Bounce rate",
 					"under": "{rate} of your mail bounced, under the {limit} limit."
@@ -16828,7 +16833,7 @@
 					"usedUp": "Today's warm-up capacity is used up; campaigns continue tomorrow."
 				},
 				"complaints": {
-					"action": "Review suppressions",
+					"action": "Review complaints",
 					"over": "{rate} of recipients complained, over the {limit} limit. Clean your list before the next campaign.",
 					"title": "Complaint rate",
 					"under": "{rate} of recipients complained, under the {limit} limit."

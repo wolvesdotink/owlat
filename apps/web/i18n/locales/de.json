@@ -14390,7 +14390,12 @@
 			"noInbox": {
 				"title": "Noch kein Postfach zum Arbeiten",
 				"body": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank: was dich braucht, was sich getan hat und was angekommen ist. Verbinde ein Postfach, um loszulegen.",
-				"cta": "Postfach verbinden"
+				"cta": "Postfach verbinden",
+				"mailOff": {
+					"title": "Mail ist in diesem Workspace ausgeschaltet",
+					"bodyAdmin": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank. Schalte unter Funktionen persönliche Mail oder externe Postfächer ein, um eines hinzuzufügen.",
+					"bodyMember": "Jedes Postfach, das du liest, bekäme hier seine eigene Werkbank. Ein Admin kann Mail einschalten."
+				}
 			}
 		},
 		"answer": {
@@ -16814,7 +16819,7 @@
 					"title": "E-Mail-Authentifizierung"
 				},
 				"bounces": {
-					"action": "Unterdrückungen prüfen",
+					"action": "Unzustellbare Adressen prüfen",
 					"over": "{rate} deiner Mails sind zurückgekommen, über dem Limit von {limit}. Entferne unzustellbare Adressen vor der nächsten Kampagne.",
 					"title": "Bounce-Rate",
 					"under": "{rate} deiner Mails sind zurückgekommen, unter dem Limit von {limit}."
@@ -16828,7 +16833,7 @@
 					"usedUp": "Die Warm-up-Kapazität für heute ist aufgebraucht; Kampagnen laufen morgen weiter."
 				},
 				"complaints": {
-					"action": "Unterdrückungen prüfen",
+					"action": "Beschwerden prüfen",
 					"over": "{rate} der Empfänger haben sich beschwert, über der Grenze von {limit}. Bereinige deine Liste vor der nächsten Kampagne.",
 					"title": "Beschwerderate",
 					"under": "{rate} der Empfänger haben sich beschwert, unter der Grenze von {limit}."

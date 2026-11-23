@@ -92,5 +92,7 @@ export function useFeatureFlag() {
 		isEnabled,
 		isLoading: computed(() => inflight?.isLoading.value ?? false),
 		error: computed(() => inflight?.error.value ?? null),
+		/** Re-read a failed subscription; it stays open, so a late answer also lands. */
+		refetch: () => inflight?.refetch(),
 	};
 }
