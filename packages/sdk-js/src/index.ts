@@ -49,6 +49,8 @@ export type {
 	SendingHoldLiftMode,
 	SendingHoldTrigger,
 	// Topics
+	Topic,
+	ListTopicsParams,
 	DoiStatus,
 	AddToTopicParams,
 	RemoveFromTopicParams,

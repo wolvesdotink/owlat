@@ -10928,6 +10928,10 @@
 								"description": "Sehen, ob diese Instanz senden kann, und warum nicht.",
 								"label": "Status — lesen"
 							},
+							"topicsRead": {
+								"description": "Themen und die IDs auflisten, mit denen du Kontakte hinzufügst.",
+								"label": "Themen — lesen"
+							},
 							"topicsWrite": {
 								"description": "Kontakte zu Themen hinzufügen oder daraus entfernen.",
 								"label": "Themen — schreiben"

@@ -28,6 +28,7 @@ import {
 	addContactToTopicRequestSchema,
 	addToTopicResponseSchema,
 	removeFromTopicResponseSchema,
+	topicSchema,
 } from './topics';
 import {
 	sendTransactionalRequestSchema,
@@ -46,6 +47,7 @@ export type PublicApiScope =
 	| 'events:write'
 	| 'transactional:send'
 	| 'topics:write'
+	| 'topics:read'
 	| 'status:read';
 
 export interface PathParameter {
@@ -101,6 +103,17 @@ const CONTACT_REF: PathParameter = {
 };
 const TOPIC_ID: PathParameter = { name: 'topicId', description: 'The topic ID.' };
 
+const PAGE_LIMIT: QueryParameter = {
+	name: 'limit',
+	description: `Items per page, at most ${MAX_PAGE_SIZE}; a larger value is clamped.`,
+	schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE },
+};
+const PAGE_CURSOR: QueryParameter = {
+	name: 'cursor',
+	description: "The previous page's `pagination.cursor`. Omit it for the first page.",
+	schema: { type: 'string' },
+};
+
 export const PUBLIC_OPERATIONS = [
 	{
 		operationId: 'getHealth',
@@ -132,16 +145,8 @@ export const PUBLIC_OPERATIONS = [
 		scope: 'contacts:read',
 		pathParameters: [],
 		queryParameters: [
-			{
-				name: 'limit',
-				description: `Items per page, at most ${MAX_PAGE_SIZE}; a larger value is clamped.`,
-				schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE },
-			},
-			{
-				name: 'cursor',
-				description: "The previous page's `pagination.cursor`. Omit it for the first page.",
-				schema: { type: 'string' },
-			},
+			PAGE_LIMIT,
+			PAGE_CURSOR,
 			{
 				name: 'search',
 				description: 'Filter by a search query; results are relevance-ordered.',
@@ -311,6 +316,28 @@ export const PUBLIC_OPERATIONS = [
 		},
 		errors: [404],
 		reasons: ['feature_disabled'],
+	},
+	{
+		operationId: 'listTopics',
+		method: 'GET',
+		path: '/api/v1/topics',
+		tag: 'Topics',
+		summary:
+			'List the topics contacts can be subscribed to, a page at a time, oldest first, with the ID the membership routes take.',
+		scope: 'topics:read',
+		pathParameters: [],
+		queryParameters: [PAGE_LIMIT, PAGE_CURSOR],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'One page of topics.',
+			name: 'Topic',
+			data: topicSchema,
+			paginated: true,
+		},
+		errors: [],
+		reasons: [],
 	},
 	{
 		operationId: 'addContactToTopic',

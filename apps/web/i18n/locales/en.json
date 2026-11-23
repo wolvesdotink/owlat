@@ -10928,6 +10928,10 @@
 								"description": "See whether this instance can send, and why not.",
 								"label": "Status — read"
 							},
+							"topicsRead": {
+								"description": "List topics and the IDs used to add contacts to them.",
+								"label": "Topics — read"
+							},
 							"topicsWrite": {
 								"description": "Add or remove contacts on topics.",
 								"label": "Topics — write"

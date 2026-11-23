@@ -18,7 +18,11 @@ import {
 import { isValidEmail, isValidConvexId } from '../lib/inputGuards';
 import { contactRefFromPath, resolveContactRef } from '../contacts/api';
 import type { AddToTopicResponse, RemoveFromTopicResponse } from '@owlat/public-contract';
-import { addContactToTopicRequestSchema, decodeRequest } from '@owlat/public-contract/schemas';
+import {
+	addContactToTopicRequestSchema,
+	decodeRequest,
+	readListQuery,
+} from '@owlat/public-contract/schemas';
 
 /**
  * The `{topicId}` segment of `/api/v1/topics/{topicId}/...`, or the 400 to
@@ -34,6 +38,31 @@ function topicIdFromPath(segment: PathSegment): Id<'topics'> | Response {
 	}
 	return segment.value as Id<'topics'>;
 }
+
+/**
+ * GET /api/v1/topics - List topics, a page at a time, oldest first.
+ *
+ * It needs `topics:read`, a scope of its own, so a key minted to subscribe
+ * contacts keeps exactly what it had and a read-only key learns nothing it
+ * could change. Topics have no search index, so a `search` is refused rather
+ * than answered with the unfiltered list.
+ */
+export const listTopics = createAuthenticatedHandler(
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+		const denied = requireScope(auth, 'topics:read', request.headers.get('Origin'));
+		if (denied) return denied;
+		const query = readListQuery(new URL(request.url).searchParams);
+		if (!query.ok) return errorResponse('invalid_input', query.message);
+		if (query.value.search !== undefined) {
+			return invalidInputResponse('Topics cannot be searched', 'search');
+		}
+		const page = await ctx.runQuery(internal.publicApi.topics.listForApi, {
+			limit: query.value.limit,
+			cursor: query.value.cursor,
+		});
+		return jsonResponse(page);
+	}
+);
 
 /**
  * POST /api/v1/topics/{topicId}/contacts - Add contact to a topic

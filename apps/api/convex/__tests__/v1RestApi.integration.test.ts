@@ -24,7 +24,7 @@ import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
 import type { DispatchRejectionReason } from '../transactional/dispatch';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
-import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
+import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
@@ -105,6 +105,7 @@ const ALL_SCOPES = [
 	'events:write',
 	'transactional:send',
 	'topics:write',
+	'topics:read',
 	'status:read',
 ];
 
@@ -1514,6 +1515,135 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 	});
 });
 
+// ─── GET /api/v1/topics (list) ───────────────────────────────────────────────
+
+describe('GET /api/v1/topics (listTopics → topics:read)', () => {
+	const CREATED_AT = Date.UTC(2026, 10, 2, 8, 0, 0);
+
+	async function seedTopics(t: ReturnType<typeof convexTest>, count: number) {
+		return await t.run(async (ctx) => {
+			const ids = [];
+			for (let i = 1; i <= count; i++) {
+				ids.push(
+					await ctx.db.insert('topics', {
+						name: `Topic ${i}`,
+						...(i % 2 === 1 ? { description: `About topic ${i}` } : {}),
+						...(i === 1 ? { requireDoubleOptIn: true } : {}),
+						displayOrder: i,
+						cachedMemberCount: 40 + i,
+						seedTag: 'demo',
+						createdAt: CREATED_AT + i,
+					})
+				);
+			}
+			return ids;
+		});
+	}
+
+	async function fetchTopics(t: ReturnType<typeof convexTest>, key: string, query = '') {
+		return await t.fetch(`/api/v1/topics${query}`, { method: 'GET', headers: authHeaders(key) });
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/topics', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('listTopics', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that only writes topic membership', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['topics:write']);
+		const res = await fetchTopics(t, key);
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'topics:read' });
+		expectDocumentedReason('listTopics', res, body, 'missing_scope');
+	});
+
+	it('lists each topic with the fields a caller picks one by, and nothing else', async () => {
+		// The deployment serves one organization, so there is no other workspace
+		// whose topics could appear; what is left to rule out is internal fields.
+		const t = setupTest();
+		const [first, second] = await seedTopics(t, 2);
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key);
+		expect(res.status).toBe(200);
+		await expectContractSuccess('listTopics', res);
+		expect(await res.json()).toEqual({
+			data: [
+				{
+					id: first,
+					name: 'Topic 1',
+					description: 'About topic 1',
+					requiresDoubleOptIn: true,
+					createdAt: new Date(CREATED_AT + 1).toISOString(),
+				},
+				{
+					id: second,
+					name: 'Topic 2',
+					description: null,
+					requiresDoubleOptIn: false,
+					createdAt: new Date(CREATED_AT + 2).toISOString(),
+				},
+			],
+			pagination: { limit: 25, totalItems: 2, cursor: null, isDone: true },
+		});
+	});
+
+	it('pages through every topic with limit and cursor', async () => {
+		const t = setupTest();
+		const ids = await seedTopics(t, 3);
+		const key = await seedKey(t, ['topics:read']);
+
+		const first = await (await fetchTopics(t, key, '?limit=2')).json();
+		expect(first.data.map((topic: { id: string }) => topic.id)).toEqual(ids.slice(0, 2));
+		expect(first.pagination).toMatchObject({ limit: 2, totalItems: 3, isDone: false });
+		expect(typeof first.pagination.cursor).toBe('string');
+
+		const next = await fetchTopics(
+			t,
+			key,
+			`?limit=2&cursor=${encodeURIComponent(first.pagination.cursor)}`
+		);
+		await expectContractSuccess('listTopics', next);
+		const second = await next.json();
+		expect(second.data.map((topic: { id: string }) => topic.id)).toEqual(ids.slice(2));
+		expect(second.pagination).toEqual({ limit: 2, totalItems: 3, cursor: null, isDone: true });
+	});
+
+	it('refuses a search, since topics have no search, rather than answering unfiltered', async () => {
+		const t = setupTest();
+		await seedTopics(t, 2);
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key, '?search=Topic%201');
+		expect(res.status).toBe(400);
+		expect((await res.json()).error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a non-positive limit', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key, '?limit=0');
+		expect(res.status).toBe(400);
+	});
+
+	it('leaves the membership routes to topics:write alone', async () => {
+		const t = setupTest();
+		const [topicId] = await seedTopics(t, 1);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('contacts', createTestContact({ email: 'member@example.com' }));
+		});
+		const key = await seedKey(t, ['topics:write']);
+		const res = await t.fetch(`/api/v1/topics/${topicId}/contacts`, {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'member@example.com' }),
+		});
+		await expectContractSuccess('addContactToTopic', res);
+	});
+});
+
 // ─── A failure behind a write route keeps its category ───────────────────────
 
 const FENCE_MESSAGE =
@@ -1909,6 +2039,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	getTransactionalSend,
 	addContactToTopic,
 	removeContactFromTopic,
+	listTopics,
 	getStatus,
 };
 

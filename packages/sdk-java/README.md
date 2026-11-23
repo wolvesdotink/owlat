@@ -175,6 +175,9 @@ SendEventResponse response = owlat.events().send(
 ### Topics
 
 ```java
+// List topics (needs the topics:read scope); getId() is the topic ID below
+PaginatedResponse<Topic> topics = owlat.topics().list();
+
 // Add contact to topic
 AddToTopicResponse response = owlat.topics().addContact(
     AddToTopicParams.builder("topic_123")

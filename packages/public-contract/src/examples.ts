@@ -24,6 +24,7 @@ import type {
 	SendEventResponse,
 	SendTransactionalRequest,
 	SendTransactionalResponse,
+	Topic,
 	TransactionalSendStatus,
 	UpdateContactRequest,
 } from './types';
@@ -141,6 +142,27 @@ export const OPERATION_EXAMPLES = {
 				errorMessage: 'The mail server could not be reached before the delivery deadline passed',
 			},
 		} satisfies ApiResponse<TransactionalSendStatus>,
+	},
+	listTopics: {
+		response: {
+			data: [
+				{
+					id: 'k57t0pic0000000000000000000000',
+					name: 'Product updates',
+					description: 'New features and changes, about once a month.',
+					requiresDoubleOptIn: true,
+					createdAt: '2026-01-10T08:00:00.000Z',
+				},
+				{
+					id: 'k57t0pic0000000000000000000001',
+					name: 'Events',
+					description: null,
+					requiresDoubleOptIn: false,
+					createdAt: '2026-02-01T12:00:00.000Z',
+				},
+			],
+			pagination: { limit: 25, totalItems: 2, cursor: null, isDone: true },
+		} satisfies PaginatedResponse<Topic>,
 	},
 	addContactToTopic: {
 		request: { email: 'ada@example.com' } satisfies AddContactToTopicRequest,

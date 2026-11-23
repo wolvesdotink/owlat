@@ -24,6 +24,7 @@ import type {
 	addContactToTopicRequestSchema,
 	addToTopicResponseSchema,
 	removeFromTopicResponseSchema,
+	topicSchema,
 } from '../topics';
 import type {
 	sendTransactionalRequestSchema,
@@ -69,6 +70,7 @@ describe('schema and type agreement', () => {
 		expectTypeOf<
 			z.output<typeof removeFromTopicResponseSchema>
 		>().toEqualTypeOf<T.RemoveFromTopicResponse>();
+		expectTypeOf<z.output<typeof topicSchema>>().toEqualTypeOf<T.Topic>();
 		expectTypeOf<z.output<typeof deliveryStatusSchema>>().toEqualTypeOf<T.DeliveryStatus>();
 		expectTypeOf<z.output<typeof healthStatusSchema>>().toEqualTypeOf<T.HealthStatus>();
 		expectTypeOf<z.output<typeof paginationMetaSchema>>().toEqualTypeOf<T.PaginationMeta>();

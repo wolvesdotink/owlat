@@ -25,7 +25,7 @@ import {
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
-import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
+import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
@@ -86,7 +86,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: handleCors,
 	});
 
-	// Topics API (single prefix covers all topic sub-paths)
+	// Topics API: the list, and a single prefix for all topic sub-paths
+	http.route({
+		path: '/api/v1/topics',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
 	http.route({
 		pathPrefix: '/api/v1/topics/',
 		method: 'OPTIONS',
@@ -165,6 +171,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 	});
 
 	// ============ TOPICS API ENDPOINTS ============
+
+	// GET /api/v1/topics - List topics
+	http.route({
+		path: '/api/v1/topics',
+		method: 'GET',
+		handler: listTopics,
+	});
 
 	// POST /api/v1/topics/{topicId}/contacts - Add contact to topic
 	http.route({

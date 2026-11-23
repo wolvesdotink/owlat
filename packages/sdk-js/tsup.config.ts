@@ -14,6 +14,7 @@ export default defineConfig({
 			/^@owlat\/public-contract$/,
 			/^\.\/deliveryStatus$/,
 			/^\.\/errorReasons$/,
+			/^\.\/topicList$/,
 			/^\.\/webhookEvents$/,
 		],
 		compilerOptions: { rootDir: '../..' },

@@ -1809,6 +1809,7 @@ import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as publicApi_events from '../publicApi/events.js';
 import type * as publicApi_status from '../publicApi/status.js';
 import type * as publicApi_statusHttp from '../publicApi/statusHttp.js';
+import type * as publicApi_topics from '../publicApi/topics.js';
 import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
@@ -4062,6 +4063,7 @@ declare const fullApi: ApiFromModules<{
 	'publicApi/events': typeof publicApi_events;
 	'publicApi/status': typeof publicApi_status;
 	'publicApi/statusHttp': typeof publicApi_statusHttp;
+	'publicApi/topics': typeof publicApi_topics;
 	'publicApi/v1Http': typeof publicApi_v1Http;
 }> & ApiFromModules<{
 	'push/config': typeof push_config;

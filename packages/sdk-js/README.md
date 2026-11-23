@@ -189,7 +189,17 @@ console.log(`Triggered ${result.triggeredAutomations} automations`);
 
 ### Topics
 
-Manage topic memberships.
+List topics and manage topic memberships.
+
+#### List Topics
+
+Needs the `topics:read` scope. Each topic's `id` is the `topicId` the calls
+below take.
+
+```typescript
+const { data: topics, pagination } = await owlat.topics.list({ limit: 25 });
+console.log(topics.map((topic) => `${topic.id} ${topic.name}`));
+```
 
 #### Add Contact to Topic
 
