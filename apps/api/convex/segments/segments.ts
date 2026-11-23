@@ -230,6 +230,7 @@ export const getInternal = internalQuery({
 export const updateSegmentArgs = {
 	id: v.id('segments'),
 	name: v.optional(v.string()),
+	// Omitted leaves the description as it is; an empty string removes it.
 	description: v.optional(v.string()),
 	filters: v.optional(segmentFiltersValidator),
 };
@@ -261,7 +262,8 @@ export async function updateSegment(
 
 	await ctx.db.patch(args.id, {
 		...(args.name !== undefined && { name: args.name }),
-		...(args.description !== undefined && { description: args.description }),
+		// Patching a field to undefined removes it.
+		...(args.description !== undefined && { description: args.description || undefined }),
 		...(args.filters !== undefined && { filters: args.filters }),
 		updatedAt: Date.now(),
 	});

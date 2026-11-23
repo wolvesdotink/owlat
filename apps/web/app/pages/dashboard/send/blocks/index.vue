@@ -180,7 +180,8 @@ const handleEdit = async () => {
 		const result = await updateBlock({
 			blockId: blockToEdit.value,
 			name: editForm.name.trim(),
-			description: editForm.description.trim() || undefined,
+			// An empty string removes the description; undefined would keep it.
+			description: editForm.description.trim(),
 		});
 		if (!result.ok) return;
 

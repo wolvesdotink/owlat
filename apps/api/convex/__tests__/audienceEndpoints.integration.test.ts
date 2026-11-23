@@ -131,6 +131,21 @@ describe('segment endpoints', () => {
 		]);
 	});
 
+	it('update removes the description when it is sent empty and keeps it when omitted', async () => {
+		const { t } = await seeded();
+		const id = await t.mutation(api.segments.segments.create, {
+			name: 'Readers',
+			description: 'Read a lot',
+			filters: acmeFilters,
+		});
+
+		await t.mutation(api.segments.segments.update, { id, name: 'Renamed' });
+		expect((await written(t)).segments[1]?.description).toBe('Read a lot');
+
+		await t.mutation(api.segments.segments.update, { id, description: '' });
+		expect((await written(t)).segments[1]).not.toHaveProperty('description');
+	});
+
 	it('the reads answer the saved segment and its matching members', async () => {
 		const { t, segmentId } = await seeded();
 		const page = { paginationOpts: { numItems: 10, cursor: null } };

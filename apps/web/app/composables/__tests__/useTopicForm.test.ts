@@ -75,6 +75,14 @@ describe('useTopicForm create and edit', () => {
 		expect(showToast).toHaveBeenCalledWith('dashboard.audience.topics.index.toasts.updated');
 	});
 
+	it('sends an emptied description so the backend removes it', async () => {
+		const form = useTopicForm();
+		form.openEditModal(topic);
+		form.topicForm.description = '  ';
+		await form.handleSave();
+		expect(runs.update).toHaveBeenCalledWith(expect.objectContaining({ description: '' }));
+	});
+
 	it('starts a create from a clean form after an edit', () => {
 		const form = useTopicForm();
 		form.openEditModal(topic);
