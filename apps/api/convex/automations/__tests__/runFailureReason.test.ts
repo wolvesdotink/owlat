@@ -4,7 +4,9 @@
  * Each failure path of the walker records a reason code from a closed set on
  * the failing step run, and `getAutomationRuns` returns it with the stored
  * sentence as detail. Driven through the real walker, retries included, so the
- * code is the one the run ends with. A failed step run written before codes
+ * code is the one the run ends with; a fault of the sending setup fails the
+ * step only once its wait for the fix is over (`configurationWait.ts`). A
+ * failed step run written before codes
  * existed (only an English `errorMessage`) reads as `unknown` with its text.
  */
 
@@ -24,6 +26,7 @@ import {
 	enableFeatures,
 } from '../../__tests__/factories';
 import { MAX_STEPS_PER_RUN, STEP_LEASE_MS } from '../stepOrchestration';
+import { CONFIGURATION_WAIT_MS } from '../configurationWait';
 import { MAX_RETRY_ATTEMPTS, RETRY_DELAYS_MS } from '../../lib/constants';
 import {
 	advanceAndRun,
@@ -104,11 +107,19 @@ async function setup(
 	return t;
 }
 
-/** Start the run and let every retry fire, so the step ends failed. */
-async function runUntilFailed(t: T, runId: Id<'automationRuns'>): Promise<void> {
+/**
+ * Start the run and let every retry fire, so the step ends failed. With
+ * `waitForFix`, also let a configuration fault's wait run out.
+ */
+async function runUntilFailed(
+	t: T,
+	runId: Id<'automationRuns'>,
+	options: { waitForFix?: boolean } = {}
+): Promise<void> {
 	await t.action(internal.automations.stepWalker.startAutomationRun, { automationRunId: runId });
 	await runDueScheduled(t);
 	for (const delay of RETRY_DELAYS_MS) await advanceAndRun(t, delay);
+	if (options.waitForFix) await advanceAndRun(t, CONFIGURATION_WAIT_MS);
 	const run = await runOf(t, runId);
 	expect(run.status).toBe('cancelled');
 	expect(run.endReason).toBe('step_failed');
@@ -131,7 +142,7 @@ describe('the reason a failed run failed', () => {
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
 		const { runId } = await seedRun(t, automationId);
 
-		await runUntilFailed(t, runId);
+		await runUntilFailed(t, runId, { waitForFix: true });
 
 		const failure = await failureOf(t, automationId, runId);
 		expect(failure?.reason).toBe('no_delivery_provider');
@@ -143,7 +154,7 @@ describe('the reason a failed run failed', () => {
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
 		const { runId } = await seedRun(t, automationId);
 
-		await runUntilFailed(t, runId);
+		await runUntilFailed(t, runId, { waitForFix: true });
 
 		const failure = await failureOf(t, automationId, runId);
 		expect(failure?.reason).toBe('domain_not_verified');
@@ -155,7 +166,7 @@ describe('the reason a failed run failed', () => {
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
 		const { runId } = await seedRun(t, automationId);
 
-		await runUntilFailed(t, runId);
+		await runUntilFailed(t, runId, { waitForFix: true });
 
 		expect((await failureOf(t, automationId, runId))?.reason).toBe('sending_not_allowed');
 	});
@@ -165,7 +176,7 @@ describe('the reason a failed run failed', () => {
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
 		const { runId } = await seedRun(t, automationId);
 
-		await runUntilFailed(t, runId);
+		await runUntilFailed(t, runId, { waitForFix: true });
 
 		expect((await failureOf(t, automationId, runId))?.reason).toBe('no_default_sender');
 	});

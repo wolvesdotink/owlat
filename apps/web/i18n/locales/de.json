@@ -12034,7 +12034,15 @@
 						"statusFilterLabel": "Kontakte nach Status filtern",
 						"stepAndTime": "Schritt {number} · {time}",
 						"title": "Kontakte in der Automation",
-						"viewContact": "Kontakt ansehen"
+						"viewContact": "Kontakt ansehen",
+						"waiting": {
+							"domainNotVerified": "Wartet darauf, dass die Domain des Standardabsenders verifiziert ist. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf.",
+							"noDefaultSender": "Wartet darauf, dass ein Standardabsender festgelegt ist. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf.",
+							"noDeliveryProvider": "Wartet darauf, dass der Versand eingerichtet ist. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf.",
+							"sendingNotAllowed": "Wartet darauf, dass der Versand auf dieser Instanz wieder freigegeben ist. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf.",
+							"unknown": "Wartet darauf, dass der Versand wieder funktioniert. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf."
+						},
+						"waitingBadge": "Wartet"
 					},
 					"stats": {
 						"completed": "Abgeschlossen",

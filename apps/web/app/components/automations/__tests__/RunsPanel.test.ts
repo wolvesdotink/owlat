@@ -8,6 +8,10 @@
  * A run a failed step ended says why under its row: one sentence for the coded
  * reason, the page that fixes it (admins only), and the step's stored text
  * behind a disclosure.
+ *
+ * A running run whose email step waits for the sending setup shows as waiting,
+ * not failed or in progress: what it waits for, the same fix link, and when it
+ * gives up.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -19,6 +23,7 @@ import RunsPanel from '../RunsPanel.vue';
 import en from '~~/i18n/locales/en.json';
 import de from '~~/i18n/locales/de.json';
 import { allRunFailureMessageKeys } from '~/lib/automationRunFailure';
+import { formatDateTime } from '~/utils/formatters';
 
 const route = reactive<{ query: Record<string, string | undefined> }>({ query: {} });
 const replace = vi.fn();
@@ -252,5 +257,85 @@ describe('why a failed run failed', () => {
 				);
 		expect(typeof lookup(en)).toBe('string');
 		expect(typeof lookup(de)).toBe('string');
+	});
+});
+
+describe('a run waiting for the sending setup', () => {
+	const until = Date.parse('2026-10-21T09:00:00Z');
+
+	/** One running run whose step waits, as `getAutomationRuns` returns it. */
+	function waitingRun(reason: string) {
+		return {
+			runs: [
+				{
+					...RUNS.runs[0],
+					status: 'running',
+					endReason: undefined,
+					failure: null,
+					waiting: { reason, detail: 'stored sentence', until },
+				},
+			],
+			hasMore: false,
+		};
+	}
+
+	it.each([
+		[
+			'no_delivery_provider',
+			'Waiting for sending to be set up.',
+			'/dashboard/admin/delivery/transport',
+		],
+		[
+			'domain_not_verified',
+			"Waiting for the default sender's domain to be verified.",
+			'/dashboard/admin/delivery/domains',
+		],
+		[
+			'sending_not_allowed',
+			'Waiting for sending to be resumed on this instance.',
+			'/dashboard/admin/delivery',
+		],
+		[
+			'no_default_sender',
+			'Waiting for a default sender to be set.',
+			'/dashboard/admin/instance/general',
+		],
+	] as const)(
+		'%s shows as waiting, says for what and until when, and links the fix',
+		async (reason, sentence, fixTo) => {
+			runsData = waitingRun(reason);
+			const wrapper = await mountPanel();
+
+			const row = wrapper.get('.divide-y > div').text();
+			expect(row).toContain('Waiting');
+			expect(row).not.toContain('Failed');
+			expect(row).not.toContain('In progress');
+			expect(wrapper.find('[data-testid="run-failure"]').exists()).toBe(false);
+			const note = wrapper.get('[data-testid="run-waiting"]');
+			const text = note.get('p').text();
+			expect(text).toContain(sentence);
+			expect(text).toContain(`the run gives up on ${formatDateTime(until)}.`);
+			expect(note.get('[data-testid="run-failure-fix"]').attributes('href')).toBe(fixTo);
+			expect(note.get('details').text()).toContain('stored sentence');
+		}
+	);
+
+	it('words a wait reason this build does not know as a wait, not a failure', async () => {
+		runsData = waitingRun('some_future_reason');
+		const wrapper = await mountPanel();
+		const note = wrapper.get('[data-testid="run-waiting"]');
+		expect(note.get('p').text()).toContain('Waiting for sending to work again.');
+	});
+
+	it('shows a running run that does not wait as in progress, with no note', async () => {
+		runsData = {
+			runs: [{ ...RUNS.runs[0], status: 'running', endReason: undefined, waiting: null }],
+			hasMore: false,
+		};
+		const wrapper = await mountPanel();
+		expect(wrapper.find('[data-testid="run-waiting"]').exists()).toBe(false);
+		const row = wrapper.get('.divide-y > div').text();
+		expect(row).toContain('In progress');
+		expect(row).not.toContain('Waiting');
 	});
 });
