@@ -157,6 +157,19 @@ describe('topics.update', () => {
 		});
 	});
 
+	it('removes the description when it is sent empty', async () => {
+		const t = convexTest(schema, modules);
+		const topicId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert('topics', createTestTopic({ description: 'Release notes' }))
+		);
+
+		await t.mutation(api.topics.topics.update, { topicId, description: '' });
+
+		const topic = await t.run(async (ctx) => await ctx.db.get(topicId));
+		expect(topic?.description).toBeUndefined();
+	});
+
 	it('should throw for non-existent topic', async () => {
 		const t = convexTest(schema, modules);
 		let topicId: Id<'topics'>;

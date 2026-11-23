@@ -147,6 +147,7 @@ export const update = authedMutation({
 	args: {
 		blockId: v.id('emailBlocks'),
 		name: v.optional(v.string()),
+		// Omitted leaves the description as it is; an empty string removes it.
 		description: v.optional(v.string()),
 		content: v.optional(v.string()),
 	},

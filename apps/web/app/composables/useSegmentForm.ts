@@ -192,7 +192,8 @@ export function useSegmentForm() {
 			const result = await updateSegment({
 				id: segmentForm.id as Id<'segments'>,
 				name: segmentForm.name.trim(),
-				description: segmentForm.description.trim() || undefined,
+				// An empty string removes the description; undefined would keep it.
+				description: segmentForm.description.trim(),
 				filters: segmentForm.filters,
 			});
 			isSaving.value = false;

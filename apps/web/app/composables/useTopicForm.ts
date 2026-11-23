@@ -78,7 +78,8 @@ export function useTopicForm() {
 			topicErrors.name = t('dashboard.audience.topics.index.validation.nameRequired');
 			return;
 		}
-		const description = topicForm.description.trim() || undefined;
+		// An edit sends an empty string to remove the description; undefined would keep it.
+		const description = topicForm.description.trim();
 
 		isSaving.value = true;
 		// Send the explicit boolean: `|| undefined` would coerce an unchecked box
@@ -87,7 +88,7 @@ export function useTopicForm() {
 		const result =
 			isEditMode.value && topicForm.id
 				? await updateTopic({ topicId: topicForm.id, name, description, requireDoubleOptIn })
-				: await createTopic({ name, description, requireDoubleOptIn });
+				: await createTopic({ name, description: description || undefined, requireDoubleOptIn });
 		isSaving.value = false;
 		if (!result.ok) return;
 
