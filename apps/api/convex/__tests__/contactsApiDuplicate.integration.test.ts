@@ -5,7 +5,8 @@
  * The contact writers are replaced by ones that throw a chosen error, so each
  * case pins one direction: an `already_exists` Operation error with any wording
  * is a 409 with the fixed message, and an error of another kind is not one even
- * when its text says "already exists".
+ * when its text says "already exists": an Operation error keeps its own
+ * category, and a throw without one is a 500 with the route's fixed message.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -117,10 +118,10 @@ describe.each([
 
 		const res = await call(t);
 
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(422);
 		expect((await res.json()).error).toEqual({
-			category: 'invalid_input',
-			message: failedMessage,
+			category: 'invalid_state',
+			message: 'The import already exists for this list',
 		});
 	});
 
@@ -133,7 +134,7 @@ describe.each([
 
 		const res = await call(t);
 
-		expect(res.status).toBe(400);
-		expect((await res.json()).error.category).toBe('invalid_input');
+		expect(res.status).toBe(500);
+		expect((await res.json()).error).toEqual({ category: 'internal', message: failedMessage });
 	});
 });

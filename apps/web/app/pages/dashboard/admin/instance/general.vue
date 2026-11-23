@@ -147,8 +147,9 @@ async function saveGeneral(draft: GeneralForm): Promise<boolean> {
 
 	const settingsResult = await updateOrganizationSettings({
 		timezone: draft.timezone || undefined,
-		defaultFromName: draft.defaultFromName.trim() || undefined,
-		defaultFromEmail: draft.defaultFromEmail.trim() || undefined,
+		// An empty string clears the stored sender; undefined would keep it.
+		defaultFromName: draft.defaultFromName.trim(),
+		defaultFromEmail: draft.defaultFromEmail.trim(),
 	});
 	if (!settingsResult.ok) return false;
 

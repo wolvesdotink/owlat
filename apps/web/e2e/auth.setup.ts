@@ -132,9 +132,8 @@ setup('bootstrap the instance and save auth state', async ({ page }) => {
 		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 		// welcome.vue writes the cache entry only once `markWelcomed` has
 		// committed, so after this the server knows the owner has been welcomed
-		// and leaving cannot bounce back here. The seeded owner has no mailbox, so
-		// the screen shows the "no mailbox yet" surface, which has no exit link of
-		// its own: navigate the way a member would, by opening the dashboard.
+		// and leaving cannot bounce back here. The seeded owner has no mailbox;
+		// the screen still offers the way out, so leave through it.
 		//
 		// The stamp retries a failure, so wait until it settles: committed (the
 		// cache entry) or given up (the page's retry note). Giving up fails here
@@ -153,7 +152,7 @@ setup('bootstrap the instance and save auth state', async ({ page }) => {
 			await stampOutcome(),
 			'welcome.vue gave up on markWelcomed; see browser-console.txt in the report'
 		).toBe('saved');
-		await page.goto('/dashboard');
+		await page.getByRole('button', { name: 'Go to the Workbench' }).click();
 	}
 
 	await expect(page).toHaveURL(/\/dashboard/);

@@ -139,12 +139,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 /**
- * Upper bound on how long a single 429 `Retry-After` may pause an awaited
- * request. A hostile or misconfigured server can return an arbitrarily large
- * `Retry-After` (e.g. `3600`) and, because the retry sleep is not covered by
- * the per-request AbortController timeout, an un-clamped value would hang the
- * awaited call — including `transactional.send` — for that entire duration per
- * attempt. Mirrors the Java SDK's `MAX_RETRY_AFTER_MS = 30_000L`.
+ * Longest 429 `Retry-After` the client waits out before retrying. A longer one
+ * (a send cap refilling in minutes, a daily cap resetting at midnight) is
+ * thrown at once with its `retryAfter`: sleeping inside an awaited call such as
+ * `transactional.send` would block the caller and, since the retry sleep is not
+ * covered by the request timeout, could not end sooner than the server allows.
+ * Mirrors the Java SDK's `MAX_RETRY_AFTER_MS = 30_000L`.
  */
 const MAX_RETRY_AFTER_MS = 30_000;
 
@@ -155,7 +155,7 @@ const MAX_RETRY_AFTER_MS = 30_000;
  * idempotency key, since a retry would duplicate the send. GET, PUT and DELETE
  * are idempotent by HTTP semantics and safe to repeat.
  *
- * A 429 (rate-limited) is always retryable regardless of method — it means the
+ * A 429 (rate-limited) is retryable regardless of method — it means the
  * request was rejected before processing, so replaying it cannot duplicate work.
  */
 const IDEMPOTENT_METHODS = new Set<HttpMethod>(['GET', 'PUT', 'DELETE']);
@@ -392,13 +392,19 @@ export function createHttpClient(
 
 				lastError = createError(message, category, response.status, rateLimit, retryAfter, data);
 
+				// A 429 asking for a longer wait than the client sleeps cannot be
+				// outwaited by retrying: hand the caller its `retryAfter` at once.
+				if (response.status === 429 && retryAfter && retryAfter * 1000 > MAX_RETRY_AFTER_MS) {
+					throw lastError;
+				}
+
 				// Retry on transient errors (429 respects Retry-After, 5xx) — but
 				// 5xx only for replay-safe requests, so a POST the server may have
 				// already applied is never replayed without an idempotency key.
 				if (isRetryable(replaySafe, response.status) && attempt < maxRetries) {
 					const delay =
 						response.status === 429 && retryAfter
-							? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS)
+							? retryAfter * 1000
 							: // oxlint-disable-next-line owlat/no-inline-backoff -- the published SDK cannot depend on the private @owlat/shared
 								initialDelayMs * Math.pow(backoffMultiplier, attempt);
 					await sleep(delay);

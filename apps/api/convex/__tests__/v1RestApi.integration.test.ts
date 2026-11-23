@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { createTestContact, createTestTopic, createTestTransactionalEmail } from './factories';
@@ -18,6 +18,33 @@ import { sendTransactional } from '../transactional/api';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
+import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
+import type * as ContactEditModule from '../contacts/contactEdit';
+import type * as MembershipShellsModule from '../topics/membershipShells';
+
+// A backend fault the route did not cause: when `fault.raise` is set, the
+// contact writer and the topic-membership writer throw it instead of running.
+const fault = vi.hoisted(() => ({ raise: null as null | (() => never) }));
+vi.mock('../contacts/contactEdit', async (importOriginal) => {
+	const original = await importOriginal<typeof ContactEditModule>();
+	return {
+		...original,
+		createContactStrict: async (...args: Parameters<typeof original.createContactStrict>) => {
+			if (fault.raise) fault.raise();
+			return await original.createContactStrict(...args);
+		},
+	};
+});
+vi.mock('../topics/membershipShells', async (importOriginal) => {
+	const original = await importOriginal<typeof MembershipShellsModule>();
+	return {
+		...original,
+		addContactImpl: async (...args: Parameters<typeof original.addContactImpl>) => {
+			if (fault.raise) fault.raise();
+			return await original.addContactImpl(...args);
+		},
+	};
+});
 
 /**
  * End-to-end tests for the public `/api/v1/*` REST API, driven through
@@ -141,6 +168,7 @@ const DEEPLY_NESTED_JSON = `${'['.repeat(6000)}0${']'.repeat(6000)}`;
 
 const SAVED_ENV = { ...process.env };
 beforeEach(() => {
+	fault.raise = null;
 	// Some handlers read SITE_URL via lib/env getOptional — keep it unset so the
 	// optional read returns undefined rather than throwing.
 	delete process.env['SITE_URL'];
@@ -704,6 +732,30 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
 	});
+
+	it.each([
+		['a non-ASCII character', 'café'],
+		['a leading $', '$source'],
+		['more than 1024 characters', 'k'.repeat(1025)],
+	])(
+		'400 invalid_input for an eventProperties key with %s, which Convex cannot store (not 500)',
+		async (_label, propertyName) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['events:write']);
+			const res = await t.fetch('/api/v1/events', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: JSON.stringify({
+					email: 'keys@example.com',
+					eventName: 'signed_up',
+					createContactIfNotExists: true,
+					eventProperties: { [propertyName]: 'x' },
+				}),
+			});
+			expect(res.status).toBe(400);
+			expect((await res.json()).error.category).toBe('invalid_input');
+		}
+	);
 
 	it('400 invalid_input for a deeply nested eventProperties value (not 500)', async () => {
 		const t = setupTest();
@@ -1285,6 +1337,145 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
 	});
+});
+
+// ─── A failure behind a write route keeps its category ───────────────────────
+
+const FENCE_MESSAGE =
+	'This workspace is being deleted. Changes are not accepted until the deletion has finished.';
+
+describe('a write route answers a backend failure by its category, not as invalid_input', () => {
+	async function seedWriteFixtures(t: ReturnType<typeof setupTest>) {
+		const key = await seedKey(t, ALL_SCOPES);
+		const { topicId, contactId } = await t.run(async (ctx) => ({
+			topicId: await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false })),
+			contactId: await ctx.db.insert('contacts', createTestContact({ email: 'held@example.com' })),
+		}));
+		return { key, topicId, contactId };
+	}
+
+	type Fixtures = Awaited<ReturnType<typeof seedWriteFixtures>>;
+	const writeRoutes: Array<[string, (f: Fixtures) => [string, RequestInit]]> = [
+		[
+			'POST /contacts',
+			(f) => [
+				'/api/v1/contacts',
+				{ method: 'POST', headers: authHeaders(f.key), body: '{"email":"fresh@example.com"}' },
+			],
+		],
+		[
+			'PUT /contacts/{id}',
+			(f) => [
+				`/api/v1/contacts/${f.contactId}`,
+				{ method: 'PUT', headers: authHeaders(f.key), body: '{"firstName":"Renamed"}' },
+			],
+		],
+		[
+			'DELETE /contacts/{id}',
+			(f) => [`/api/v1/contacts/${f.contactId}`, { method: 'DELETE', headers: authHeaders(f.key) }],
+		],
+		[
+			'POST /events',
+			(f) => [
+				'/api/v1/events',
+				{
+					method: 'POST',
+					headers: authHeaders(f.key),
+					body: '{"email":"fresh@example.com","eventName":"signed_up","createContactIfNotExists":true}',
+				},
+			],
+		],
+		[
+			'POST /topics/{id}/contacts',
+			(f) => [
+				`/api/v1/topics/${f.topicId}/contacts`,
+				{ method: 'POST', headers: authHeaders(f.key), body: `{"contactId":"${f.contactId}"}` },
+			],
+		],
+	];
+
+	it.each(writeRoutes)(
+		'%s keeps the invalid_state (422) of a write refused by the deletion fence',
+		async (_name, request) => {
+			const t = setupTest();
+			const fixtures = await seedWriteFixtures(t);
+			await t.run((ctx) => openWorkspaceDeletionFence(ctx));
+
+			const res = await t.fetch(...request(fixtures));
+
+			expect(res.status).toBe(422);
+			const body: unknown = await res.json();
+			expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+			expect(body).toMatchObject({
+				error: {
+					category: 'invalid_state',
+					message: FENCE_MESSAGE,
+					data: { reason: 'workspace_deletion_in_progress' },
+				},
+			});
+		}
+	);
+
+	it('DELETE /topics/{id}/contacts/{x} keeps the invalid_state (422) of a write refused by the deletion fence', async () => {
+		const t = setupTest();
+		const { key, topicId, contactId } = await seedWriteFixtures(t);
+		const added = await t.fetch(`/api/v1/topics/${topicId}/contacts`, {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ contactId }),
+		});
+		expect(added.status).toBe(201);
+		await t.run((ctx) => openWorkspaceDeletionFence(ctx));
+
+		const res = await t.fetch(`/api/v1/topics/${topicId}/contacts/${contactId}`, {
+			method: 'DELETE',
+			headers: authHeaders(key),
+		});
+
+		expect(res.status).toBe(422);
+		expect((await res.json()).error.category).toBe('invalid_state');
+	});
+
+	it.each([
+		[
+			'POST /events',
+			'Failed to send event',
+			(f: Fixtures): [string, RequestInit] => [
+				'/api/v1/events',
+				{
+					method: 'POST',
+					headers: authHeaders(f.key),
+					body: '{"email":"fresh@example.com","eventName":"signed_up","createContactIfNotExists":true}',
+				},
+			],
+		],
+		[
+			'POST /topics/{id}/contacts',
+			'Failed to add contact to topic',
+			(f: Fixtures): [string, RequestInit] => [
+				`/api/v1/topics/${f.topicId}/contacts`,
+				{ method: 'POST', headers: authHeaders(f.key), body: `{"contactId":"${f.contactId}"}` },
+			],
+		],
+	])(
+		'%s answers 500 internal, with a fixed message, for a throw that carries no category',
+		async (_name, message, request) => {
+			const t = setupTest();
+			const fixtures = await seedWriteFixtures(t);
+			fault.raise = () => {
+				throw new Error('storage node unreachable: shard-canary-41');
+			};
+
+			const res = await t.fetch(...request(fixtures));
+
+			expect(res.status).toBe(500);
+			const raw = await res.text();
+			const body: unknown = JSON.parse(raw);
+			expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+			expect(body).toEqual({ error: { category: 'internal', message } });
+			expect(raw).not.toContain('shard-canary');
+		}
+	);
 });
 
 // ─── A single all-scope key works across every route ─────────────────────────

@@ -5,7 +5,7 @@ import {
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
-import { jsonResponse, errorResponse } from '../auth/apiResponses';
+import { jsonResponse, errorResponse, errorResponseFromThrow } from '../auth/apiResponses';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import type { SendEventResponse } from '@owlat/public-contract';
 import { decodeRequest, sendEventRequestSchema } from '@owlat/public-contract/schemas';
@@ -15,6 +15,16 @@ import {
 	replayHeaders,
 	resolveIdempotency,
 } from '../auth/apiRequestReceipts';
+
+/**
+ * Convex refuses an object key that is longer than 1024 characters, starts
+ * with `$`, or holds a character outside printable ASCII, and it throws while
+ * serializing the mutation's arguments. The contract accepts any string key,
+ * so the handler checks them before the call and answers the caller's 400.
+ */
+function isStorablePropertyName(name: string): boolean {
+	return name.length <= 1024 && !name.startsWith('$') && /^[\x20-\x7e]*$/.test(name);
+}
 
 /**
  * POST /api/v1/events - Send an event to trigger automations
@@ -44,6 +54,12 @@ export const sendEvent = createAuthenticatedHandler(
 		if (!isValidEmail(body.email)) {
 			return errorResponse('invalid_input', 'Invalid email format');
 		}
+		if (!Object.keys(body.eventProperties ?? {}).every(isStorablePropertyName)) {
+			return errorResponse(
+				'invalid_input',
+				'eventProperties keys must be printable ASCII, at most 1024 characters, and must not start with "$"'
+			);
+		}
 
 		const createContactIfNotExists = body.createContactIfNotExists ?? false;
 		const idempotency = await resolveIdempotency(ctx, idempotencyKey.key, 'events', () => ({
@@ -64,9 +80,8 @@ export const sendEvent = createAuthenticatedHandler(
 				createContactIfNotExists,
 				...(idempotency ? { idempotency } : {}),
 			});
-		} catch {
-			// Locked error envelope — do not echo the raw internal error message.
-			return errorResponse('invalid_input', 'Failed to send event');
+		} catch (error) {
+			return errorResponseFromThrow(error, 'Failed to send event');
 		}
 
 		if (!result.ok) {

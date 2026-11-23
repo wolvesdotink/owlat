@@ -19,13 +19,15 @@ export interface OwlatConfig {
 
 	/**
 	 * Automatic retry configuration for transient failures, with exponential
-	 * backoff. A 429 is always retried (it respects `Retry-After`). A 5xx or
-	 * network/timeout failure is retried for idempotent methods (GET/PUT/DELETE)
-	 * and for a `POST` send (`transactional.send`, `events.send`) called with an
-	 * `idempotencyKey`, which the server applies at most once. A send without a
-	 * key is never replayed after a 5xx or network failure, since a retry could
-	 * duplicate it. Set to `false` to disable retries entirely. Defaults to 2
-	 * retries.
+	 * backoff. A 429 is retried after its `Retry-After`, or with backoff when it
+	 * has none; a 429 whose `Retry-After` is over 30 seconds is thrown at once
+	 * as a `RateLimitError` carrying `retryAfter`, so you can schedule the
+	 * retry yourself. A 5xx or network/timeout failure is retried for
+	 * idempotent methods (GET/PUT/DELETE) and for a `POST` send
+	 * (`transactional.send`, `events.send`) called with an `idempotencyKey`,
+	 * which the server applies at most once. A send without a key is never
+	 * replayed after a 5xx or network failure, since a retry could duplicate
+	 * it. Set to `false` to disable retries entirely. Defaults to 2 retries.
 	 */
 	retry?:
 		| {

@@ -252,10 +252,12 @@ export function useFormSettings() {
 		const result = await updateForm({
 			formEndpointId: formToEdit.value._id,
 			name: editForm.name.trim(),
-			topicId: editForm.topicId ? (editForm.topicId as Id<'topics'>) : undefined,
+			// An emptied field is sent as a clear (null / ''): undefined would
+			// leave the stored value in place.
+			topicId: editForm.topicId ? (editForm.topicId as Id<'topics'>) : null,
 			fields: normalized.fields,
-			redirectUrl: editForm.redirectUrl.trim() || undefined,
-			honeypotFieldName: editForm.honeypotFieldName.trim() || undefined,
+			redirectUrl: editForm.redirectUrl.trim(),
+			honeypotFieldName: editForm.honeypotFieldName.trim(),
 			doubleOptIn: editForm.doubleOptIn,
 		});
 		isSaving.value = false;

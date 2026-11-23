@@ -230,4 +230,29 @@ describe('useFormSettings field editor', () => {
 			{ key: 'consent', label: 'I agree', type: 'checkbox', required: true },
 		]);
 	});
+
+	it('handleSaveEdit sends clearing values for an emptied topic, redirect URL and honeypot field', async () => {
+		const s = useFormSettings();
+		s.openEditModal({
+			_id: 'form1',
+			name: 'Signup',
+			topicId: 'topic1',
+			redirectUrl: 'https://owlat.example.com/thanks',
+			honeypotFieldName: 'website',
+			fields: [{ key: 'email', label: 'Email', type: 'email' as const, required: true }],
+			isActive: true,
+		} as never);
+		s.editForm.topicId = '';
+		s.editForm.redirectUrl = '  ';
+		s.editForm.honeypotFieldName = '';
+
+		await s.handleSaveEdit();
+
+		expect(updateCalls).toHaveLength(1);
+		expect(updateCalls[0]).toMatchObject({
+			topicId: null,
+			redirectUrl: '',
+			honeypotFieldName: '',
+		});
+	});
 });

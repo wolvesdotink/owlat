@@ -128,12 +128,20 @@ export const update = authedMutation({
 		) {
 			throwInvalidInput(`At most ${MAX_TRUSTED_ARC_FORWARDERS} trusted ARC forwarders are allowed`);
 		}
+		// An emptied sender field clears the stored value instead of storing
+		// `''`: several readers fall back with `??`, which an empty string
+		// would beat. Patching a field to undefined removes it.
+		const clearedSenderFields = new Set<string>(
+			(['defaultFromName', 'defaultFromEmail'] as const).filter((key) => args[key]?.trim() === '')
+		);
 		// Validate the trusted-forwarder list server-side: normalize, drop
 		// single-label / whitespace entries, and de-duplicate so the persisted
 		// list can never contain an entry the ARC trust predicate would misread as
 		// a TLD wildcard. The UI enforces the same rule; this is the floor.
 		const patch = {
 			...args,
+			...(clearedSenderFields.has('defaultFromName') ? { defaultFromName: undefined } : {}),
+			...(clearedSenderFields.has('defaultFromEmail') ? { defaultFromEmail: undefined } : {}),
 			...(args.trustedArcForwarders !== undefined
 				? { trustedArcForwarders: sanitizeTrustedForwarders(args.trustedArcForwarders) }
 				: {}),
@@ -146,8 +154,8 @@ export const update = authedMutation({
 		const existing = await getInstanceSettings(ctx.db);
 		const changes: Record<string, { from: unknown; to: unknown }> = {};
 		for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
-			const to = patch[key];
-			if (to === undefined) continue;
+			if (patch[key] === undefined && !clearedSenderFields.has(key)) continue;
+			const to = patch[key] ?? null;
 			const from = existing?.[key] ?? null;
 			if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
 		}
@@ -168,7 +176,7 @@ export const update = authedMutation({
 		// A default sender on another domain registers that domain, so its mail
 		// is signed rather than refused. Best-effort: the address is saved either
 		// way, and the Domains page can add the domain by hand.
-		if (args.defaultFromEmail !== undefined) {
+		if (args.defaultFromEmail !== undefined && !clearedSenderFields.has('defaultFromEmail')) {
 			try {
 				await registerDefaultSenderDomain(ctx, {
 					from: existing?.defaultFromEmail,
