@@ -12,9 +12,21 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+	ALL_FEATURE_FLAG_KEYS,
+	getDefaultFlags,
+	resolveFlags,
+	type FeatureFlagKey,
+	type FeatureFlagState,
+} from '@owlat/shared/featureFlags';
 import type { NavigationEnvironment } from '../dashboardNavigationCore';
 import { routePaletteTargets } from '../commandPaletteRoutes';
 import { ADMIN_AREAS, adminEntryFor, type AdminEnvironment } from '../adminSettingsRegistry';
+import { adminControlTargets } from '../adminSettingsControls';
+import { buildNavigationSections } from '../dashboardNavigation';
+import { quickCreateEntriesFor } from '../quickCreate';
+import { ROUTE_FEATURE_RULES, blockedFeature } from '../routeFeatureGates';
+import { settingsControlTargets } from '../settingsRegistry';
 import { createTestI18n } from '~/__tests__/i18n';
 import { ShieldCheckIcon, UsersIcon } from '@coolicons/vue';
 
@@ -217,5 +229,89 @@ describe('palette targets and redirect-only pages', () => {
 	it('gives no two rows the same destination', () => {
 		const all = hrefs(env({ role: 'owner', isDesktop: true }));
 		expect(new Set(all).size).toBe(all.length);
+	});
+});
+
+/**
+ * The palette and the feature middleware read one table, so the palette never
+ * offers a page the middleware would bounce to the Workbench. Each case is a
+ * flag combination; every destination the palette composes (the sidebar's own
+ * items, the route table, settings and admin controls, quick-create pages) must
+ * open under it.
+ */
+describe('palette targets and switched-off features', () => {
+	const GATED_FLAGS: readonly FeatureFlagKey[] = [
+		...new Set(
+			ROUTE_FEATURE_RULES.flatMap((rule) => [
+				...(rule.required === undefined
+					? []
+					: typeof rule.required === 'string'
+						? [rule.required]
+						: rule.required),
+				...(rule.anyOf ?? []),
+			])
+		),
+	];
+	const every = (value: boolean): FeatureFlagState =>
+		Object.fromEntries(ALL_FEATURE_FLAG_KEYS.map((key) => [key, value])) as FeatureFlagState;
+
+	const COMBINATIONS: ReadonlyArray<readonly [string, FeatureFlagState]> = [
+		['every flag on', every(true)],
+		['the defaults', getDefaultFlags()],
+		['every flag off', every(false)],
+		...GATED_FLAGS.map((flag) => [`only ${flag} off`, { ...every(true), [flag]: false }] as const),
+		...GATED_FLAGS.map((flag) => [`only ${flag} on`, { ...every(false), [flag]: true }] as const),
+	];
+
+	function environments(state: FeatureFlagState, role: 'owner' | 'editor') {
+		const resolved = resolveFlags(state);
+		const isFeatureEnabled = (flag: FeatureFlagKey) => resolved[flag] === true;
+		return {
+			isFeatureEnabled,
+			nav: env({ isFeatureEnabled, role }),
+			admin: { ...ADMIN, isFeatureEnabled },
+		};
+	}
+
+	/** Every destination `useCommandPaletteProviders` offers for this environment. */
+	function paletteHrefs(nav: NavigationEnvironment, admin: AdminEnvironment): string[] {
+		const sidebar = buildNavigationSections(nav).flatMap((section) =>
+			section.items.map((item) => item.href)
+		);
+		return [
+			...sidebar,
+			...routePaletteTargets(nav, new Set(sidebar), admin).map((target) => target.href),
+			...settingsControlTargets(nav).map((target) => target.href),
+			...adminControlTargets(admin, nav.role !== 'editor').map((target) => target.href),
+			...quickCreateEntriesFor(nav).flatMap((entry) => (entry.href ? [entry.href] : [])),
+		];
+	}
+
+	const CASES = (['owner', 'editor'] as const).flatMap((role) =>
+		COMBINATIONS.map(([name, state]) => [role, name, state] as const)
+	);
+
+	it.each(CASES)('offers an %s only pages that open with %s', (role, _name, state) => {
+		const { isFeatureEnabled, nav, admin } = environments(state, role);
+		const bounced = paletteHrefs(nav, admin).filter(
+			(href) => blockedFeature(href, isFeatureEnabled) !== null
+		);
+		expect(bounced).toEqual([]);
+	});
+
+	it.each([
+		['/dashboard/chat', ['chat']],
+		['/dashboard/assistant', ['ai.assistant']],
+		['/dashboard/knowledge', ['ai.knowledge']],
+		['/dashboard/knowledge/graph', ['ai.knowledge.analytics']],
+		['/dashboard/postbox/search', ['postbox', 'mail.external']],
+		['/dashboard/postbox/contacts', ['postbox', 'mail.external']],
+		['/dashboard/postbox/files', ['postbox', 'mail.external']],
+		['/dashboard/postbox/senders', ['postbox', 'mail.external']],
+		['/dashboard/postbox/migrate', ['postbox', 'mail.external']],
+	] as const)('offers %s only while %j is on', (href, flags) => {
+		const off = (flag: FeatureFlagKey) => !(flags as readonly FeatureFlagKey[]).includes(flag);
+		expect(hrefs(env({ role: 'owner' }))).toContain(href);
+		expect(hrefs(env({ role: 'owner', isFeatureEnabled: off }))).not.toContain(href);
 	});
 });

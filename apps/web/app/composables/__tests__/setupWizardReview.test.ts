@@ -3,7 +3,7 @@ import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import en from '~~/i18n/locales/en.json';
 import de from '~~/i18n/locales/de.json';
-import { groupActiveFeatures, launchBlockers } from '../setupWizardReview';
+import { groupActiveFeatures, launchBlockers, setupNextSteps } from '../setupWizardReview';
 
 const validAdmin = {
 	email: 'admin@example.com',
@@ -75,5 +75,16 @@ describe('launchBlockers (#773)', () => {
 				setupToken: 'stk_1',
 			}).map((b) => b.id)
 		).toEqual(['admin']);
+	});
+});
+
+describe('setupNextSteps', () => {
+	const ids = (flags: Partial<Record<FeatureFlagKey, boolean>>) =>
+		setupNextSteps(flags).map((step) => step.id);
+
+	it('offers the Postbox only when mail is on', () => {
+		expect(ids({ postbox: false, 'mail.external': false })).toEqual(['domain', 'team']);
+		expect(ids({ postbox: true })).toEqual(['domain', 'team', 'postbox']);
+		expect(ids({ 'mail.external': true })).toEqual(['domain', 'team', 'postbox']);
 	});
 });

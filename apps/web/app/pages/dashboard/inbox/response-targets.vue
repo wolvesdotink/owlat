@@ -21,7 +21,6 @@ useHead({ title: () => t('dashboard.inbox.responseTargets.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'inbox',
 });
 
 const { isAdmin, showAdminGate } = usePermissions();

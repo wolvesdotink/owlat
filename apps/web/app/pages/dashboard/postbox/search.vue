@@ -22,7 +22,6 @@ useHead({ title: () => t('dashboard.postbox.search.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const route = useRoute();

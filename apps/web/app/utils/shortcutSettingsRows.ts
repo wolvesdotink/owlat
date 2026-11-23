@@ -17,6 +17,7 @@ import type {
 } from './shortcutRegistry';
 import type { SettingsEnvironment } from '~/lib/settingsRegistry';
 import { isCorePathReachable } from '~/lib/dashboardNavigationCore';
+import { isFeatureReachable } from '~/lib/routeFeatureGates';
 
 /** The order the page lists the scopes in, app-wide first. */
 export const SHORTCUT_SCOPE_ORDER: readonly ShortcutScope[] = [
@@ -107,7 +108,13 @@ export function isShortcutEntryAvailable(
 ): boolean {
 	if (!isShortcutScopeAvailable(def.scope, env)) return false;
 	const route = NAVIGATION_SHORTCUT_ROUTES[def.id];
-	if (route !== undefined && !isCorePathReachable(route, { ...env, role: env.role ?? null })) {
+	if (
+		route !== undefined &&
+		!(
+			isCorePathReachable(route, { ...env, role: env.role ?? null }) &&
+			isFeatureReachable(route, (flag) => env.isFeatureEnabled(flag))
+		)
+	) {
 		return false;
 	}
 	return ENTRY_GATES[def.id]?.(env) ?? true;

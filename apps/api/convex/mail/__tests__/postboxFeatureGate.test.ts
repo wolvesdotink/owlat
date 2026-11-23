@@ -1,11 +1,11 @@
 /**
  * The Postbox feature floor, on the backend.
  *
- * `/dashboard/postbox` declares `requiresAnyFeature: ['postbox','mail.external']`
- * in the web app, but a route guard only decides what the browser renders —
- * Convex publishes every public function on the deployment's client API, so
- * until these gates existed any authenticated member could create folders,
- * drafts and labels on an instance where personal mail was switched off.
+ * The web app gates `/dashboard/postbox` on `postbox` or `mail.external`,
+ * but a route guard only decides what the browser renders — Convex publishes
+ * every public function on the deployment's client API, so until these gates
+ * existed any authenticated member could create folders, drafts and labels on
+ * an instance where personal mail was switched off.
  *
  * Two layers are pinned here, because they behave differently on purpose:
  *

@@ -9,8 +9,8 @@
  * One tab per kind the viewer may restore: restoring needs the permission the
  * delete needed (`campaigns:manage`, `automations:manage`, `templates:manage`)
  * and the kind's feature where it has one. Templates need no feature, so the
- * page opts out of the `/dashboard/marketing` path gate (`campaigns`) and
- * gates each tab itself.
+ * route table (`lib/routeFeatureGates.ts`) opens this page under the
+ * `/dashboard/marketing` gate (`campaigns`), and the page gates each tab itself.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -24,7 +24,6 @@ useHead({ title: () => t('dashboard.marketing.deleted.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	publicFeature: true,
 });
 
 type Kind = 'campaigns' | 'automations' | 'templates';

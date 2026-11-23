@@ -4,8 +4,7 @@
  * The guard half runs the shipped `useFeatureFlag` → `useConvexQuery` over a
  * fake Convex client, so the "never bounce while flags are still loading" rule
  * is exercised against the real subscription state, not a stubbed `isLoading`.
- * The `pathRule` half pins the path → flag table that keeps route gating from
- * drifting away from the sidebar's link-hiding.
+ * The path → flag table itself is pinned in `lib/__tests__/routeFeatureGates.test.ts`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '@owlat/api';
@@ -17,7 +16,6 @@ import {
 	route,
 	type Redirect,
 } from '~/__tests__/middlewareHarness';
-import type * as FeatureGlobalModule from '../feature.global';
 
 vi.mock('~/lib/auth-client', () => authClientMock());
 
@@ -25,20 +23,9 @@ type Middleware = (
 	to: RouteLocationNormalized,
 	from: RouteLocationNormalized
 ) => Redirect | undefined;
-type FeatureModule = typeof FeatureGlobalModule;
-
-let pathRule: FeatureModule['pathRule'];
-let PATH_FEATURE_RULES: FeatureModule['PATH_FEATURE_RULES'];
 
 async function load() {
-	let mod!: FeatureModule;
-	const loaded = await loadMiddleware<Middleware>(async () => {
-		mod = await import('../feature.global');
-		return mod;
-	});
-	pathRule = mod.pathRule;
-	PATH_FEATURE_RULES = mod.PATH_FEATURE_RULES;
-	return loaded;
+	return loadMiddleware<Middleware>(() => import('../feature.global'));
 }
 
 const FLAGS_QUERY = api.workspaces.featureFlags.getFeatureFlags;
@@ -117,38 +104,26 @@ describe('feature middleware — gating once flags are loaded', () => {
 		});
 	});
 
-	it('honours an explicit page-meta requirement over the path rule', async () => {
-		const { middleware } = await loadWithFlags({ campaigns: true, 'ai.knowledge': false });
-		const to = route('/dashboard/campaigns', { meta: { requiresFeature: 'ai.knowledge' } });
-
-		expect(middleware(to, to)).toEqual({
-			redirect: { path: '/dashboard', query: { disabled: 'ai.knowledge' } },
-			options: { replace: true },
-		});
-	});
-
-	it('requires every flag of an AND group and names the first missing one', async () => {
-		const { middleware } = await loadWithFlags({ campaigns: true, automations: false });
-		const to = route('/dashboard/reports', {
-			meta: { requiresFeature: ['campaigns', 'automations'] },
-		});
-
-		expect(middleware(to, to)).toEqual({
-			redirect: { path: '/dashboard', query: { disabled: 'automations' } },
-			options: { replace: true },
-		});
-	});
-
-	it('lets a page opt out of the path-derived gate', async () => {
+	it('lets Recently deleted through with campaigns off', async () => {
 		const { middleware } = await loadWithFlags({ campaigns: false });
-		const to = route('/dashboard/campaigns/help', { meta: { publicFeature: true } });
+		const to = route('/dashboard/marketing/deleted');
 
 		expect(middleware(to, to)).toBeUndefined();
 	});
 
-	it('never bounces the dashboard root, even with an explicit requirement', async () => {
+	it('gates a page by its own path, deeper than its section', async () => {
+		const { middleware } = await loadWithFlags({ 'ai.knowledge.analytics': false });
+		const to = route('/dashboard/knowledge/graph');
+
+		expect(middleware(to, to)).toEqual({
+			redirect: { path: '/dashboard', query: { disabled: 'ai.knowledge.analytics' } },
+			options: { replace: true },
+		});
+	});
+
+	it('never bounces the dashboard root', async () => {
 		const { middleware } = await loadWithFlags({ chat: false });
-		const to = route('/dashboard', { meta: { requiresFeature: 'chat' } });
+		const to = route('/dashboard');
 
 		expect(middleware(to, to)).toBeUndefined();
 	});
@@ -165,53 +140,3 @@ describe('feature middleware — gating once flags are loaded', () => {
 function home() {
 	return route('/dashboard');
 }
-
-describe('pathRule — path-derived feature gate', () => {
-	beforeEach(load);
-
-	it('gates the previously-ungated sections', () => {
-		expect(pathRule('/dashboard/campaigns')?.required).toBe('campaigns');
-		expect(pathRule('/dashboard/campaigns/new')?.required).toBe('campaigns');
-		expect(pathRule('/dashboard/automations/123/edit')?.required).toBe('automations');
-		expect(pathRule('/dashboard/visualizations')?.required).toBe('ai.visualizations');
-		expect(pathRule('/dashboard/send/transactional/x')?.required).toBe('transactional');
-		expect(pathRule('/dashboard/knowledge/abc')?.required).toBe('ai.knowledge');
-	});
-
-	it('gates the transactional list AND editor tree under /dashboard/send', () => {
-		expect(pathRule('/dashboard/send/transactional')?.required).toBe('transactional');
-		expect(pathRule('/dashboard/send/transactional/x/edit')?.required).toBe('transactional');
-		expect(pathRule('/dashboard/send/transactional/x/sends/y')?.required).toBe('transactional');
-		expect(pathRule('/dashboard/send/transactional/x/translations')?.required).toBe(
-			'transactional'
-		);
-	});
-
-	it('keeps the already-gated sections', () => {
-		expect(pathRule('/dashboard/inbox/quarantine')?.required).toBe('inbox');
-		expect(pathRule('/dashboard/chat')?.required).toBe('chat');
-		expect(pathRule('/dashboard/postbox/inbox')?.anyOf).toEqual(['postbox', 'mail.external']);
-	});
-
-	it('leaves always-on built-ins ungated', () => {
-		expect(pathRule('/dashboard')).toBeUndefined();
-		expect(pathRule('/dashboard/send')).toBeUndefined();
-		expect(pathRule('/dashboard/send/blocks')).toBeUndefined();
-		expect(pathRule('/dashboard/send/media')).toBeUndefined();
-		expect(pathRule('/dashboard/send/emails/abc/edit')).toBeUndefined();
-		expect(pathRule('/dashboard/files/abc')).toBeUndefined();
-		expect(pathRule('/dashboard/audience/contacts')).toBeUndefined();
-		expect(pathRule('/dashboard/admin/team/api')).toBeUndefined();
-	});
-
-	it('does not match a prefix that is only a partial path segment', () => {
-		expect(pathRule('/dashboard/campaignsX')).toBeUndefined();
-		expect(pathRule('/dashboard/inboxes')).toBeUndefined();
-	});
-
-	it('every rule maps to a real path under /dashboard', () => {
-		for (const rule of PATH_FEATURE_RULES) {
-			expect(rule.prefix.startsWith('/dashboard/')).toBe(true);
-		}
-	});
-});
