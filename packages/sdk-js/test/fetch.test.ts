@@ -756,19 +756,23 @@ describe('createHttpClient', () => {
 		});
 	});
 
-	describe('429 Retry-After clamping (regression)', () => {
-		// A hostile or misconfigured server can return an arbitrarily large
-		// Retry-After. The retry sleep is not covered by the AbortController
-		// timeout, so an un-clamped value would hang the awaited call (incl.
-		// transactional.send) for that entire duration. The delay must be
-		// clamped to MAX_RETRY_AFTER_MS (30s), mirroring the Java SDK.
-		const MAX_RETRY_AFTER_MS = 30000;
+	describe('429 Retry-After longer than the SDK waits', () => {
+		// A send cap answers 429 with a Retry-After of minutes (the per-recipient
+		// cap refills one send every 12 minutes) or hours (a daily cap). Sleeping
+		// the capped 30s and retrying cannot outwait it: it only blocks the
+		// caller and throws anyway. Such a 429 is thrown at once, with the
+		// server's wait, so the caller can schedule its own retry.
+		// Distinct from every retry delay under test, so `sleeps` can drop it.
+		const DEADLINE = 10_000;
 
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
 		afterEach(() => {
 			vi.useRealTimers();
 		});
 
-		/** First call 429s with the given Retry-After (seconds); second succeeds. */
+		/** First call 429s with the given Retry-After (seconds); later calls succeed. */
 		function mock429ThenOk(retryAfterSeconds: number) {
 			let call = 0;
 			return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
@@ -777,7 +781,11 @@ describe('createHttpClient', () => {
 				return new Response(
 					isFirst
 						? JSON.stringify({
-								error: { message: 'Slow down', category: 'rate_limited' },
+								error: {
+									message: 'Too many emails to this recipient',
+									category: 'rate_limited',
+									data: { reason: 'recipient_rate_limited' },
+								},
 							})
 						: JSON.stringify({ data: 'ok' }),
 					{
@@ -788,46 +796,65 @@ describe('createHttpClient', () => {
 			});
 		}
 
-		it('clamps a huge Retry-After (3600s) to the 30s cap', async () => {
-			vi.useFakeTimers();
+		/** Settle `promise`, firing every timer it schedules. */
+		async function settle<R>(promise: Promise<R>) {
+			const outcome = promise.then(
+				(value) => ({ ok: true as const, value }),
+				(error: unknown) => ({ ok: false as const, error })
+			);
+			await vi.runAllTimersAsync();
+			return outcome;
+		}
+
+		/** Delays of every timer set, minus the per-attempt request deadline. */
+		function sleeps(timers: { mock: { calls: unknown[][] } }) {
+			return timers.mock.calls.map((call) => call[1]).filter((ms) => ms !== DEADLINE);
+		}
+
+		it('throws a 429 with Retry-After 3600 at once, without sleeping or retrying', async () => {
 			const spy = mock429ThenOk(3600);
-			const http = createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
-				maxRetries: 2,
-			});
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
 
-			const promise = http.get('/test');
+			const outcome = await settle(http.post('/api/v1/transactional', { email: 'to@example.com' }));
 
-			// Advancing by exactly the cap must be enough to fire the retry. If the
-			// delay were the un-clamped 3_600_000ms, this would leave the request
-			// pending and the awaited result below would hang.
-			await vi.advanceTimersByTimeAsync(MAX_RETRY_AFTER_MS);
-
-			const result = await promise;
-			expect(result.data).toEqual({ data: 'ok' });
-			expect(spy).toHaveBeenCalledTimes(2);
+			expect(outcome.ok).toBe(false);
+			const error = (outcome as { error: unknown }).error;
+			expect(error).toBeInstanceOf(RateLimitError);
+			expect((error as RateLimitError).retryAfter).toBe(3600);
+			expect((error as RateLimitError).data).toEqual({ reason: 'recipient_rate_limited' });
+			expect(spy).toHaveBeenCalledTimes(1);
+			expect(sleeps(timers)).toEqual([]);
 		});
 
-		it('does not wait the full un-clamped Retry-After', async () => {
-			vi.useFakeTimers();
-			mock429ThenOk(3600);
-			const http = createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
-				maxRetries: 2,
+		it.each([2, 30])('waits out a Retry-After of %is and retries', async (seconds) => {
+			const spy = mock429ThenOk(seconds);
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
+
+			const outcome = await settle(http.get('/test'));
+
+			expect(outcome).toEqual({
+				ok: true,
+				value: expect.objectContaining({ data: { data: 'ok' } }),
 			});
+			expect(spy).toHaveBeenCalledTimes(2);
+			expect(sleeps(timers)).toEqual([seconds * 1000]);
+		});
 
-			const promise = http.get('/test');
-			let settled = false;
-			void promise.then(() => {
-				settled = true;
-			});
+		it('keeps the backoff for a 429 without Retry-After', async () => {
+			const spy = vi
+				.spyOn(globalThis, 'fetch')
+				.mockResolvedValueOnce(new Response(null, { status: 429 }))
+				.mockResolvedValueOnce(new Response(JSON.stringify({ data: 'ok' }), { status: 200 }));
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
 
-			// Just short of the cap: the retry has not fired yet.
-			await vi.advanceTimersByTimeAsync(MAX_RETRY_AFTER_MS - 1);
-			expect(settled).toBe(false);
+			const outcome = await settle(http.get('/test'));
 
-			// Crossing the cap resolves it — well before 3_600_000ms.
-			await vi.advanceTimersByTimeAsync(1);
-			await promise;
-			expect(settled).toBe(true);
+			expect(outcome.ok).toBe(true);
+			expect(spy).toHaveBeenCalledTimes(2);
+			expect(sleeps(timers)).toEqual([500]);
 		});
 	});
 });
