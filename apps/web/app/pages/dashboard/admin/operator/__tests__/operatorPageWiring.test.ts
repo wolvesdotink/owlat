@@ -18,6 +18,7 @@ import {
 	riskLevelVariant,
 	scanLevelVariant,
 } from '~/utils/operatorConsole';
+import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import UiTabs from '@owlat/ui/components/ui/Tabs.vue';
 import OperatorPage from '../index.vue';
 
@@ -94,6 +95,11 @@ const READS: Record<string, unknown> = {
 
 const ops: Record<string, ReturnType<typeof vi.fn>> = {};
 const showToast = vi.fn();
+/**
+ * What an operation resolves with, by its label, for the ones whose result the
+ * page reads; the rest resolve with nothing, like a mutation that returns none.
+ */
+const RESULTS: Record<string, unknown> = {};
 
 const ModalStub = defineComponent({
 	props: { open: { type: Boolean, default: false }, title: { type: String, default: '' } },
@@ -116,6 +122,15 @@ const FieldStub = (tag: 'textarea' | 'select') =>
 
 beforeEach(() => {
 	for (const key of Object.keys(ops)) delete ops[key];
+	for (const key of Object.keys(RESULTS)) delete RESULTS[key];
+	// `setOrganizationStatus` always answers with the change and the hold a
+	// lift put on the reputation check (`null` when it put none).
+	RESULTS['Set workspace status'] = {
+		success: true,
+		previousStatus: 'warned',
+		newStatus: 'suspended',
+		hold: null,
+	};
 	showToast.mockClear();
 	installNuxtStubs({
 		...i18nStubs,
@@ -123,7 +138,7 @@ beforeEach(() => {
 		useConvexQuery: (fn: Parameters<typeof getFunctionName>[0]) =>
 			queryResult(READS[getFunctionName(fn)]),
 		useBackendOperation: (_fn: unknown, options: { label: () => string }) => {
-			const run = vi.fn(async () => ({ ok: true, result: undefined }));
+			const run = vi.fn(async () => ({ ok: true, result: RESULTS[options.label()] }));
 			ops[options.label()] = run;
 			return { run, isLoading: ref(false) };
 		},
@@ -135,7 +150,7 @@ async function mountOn(tab: string) {
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiTabs },
+			components: { UiSwitch, UiTabs },
 			// Template auto-imports; the test build does not rewrite templates.
 			mocks: {
 				abuseStatusVariant,
@@ -255,6 +270,12 @@ describe('operator console', () => {
 		READS[getFunctionName(q.getOrganizationDetail)] = {
 			settings: { abuseStatus: 'suspended', abuseStatusReason: 'Spam rate above the limit' },
 		};
+		RESULTS['Set workspace status'] = {
+			success: true,
+			previousStatus: 'suspended',
+			newStatus: 'clean',
+			hold: { until: Date.UTC(2026, 7, 28, 9), triggers: [{ code: 'complaint_rate' }] },
+		};
 		try {
 			const wrapper = await mountOn('Overview');
 			expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).not.toContain('Workspaces');
@@ -270,6 +291,10 @@ describe('operator console', () => {
 				abuseStatus: 'clean',
 				reason: 'Complaints back under the limit',
 			});
+			// The lift says at once what the check will not suspend on, and until when.
+			expect(showToast).toHaveBeenLastCalledWith(
+				expect.stringContaining('The automatic check is paused for the complaint rate until')
+			);
 			wrapper.unmount();
 		} finally {
 			READS[getFunctionName(q.listAllOrganizations)] = saved.orgs;
