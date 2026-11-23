@@ -553,6 +553,56 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 		expect(await pendingEnforceJobs(t)).toHaveLength(0);
 	});
 
+	it('writes no audit row on an hour when nothing changed', async () => {
+		const t = await harness();
+		await seedSettings(t);
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(Date.now()),
+			totalSent: 1000,
+			totalBounced: 100, // 10% → critical
+		});
+		const statusRows = async () =>
+			await t.run(async (ctx) =>
+				(await ctx.db.query('auditLogs').collect()).filter(
+					(l) => l.action === 'abuse_status_changed'
+				)
+			);
+
+		await evaluate(t);
+		await evaluate(t);
+		await evaluate(t);
+
+		expect(await statusRows()).toHaveLength(1);
+		expect((await statusRows())[0]?.details?.['applied']).toBe('transitioned');
+	});
+
+	it('still audits an hour that moves the status onto another metric', async () => {
+		const t = await harness();
+		// A warning on the bounce rate that has cleared, while complaints are at
+		// the warning line: the warning moves to the complaint rate.
+		await seedSettings(t, {
+			abuseStatus: 'warned',
+			abuseStatusChangedBy: 'system',
+			abuseStatusTrigger: { code: 'bounce_rate' },
+		});
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(Date.now()),
+			totalSent: 1000,
+			totalComplaints: 2,
+		});
+
+		await evaluate(t);
+		await evaluate(t);
+
+		const rows = await t.run(async (ctx) =>
+			(await ctx.db.query('auditLogs').collect()).filter((l) => l.action === 'abuse_status_changed')
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.details).toMatchObject({ applied: 'recorded', trigger: 'complaint_rate' });
+	});
+
 	it('high risk warns', async () => {
 		const t = await harness();
 		await seedSettings(t);

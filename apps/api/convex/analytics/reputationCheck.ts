@@ -21,7 +21,8 @@ import { readEnforcementEvidence, readResumeCondition } from './reputationEviden
  *
  * Enforcement lives only here; `recordEvent` has no per-event trigger. It fires
  * while the evidence stays over the line; the Abuse status module dedupes the
- * transition idempotently, so the hourly check enforces the same policy a
+ * transition idempotently (and, as a recheck, writes no audit row for an hour
+ * that changed nothing), so the hourly check enforces the same policy a
  * per-event one would. A trigger a platform admin's lift put on hold is left
  * out until the hold ends.
  *
@@ -75,6 +76,7 @@ export const evaluateAutoEnforce = internalMutation({
 		// otherwise be undone by it.
 		if (decision) {
 			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
+				isRecheck: true,
 				input: {
 					to: decision.riskLevel === 'critical' ? 'suspended' : 'warned',
 					at: now,
