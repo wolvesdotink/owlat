@@ -5,8 +5,9 @@
  */
 
 /**
- * How sending stands overall: `error` is a problem that stops mail or is about
- * to, `warn` needs attention. Whether sending is suspended now is `sendingHold`.
+ * How sending stands overall: `error` is a serious problem that affects or
+ * threatens delivery, `warn` needs attention. Whether sending is suspended now
+ * is `sendingHold`.
  */
 export const DELIVERY_STATUS_LEVELS = ['ok', 'warn', 'error'] as const;
 

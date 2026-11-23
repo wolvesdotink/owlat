@@ -19,7 +19,7 @@ const rateAgainstLimitSchema = z.strictObject({
 export const deliveryStatusSchema = z.strictObject({
 	level: z.enum(DELIVERY_STATUS_LEVELS).meta({
 		description:
-			'How sending stands overall: error is a problem that stops mail or is about to, warn needs attention. Whether sending is suspended now is sendingHold.',
+			'How sending stands overall: error is a serious problem that affects or threatens delivery, warn needs attention. Whether sending is suspended now is sendingHold.',
 	}),
 	reasonCode: z.enum(DELIVERY_STATUS_REASONS).meta({
 		description:

@@ -39,8 +39,8 @@ public class DeliveryStatus {
     }
 
     /**
-     * {@code ok}, {@code warn} (needs attention) or {@code error} (a problem that
-     * stops mail or is about to). Whether sending is suspended now is
+     * {@code ok}, {@code warn} (needs attention) or {@code error} (a serious problem
+     * that affects or threatens delivery). Whether sending is suspended now is
      * {@link #getSendingHold()}.
      */
     public String getLevel() {

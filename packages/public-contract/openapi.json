@@ -2943,7 +2943,7 @@
 					"level": {
 						"type": "string",
 						"enum": ["ok", "warn", "error"],
-						"description": "How sending stands overall: error is a problem that stops mail or is about to, warn needs attention. Whether sending is suspended now is sendingHold."
+						"description": "How sending stands overall: error is a serious problem that affects or threatens delivery, warn needs attention. Whether sending is suspended now is sendingHold."
 					},
 					"reasonCode": {
 						"type": "string",
