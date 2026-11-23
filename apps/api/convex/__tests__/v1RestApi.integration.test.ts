@@ -844,6 +844,40 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error.category).toBe('not_found');
 	});
 
+	it('403 forbidden while sending is suspended, naming the stored reason and since when', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const changedAt = Date.UTC(2026, 10, 20, 9, 0, 0);
+		const reason =
+			'Auto-suspended: Gmail reports a spam rate of 0.42% for mail.example.com on 2026-11-19';
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: changedAt,
+				abuseStatus: 'suspended',
+				abuseStatusReason: reason,
+				abuseStatusChangedAt: changedAt,
+			});
+		});
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'to@example.com', slug: 'welcome' }),
+		});
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.category).toBe('forbidden');
+		expect(body.error.data).toEqual({
+			reason: 'abuse_blocked',
+			status: 'suspended',
+			since: '2026-11-20T09:00:00.000Z',
+			detail: reason,
+		});
+		expect(body.error.message).toBe(
+			`Sending is suspended on this Owlat instance. A platform admin of this instance can lift it in the operator console. Reason: ${reason}`
+		);
+	});
+
 	it('403 forbidden while the transactional feature is off', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['transactional:send']);

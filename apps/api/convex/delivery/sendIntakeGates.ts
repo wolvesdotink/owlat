@@ -52,6 +52,14 @@ type SendIntakeRejection<Reason extends string = SendIntakeRejectionReason> = {
 	ok: false;
 	reason: Reason;
 	detail?: string;
+	/** Set on `abuse_blocked`: the status that refused, and since when. */
+	abuse?: SendIntakeAbuseState;
+};
+
+/** The abuse status behind an `abuse_blocked` refusal. `since` is null on a row written before it was recorded. */
+export type SendIntakeAbuseState = {
+	status: 'suspended' | 'banned';
+	since: number | null;
 };
 
 /**
@@ -127,7 +135,17 @@ export async function runSendIntakeGates(
 	const settings =
 		input.settings !== undefined ? input.settings : await ctx.db.query('instanceSettings').first();
 	if (!isSendingAllowed(settings?.abuseStatus ?? null)) {
-		return { ok: false, reason: 'abuse_blocked' };
+		// The stored reason names the evidence, so the caller can show why
+		// instead of a bare refusal.
+		return {
+			ok: false,
+			reason: 'abuse_blocked',
+			...(settings?.abuseStatusReason ? { detail: settings.abuseStatusReason } : {}),
+			abuse: {
+				status: settings?.abuseStatus === 'banned' ? 'banned' : 'suspended',
+				since: settings?.abuseStatusChangedAt ?? null,
+			},
+		};
 	}
 
 	// 2. Delivery-provider gate. Refuse at intake rather than queue a row that
