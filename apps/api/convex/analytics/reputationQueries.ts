@@ -112,6 +112,11 @@ export const getSendingOverview = authedQuery({
 			volume,
 			reputation,
 			abuseStatus: settings.abuseStatus ?? null,
+			// The stored reason is shown to the members of the workspace it is
+			// about. Its writers name the evidence (rates, sending domain, campaign
+			// id) or carry an operator's note, never a credential.
+			abuseStatusReason: settings.abuseStatusReason ?? null,
+			abuseStatusChangedAt: settings.abuseStatusChangedAt ?? null,
 		};
 	},
 });

@@ -114,6 +114,7 @@ describe('operatorConsoleLayout', () => {
 		expect(operatorConsoleLayout('selfhost', 1)).toEqual({
 			tabs: ['overview', 'review', 'admins'],
 			showDeliveryStats: false,
+			showSendingStatusOnOverview: true,
 		});
 	});
 

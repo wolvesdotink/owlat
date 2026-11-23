@@ -212,14 +212,14 @@ export async function validateReadyToSend(
 		return refuse(
 			'sending_not_allowed',
 			'suspended',
-			'Your account has been suspended due to policy violations. Please contact support for assistance.'
+			'Sending is suspended on this instance. An operator can lift it in the operator console.'
 		);
 	}
 	if (status === 'banned') {
 		return refuse(
 			'sending_not_allowed',
 			'banned',
-			'Your account has been permanently disabled. Please contact support for more information.'
+			'Sending is permanently disabled on this instance. An operator can lift it in the operator console.'
 		);
 	}
 

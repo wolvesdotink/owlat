@@ -210,7 +210,8 @@ async function handleSave() {
 
 	const result = await updateChannelConfig({
 		channel: props.channel,
-		displayName: localDisplayName.value || undefined,
+		// An empty name clears the stored one, so the card falls back to the channel's label.
+		displayName: localDisplayName.value.trim(),
 		...(configJson !== undefined ? { config: configJson } : {}),
 	});
 	isSaving.value = false;

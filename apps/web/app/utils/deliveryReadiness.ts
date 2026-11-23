@@ -173,6 +173,7 @@ function streamInputFromSources(sources: ReadinessStreamSources): Partial<Readin
 					? { paced: true, today: capacity.today }
 					: { paced: false },
 		complaintRate: sources.reputation?.complaintRate ?? null,
+		bounceRate: sources.reputation?.bounceRate ?? null,
 		oneClickUnsubscribe: sources.oneClickUnsubscribe ?? null,
 	};
 }

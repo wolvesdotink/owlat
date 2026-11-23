@@ -60,6 +60,8 @@ export function campaignRefusalOf(error: OperationError): CampaignRefusal | null
 export interface RefusalFixLink {
 	to: string;
 	labelKey: string;
+	/** What a member without the admin link is told instead of "ask an admin to fix this". */
+	askKey?: string;
 }
 
 /**
@@ -84,10 +86,12 @@ const FIX_LINKS: Readonly<Record<PreflightFailureReason, RefusalFixLink | null>>
 		to: '/dashboard/admin/team/senders',
 		labelKey: 'shared.campaignRefusal.fix.senders',
 	},
-	// The delivery hub carries the account-status banner.
+	// The delivery hub carries the account-status banner. Only a platform admin
+	// can lift a suspension, so a member is not told a workspace admin fixes it.
 	sending_not_allowed: {
 		to: '/dashboard/admin/delivery',
 		labelKey: 'shared.campaignRefusal.fix.deliveryHub',
+		askKey: 'shared.campaignRefusal.askAboutSuspension',
 	},
 	scheduled_in_past: null,
 	exceeds_sending_capacity: {

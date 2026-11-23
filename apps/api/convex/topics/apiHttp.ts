@@ -10,6 +10,7 @@ import {
 import {
 	jsonResponse,
 	errorResponse,
+	errorResponseFromThrow,
 	pathSegmentAfter,
 	type PathSegment,
 } from '../auth/apiResponses';
@@ -101,9 +102,8 @@ export const addContactToTopic = createAuthenticatedHandler(
 			};
 
 			return jsonResponse({ data: response }, 201);
-		} catch {
-			// Locked error envelope — do not echo the raw internal error message.
-			return errorResponse('invalid_input', 'Failed to add contact to topic');
+		} catch (error) {
+			return errorResponseFromThrow(error, 'Failed to add contact to topic');
 		}
 	}
 );
@@ -165,9 +165,8 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 			};
 
 			return jsonResponse({ data: response });
-		} catch {
-			// Locked error envelope — do not echo the raw internal error message.
-			return errorResponse('invalid_input', 'Failed to remove contact from topic');
+		} catch (error) {
+			return errorResponseFromThrow(error, 'Failed to remove contact from topic');
 		}
 	}
 );

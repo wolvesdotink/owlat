@@ -253,7 +253,11 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 	/** A provider-configured MTA instance with a fresh healthy snapshot and a verified sender. */
 	async function seedReadyMtaInstance(
 		t: ReturnType<typeof convexTest>,
-		settings: { defaultFromEmail?: string; transactionalFromEmail?: string } = {
+		settings: {
+			defaultFromEmail?: string;
+			transactionalFromEmail?: string;
+			abuseStatus?: 'clean' | 'warned' | 'suspended' | 'banned';
+		} = {
 			defaultFromEmail: 'hello@mail.example.com',
 		}
 	) {
@@ -317,6 +321,30 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 			level: 'error',
 			reasonCode: 'sender_missing',
 		});
+	});
+
+	it('errors with the suspension when sending is suspended, though every check is green', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t, {
+			defaultFromEmail: 'hello@mail.example.com',
+			abuseStatus: 'suspended',
+		});
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({ level: 'error', reasonCode: 'sending_suspended' });
+	});
+
+	it('errors with the ban when sending is banned', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t, {
+			defaultFromEmail: 'hello@mail.example.com',
+			abuseStatus: 'banned',
+		});
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({ level: 'error', reasonCode: 'sending_banned' });
 	});
 
 	it("errors when the default sender's domain is not verified", async () => {

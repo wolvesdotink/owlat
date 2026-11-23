@@ -42,7 +42,7 @@ const { isAdmin } = usePermissions();
 				{{ t(blocker.fix.labelKey) }}
 			</NuxtLink>
 			<p v-else-if="blocker.fix" class="text-text-secondary">
-				{{ t('shared.campaignRefusal.askAdmin') }}
+				{{ t(blocker.fix.askKey ?? 'shared.campaignRefusal.askAdmin') }}
 			</p>
 		</div>
 	</div>
