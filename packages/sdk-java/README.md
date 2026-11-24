@@ -69,7 +69,7 @@ Owlat owlat = new Owlat(
 ### Retries
 
 Transient failures are retried automatically with exponential backoff. A `429`
-is retried after its `Retry-After`, up to 30 seconds; a longer wait (a send
+is retried after the wait it names (see below), up to 30 seconds; a longer wait (a send
 limit that refills in minutes, or the daily limit) throws a
 `RateLimitException` at once, and `getRetryAfter()` says when to try again.
 That wait can be hours, so hand a long one to a job queue rather than sleeping

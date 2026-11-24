@@ -350,7 +350,7 @@ All errors extend `OwlatError` and include:
 
 ## Rate Limiting
 
-The API enforces rate limits (10 requests per second per API key), and transactional sends have per-recipient and daily limits. The SDK retries a `429` after its `Retry-After` when that is 30 seconds or less. A longer wait is thrown at once as a `RateLimitError`, so a request handler is not held up by a sleep that cannot outlast the limit; `retryAfter` says when to try again and `data.reason` which limit was hit.
+The API enforces rate limits (10 requests per second per API key), and transactional sends have per-recipient and daily limits. The SDK retries a `429` after the wait it names, as set out below, when that is 30 seconds or less. A longer wait is thrown at once as a `RateLimitError`, so a request handler is not held up by a sleep that cannot outlast the limit; `retryAfter` says when to try again and `data.reason` which limit was hit.
 
 When a `429` carries both `data.retryAfter` in its error body and a
 `Retry-After` header, the body wins: it comes from the instance and goes with

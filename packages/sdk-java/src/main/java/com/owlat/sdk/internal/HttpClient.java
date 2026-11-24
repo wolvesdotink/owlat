@@ -171,9 +171,10 @@ public class HttpClient {
                 // retryable ones would never be retried.
                 if (response.statusCode() >= 400) {
                     int status = response.statusCode();
-                    JsonNode error = errorEnvelope(response.body());
-                    java.util.Map<String, Object> data = errorData(error);
-                    Integer retryAfter = status == 429 ? retryAfterSeconds(data, response) : null;
+                    // Only a 429 needs its body before the retry decision.
+                    Integer retryAfter = status == 429
+                            ? retryAfterSeconds(errorData(errorEnvelope(response.body())), response)
+                            : null;
                     // 429 is a pre-processing rejection — retryable for any
                     // method, and we honor its wait. One asking for a longer
                     // wait than the client sleeps cannot be outwaited by
@@ -186,7 +187,7 @@ public class HttpClient {
                         sleep(retryAfter != null ? retryAfter * 1000L : backoffDelayMs(attempt));
                         continue;
                     }
-                    handleError(response, error, data, retryAfter, rateLimit, url);
+                    handleError(response, retryAfter, rateLimit, url);
                 }
 
                 // Empty success response (e.g., 204 No Content). Only reached
@@ -196,22 +197,20 @@ public class HttpClient {
                     return null;
                 }
 
-                // The API answers every 2xx with one JSON document. Anything
-                // else (an HTML page, most often the web app's address given as
-                // the base URL, a blank body, a document followed by more
-                // content) is not its answer. Reading the tree first keeps that
-                // apart from a document that does not bind to the model.
-                JsonNode tree;
                 try {
-                    tree = mapper.readTree(response.body());
+                    return mapper.readValue(response.body(), typeRef);
                 } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-                    tree = null;
-                }
-                if (tree == null || tree.isMissingNode()) {
+                    // The API answers every 2xx with one JSON document. Anything
+                    // else (an HTML page, most often the web app's address given
+                    // as the base URL, a blank body, a document followed by more
+                    // content) is not its answer. A document that is one but does
+                    // not bind to the model keeps its original exception.
+                    if (isJsonDocument(response.body())) {
+                        throw e;
+                    }
                     throw new UnexpectedResponseException(response.statusCode(), displayUrl(url),
                             bodyExcerpt(response.body()), rateLimit);
                 }
-                return mapper.readerFor(typeRef).readValue(tree);
             } catch (OwlatException e) {
                 throw e;
             } catch (java.net.http.HttpTimeoutException e) {
@@ -320,6 +319,16 @@ public class HttpClient {
         return withoutQuery.replaceFirst("^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", "$1");
     }
 
+    /** Whether the body is exactly one JSON document, with nothing after it. */
+    private boolean isJsonDocument(String body) {
+        try {
+            JsonNode tree = mapper.readTree(body);
+            return tree != null && !tree.isMissingNode();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     /**
      * The {@code error} object of the API's {@code {"error": {...}}} envelope,
      * or null when the body is empty or is not that envelope.
@@ -381,11 +390,12 @@ public class HttpClient {
         return digits.length() > 10 ? Integer.MAX_VALUE : (int) Math.min(Long.parseLong(digits), Integer.MAX_VALUE);
     }
 
-    private void handleError(HttpResponse<String> response, JsonNode error, java.util.Map<String, Object> data,
-                             Integer retryAfter, RateLimitInfo rateLimit, String url) {
+    private void handleError(HttpResponse<String> response, Integer retryAfter, RateLimitInfo rateLimit, String url) {
         String message = "Unknown error";
         String category = "internal";
         int statusCode = response.statusCode();
+        JsonNode error = errorEnvelope(response.body());
+        java.util.Map<String, Object> data = errorData(error);
 
         // The API wraps every failure of its own in the envelope, so a body that
         // is there but is not one came from something else: a wrong host or
