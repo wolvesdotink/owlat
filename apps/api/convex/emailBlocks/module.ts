@@ -38,7 +38,6 @@ import { rerenderBlocksPool } from './renderingPool';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import {
 	detachLinkedBlocks,
-	parseContentBlocks,
 	renameLinkedBlocks,
 	replaceLinkedBlocks,
 	walkConsumers,
@@ -80,6 +79,7 @@ type Effect =
 	| {
 			kind: 'propagate_content';
 			blockId: Id<'emailBlocks'>;
+			previousContent: string;
 			newContent: string;
 			newName: string;
 	  }
@@ -114,11 +114,18 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				break;
 			}
 			case 'propagate_content': {
-				const newBlocks = parseContentBlocks(effect.newContent);
 				const walked = await walkConsumers(
 					ctx,
 					effect.blockId,
-					(blocks) => replaceLinkedBlocks(blocks, effect.blockId, newBlocks, effect.newName),
+					(blocks, row) =>
+						replaceLinkedBlocks(
+							blocks,
+							effect.blockId,
+							effect.previousContent,
+							effect.newContent,
+							effect.newName,
+							row.translations
+						),
 					() => ({
 						htmlRenderState: { stale: true, failureCount: 0 },
 					})
@@ -268,6 +275,7 @@ export const update = internalMutation({
 			effects.push({
 				kind: 'propagate_content',
 				blockId: args.blockId,
+				previousContent: block.content,
 				newContent: rowPatch.content ?? block.content,
 				newName,
 			});
