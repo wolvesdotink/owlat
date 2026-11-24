@@ -331,7 +331,7 @@ function isSendingBlocked(settings: Doc<'instanceSettings'> | null): boolean {
 	return settings?.abuseStatus === 'suspended' || settings?.abuseStatus === 'banned';
 }
 
-/** Whether a stop notice's status is still the instance's; one without a status (older rows) always is. */
+/** For a stop notice without its raise: whether its status is still the instance's (older rows: always). */
 function isHoldStatusCurrent(
 	settings: Doc<'instanceSettings'> | null,
 	holdStatus: Doc<'marketingNotices'>['holdStatus']
@@ -351,8 +351,12 @@ async function draftSendingStatus(
 ): Promise<NoticeDraft | null> {
 	const settings = await ctx.db.query('instanceSettings').first();
 	if (isSendingBlocked(settings) !== (event.kind === 'sending_suspended')) return null;
-	// A stop that has since become a ban (or the reverse) is announced by its own notice.
-	if (event.kind === 'sending_suspended' && !isHoldStatusCurrent(settings, event.holdStatus)) {
+	// A stop whose status has changed since is announced by its own notice.
+	if (
+		event.kind === 'sending_suspended' &&
+		event.holdStatus !== undefined &&
+		settings?.abuseStatusChangedAt !== event.changedAt
+	) {
 		return null;
 	}
 	return {
@@ -482,9 +486,12 @@ export async function noticeLiveness(
 			// Holds until sending changes state again.
 			const settings = await ctx.db.query('instanceSettings').first();
 			if (isSendingBlocked(settings) !== (notice.kind === 'sending_suspended')) return null;
-			return notice.kind === 'sending_resumed' || isHoldStatusCurrent(settings, notice.holdStatus)
-				? LIVE
-				: null;
+			if (notice.kind === 'sending_resumed') return LIVE;
+			if (notice.sendingHoldAlertId !== undefined) {
+				const raise = await ctx.db.get(notice.sendingHoldAlertId);
+				return raise !== null && raise.announcedAt === settings?.abuseStatusChangedAt ? LIVE : null;
+			}
+			return isHoldStatusCurrent(settings, notice.holdStatus) ? LIVE : null;
 		}
 	}
 }

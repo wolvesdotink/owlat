@@ -14,6 +14,7 @@ import {
 } from '@owlat/public-contract/schemas';
 import { components, internal } from '../_generated/api';
 import { readStandingSendingHold } from '../delivery/sendingHoldAlerts';
+import { noticeLiveness } from '../marketing/noticeResolvers';
 import { _resetSingletonOrgCacheForTests } from '../lib/sessionOrganization';
 import type * as SsrfGuard from '../lib/ssrfGuard';
 import { fetchWithGuardedDispatcher } from '../lib/ssrfGuard';
@@ -552,6 +553,27 @@ describe('sending suspended and resumed on the alert channels', () => {
 
 		const ids = (await alertPayloads(t)).map((log) => log.payload.data['alertId']);
 		expect(ids).toEqual([`sending_hold:${NOW - DAY_MS}`, `sending_hold:${NOW - DAY_MS}`]);
+	});
+
+	it('after suspended, banned, suspended, only the latest stop notice is live', async () => {
+		const t = await harness();
+		for (const [index, to] of (['suspended', 'banned', 'suspended'] as const).entries()) {
+			await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+				input: { to, at: NOW + index, reason: `step ${index}`, changedBy: 'admin-1' },
+			});
+			await settle(t);
+		}
+		const live = await t.run(async (ctx) => {
+			const notices = await ctx.db.query('marketingNotices').collect();
+			const owner = notices[0]!.userId;
+			const states = await Promise.all(
+				notices
+					.filter((notice) => notice.userId === owner)
+					.map((notice) => noticeLiveness(ctx, notice, NOW))
+			);
+			return states.map((state) => state !== null);
+		});
+		expect(live).toEqual([false, false, true]);
 	});
 
 	it('a new reason under the same status announces nothing', async () => {
