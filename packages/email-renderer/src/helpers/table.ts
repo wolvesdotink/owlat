@@ -58,6 +58,13 @@ const getBlockDataAttrs = (block: EditorBlock): string => {
 };
 
 /**
+ * A collapsed table border ignores `border-radius`, so a table that carries a
+ * radius opts out of the `border-collapse:collapse!important` reset in
+ * `styles.ts`. Only an inline `!important` outranks that rule.
+ */
+export const SEPARATE_BORDERS = 'border-collapse:separate!important';
+
+/**
  * Wraps block content in a section table with padding, background, and border.
  * Supports full-width mode where the section spans the full viewport.
  *
@@ -101,7 +108,10 @@ export const wrapSection = (
 			`border:${border.width}px ${escapeCss(border.style)} ${escapeCss(border.color)}`
 		);
 	}
-	if (borderRadius > 0) tableStyles.push(`border-radius:${borderRadius}px`);
+	if (borderRadius > 0) {
+		tableStyles.push(`border-radius:${borderRadius}px`);
+		tableStyles.push(SEPARATE_BORDERS);
+	}
 
 	const tableStyleAttr = tableStyles.length > 0 ? ` style="${tableStyles.join(';')}"` : '';
 	const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
