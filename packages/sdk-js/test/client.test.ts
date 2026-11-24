@@ -1,15 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Owlat } from '../src';
+import { mockFetch } from './helpers';
 
 describe('Owlat Client', () => {
-	it('should initialize with API key string', () => {
-		const owlat = new Owlat('lm_live_test123');
-		expect(owlat.contacts).toBeDefined();
-		expect(owlat.transactional).toBeDefined();
-		expect(owlat.events).toBeDefined();
-		expect(owlat.topics).toBeDefined();
-	});
-
 	it('should initialize with config object', () => {
 		const owlat = new Owlat({
 			apiKey: 'lm_live_test123',
@@ -17,10 +10,13 @@ describe('Owlat Client', () => {
 			timeout: 60000,
 		});
 		expect(owlat.contacts).toBeDefined();
+		expect(owlat.transactional).toBeDefined();
+		expect(owlat.events).toBeDefined();
+		expect(owlat.topics).toBeDefined();
 	});
 
 	it('should have all resource methods', () => {
-		const owlat = new Owlat('lm_live_test123');
+		const owlat = new Owlat({ apiKey: 'lm_live_test123', baseUrl: 'https://custom.api.com' });
 		expect(typeof owlat.contacts.create).toBe('function');
 		expect(typeof owlat.contacts.get).toBe('function');
 		expect(typeof owlat.contacts.update).toBe('function');
@@ -33,48 +29,78 @@ describe('Owlat Client', () => {
 	});
 });
 
-describe('the default baseUrl', () => {
+describe('baseUrl', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it('warns that requests go to the hosted address when no baseUrl is given', () => {
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	const whereToFindIt = 'Settings → API → API quickstart';
 
-		const owlat = new Owlat({ apiKey: 'lm_live_test123' });
-		expect(owlat.contacts).toBeDefined();
+	it('is required, and the error says where to find it', () => {
+		// @ts-expect-error baseUrl is required
+		expect(() => new Owlat({ apiKey: 'lm_live_test123' })).toThrow(
+			expect.objectContaining({
+				name: 'TypeError',
+				message: expect.stringMatching(/^baseUrl is required/),
+			})
+		);
+		// @ts-expect-error baseUrl is required
+		expect(() => new Owlat({ apiKey: 'lm_live_test123' })).toThrow(whereToFindIt);
+	});
 
-		expect(warn).toHaveBeenCalledOnce();
-		const message = String(warn.mock.calls[0]?.[0]);
-		expect(message).toContain('baseUrl');
-		expect(message).toContain('https://api.owlat.app');
+	it('refuses the API-key shorthand, which has no baseUrl', () => {
+		// @ts-expect-error the key-only form is gone
+		expect(() => new Owlat('lm_live_test123')).toThrow(/^baseUrl is required/);
+	});
+
+	it.each([
+		['null from untyped code', null],
+		['an empty string', ''],
+		['whitespace only', '  \n'],
+	])('refuses %s as missing', (_label, baseUrl) => {
+		expect(
+			() => new Owlat({ apiKey: 'lm_live_test123', baseUrl: baseUrl as unknown as string })
+		).toThrow(/^baseUrl is required/);
+	});
+
+	it.each([
+		['a host without a scheme', 'rest.api.example.com'],
+		['a relative path', '/api'],
+		['another scheme', 'ftp://rest.api.example.com'],
+		['a URL that does not parse', 'https://'],
+		['surrounding whitespace', ' https://rest.api.example.com\n'],
+		['a query string', 'https://rest.api.example.com?tenant=a'],
+		['a fragment', 'https://rest.api.example.com#api'],
+		['credentials', 'https://user:secret@rest.api.example.com'],
+	])('refuses %s', (_label, baseUrl) => {
+		const error: unknown = (() => {
+			try {
+				return new Owlat({ apiKey: 'lm_live_test123', baseUrl });
+			} catch (caught) {
+				return caught;
+			}
+		})();
+		expect(error).toBeInstanceOf(TypeError);
+		const message = (error as Error).message;
+		expect(message).toMatch(/^baseUrl /);
+		expect(message).toContain(whereToFindIt);
+		// The value can be a key pasted into the wrong field.
+		expect(message).not.toContain('secret');
 		expect(message).not.toContain('lm_live_test123');
 	});
 
-	it('warns for the API-key shorthand too', () => {
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	it.each([
+		['https://rest.api.example.com', 'https://rest.api.example.com/api/v1/limits'],
+		['http://localhost:3211', 'http://localhost:3211/api/v1/limits'],
+		['https://rest.api.example.com/', 'https://rest.api.example.com/api/v1/limits'],
+		['https://example.com/owlat', 'https://example.com/owlat/api/v1/limits'],
+		['https://example.com/owlat//', 'https://example.com/owlat/api/v1/limits'],
+	])('sends requests for %s to %s', async (baseUrl, expected) => {
+		const fetchMock = mockFetch({ body: { data: {} } });
+		const owlat = new Owlat({ apiKey: 'lm_live_test123', baseUrl });
 
-		const owlat = new Owlat('lm_live_test123');
-		expect(owlat.contacts).toBeDefined();
+		await owlat.limits.get();
 
-		expect(warn).toHaveBeenCalledOnce();
-	});
-
-	it('warns for a null baseUrl from untyped code, which falls back the same way', () => {
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-		const owlat = new Owlat({ apiKey: 'lm_live_test123', baseUrl: null as unknown as string });
-		expect(owlat.contacts).toBeDefined();
-
-		expect(warn).toHaveBeenCalledOnce();
-	});
-
-	it('stays quiet when baseUrl names the instance', () => {
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-		const owlat = new Owlat({ apiKey: 'lm_live_test123', baseUrl: 'https://owlat.example.com' });
-		expect(owlat.contacts).toBeDefined();
-
-		expect(warn).not.toHaveBeenCalled();
+		expect(fetchMock.mock.calls[0]?.[0]).toBe(expected);
 	});
 });

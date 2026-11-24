@@ -45,7 +45,24 @@ Contact contact = owlat.contacts().create(
 
 `baseUrl` is your instance's API URL: the web app shows it as **Your API base URL** under **Settings → API → API quickstart**. It is the `NUXT_PUBLIC_CONVEX_SITE_URL` your operator set, `https://rest.api.<your-domain>` when the setup wizard derived it from your domain.
 
-> **No `baseUrl`:** the client sends requests and your API key to `https://api.owlat.app`, which is not your instance, and logs a warning through `java.util.logging`. `new Owlat(String apiKey)` does the same and is deprecated. The base URL will become required.
+The base URL is required. `OwlatConfig.Builder.build()` throws an `IllegalArgumentException` that says where to find it when the base URL is missing, blank, or not an absolute `http` or `https` URL. A path prefix is kept (`https://example.com/owlat`), a trailing slash is dropped, and a query string or fragment is refused.
+
+### Upgrading from a key-only client
+
+`new Owlat(String apiKey)` and a config built without `baseUrl` sent requests and your API key to `https://api.owlat.app`, which is not your instance. The constructor is gone, and such a config no longer builds: set your instance's API URL.
+
+```java
+// Before
+Owlat owlat = new Owlat("lm_live_xxxxxxxx");
+
+// After
+Owlat owlat = new Owlat(
+    OwlatConfig.builder("lm_live_xxxxxxxx")
+        // Your API base URL, from Settings → API → API quickstart
+        .baseUrl("https://rest.api.example.com")
+        .build()
+);
+```
 
 ## Configuration
 
