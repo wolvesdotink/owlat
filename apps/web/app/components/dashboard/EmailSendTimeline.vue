@@ -187,7 +187,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 	// Add error events if they occurred
 	for (const errKey of errorStatuses) {
 		const ts = timestamps[errKey];
-		if (ts || errKey === props.status) {
+		if (ts || (errKey === 'failed' && isFailed)) {
 			const cfg = statusConfig[errKey]!;
 			let delta: string | undefined;
 			if (prevTimestamp && ts) {

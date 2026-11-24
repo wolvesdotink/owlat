@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { API_QUICKSTART_ROUTES } from '../apiQuickstartRoutes';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V1_HTTP = join(HERE, '../../../../api/convex/publicApi/v1Http.ts');
+const OPERATIONS = join(HERE, '../../../../../packages/public-contract/src/operations.ts');
 
 /** A catalog's endpoint descriptions, read untyped: the full catalog type is huge. */
 function endpointDescriptions(locale: 'en' | 'de'): Record<string, string> {
@@ -36,7 +37,25 @@ function tableRoutes(): string[] {
 	}).sort();
 }
 
+/** `METHOD /path` for every operation of the public contract, `{param}` as `:param`. */
+function contractRoutes(): string[] {
+	const source = readFileSync(OPERATIONS, 'utf8');
+	return [...source.matchAll(/method: '([A-Z]+)',\s*path: '([^']+)'/g)]
+		.map(([, method, path]) => `${method} ${path!.replace(/\{(\w+)\}/g, ':$1')}`)
+		.sort();
+}
+
 describe('API quickstart routes', () => {
+	it('names each route with the full path of the public contract', () => {
+		const table = API_QUICKSTART_ROUTES.flatMap(({ methods, path }) =>
+			methods.map((method) => `${method} ${path}`)
+		);
+		// The OpenAPI document serves the contract and is not an operation of it.
+		expect(table.filter((route) => route !== 'GET /api/v1/openapi.json').sort()).toEqual(
+			contractRoutes()
+		);
+	});
+
 	it('lists every public route the backend registers, and no other', () => {
 		const registered = registeredRoutes();
 		expect(registered.length).toBeGreaterThan(10);

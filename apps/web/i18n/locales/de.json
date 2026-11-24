@@ -10829,7 +10829,8 @@
 							"limits": "Die Sendelimits dieses Schlüssels und was davon übrig ist",
 							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
 							"status": "Ob diese Instanz senden kann, und wenn nicht, warum",
-							"topicContacts": "Einen Kontakt zu einem Thema hinzufügen oder daraus entfernen",
+							"topicContactAdd": "Einen Kontakt zu einem Thema hinzufügen",
+							"topicContactRemove": "Einen Kontakt aus einem Thema entfernen",
 							"topics": "Themen auflisten",
 							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body) oder Sendungen auflisten",
 							"transactionalSend": "Zustellstatus einer Sendung"
