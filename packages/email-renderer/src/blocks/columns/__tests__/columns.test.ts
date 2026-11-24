@@ -83,9 +83,21 @@ describe('Enhanced Columns Block', () => {
 		const html = renderEmailHtml([makeColumnsBlock({ mobileStacking: false })], {
 			inlineCss: false,
 		});
-		expect(html).toContain(
-			'<div style="display:table;width:100%;table-layout:fixed;font-size:0;line-height:0;">'
+		expect(html).toContain('<div style="display:table;width:100%;font-size:0;line-height:0;">');
+	});
+
+	it('lets a column that opts into stacking leave a non-stacking row on mobile', () => {
+		const html = renderEmailHtml(
+			[
+				makeColumnsBlock({
+					mobileStacking: false,
+					columnStyles: [{}, { stackOnMobile: true }],
+				}),
+			],
+			{ inlineCss: false }
 		);
+		expect(html).toContain('<div class="owlat-cols-row" style="display:table;');
+		expect(html).toContain('.owlat-cols-row{display:block!important}');
 	});
 
 	it('leaves the stacking row a plain block', () => {
