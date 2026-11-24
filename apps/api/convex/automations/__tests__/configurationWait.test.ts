@@ -24,6 +24,7 @@ import {
 import { RETRY_DELAYS_MS } from '../../lib/constants';
 import { AUTOMATION_FAILURE_BREAKER_THRESHOLD } from '../lifecycle';
 import { CONFIGURATION_WAIT_MS } from '../configurationWait';
+import { STEP_LEASE_MS } from '../stepOrchestration';
 import {
 	advanceAndRun,
 	DAY_MS,
@@ -277,6 +278,55 @@ describe('an email step waits for configuration instead of failing', () => {
 		]);
 		for (const runId of runIds) expect((await runOf(t, runId)).status).toBe('completed');
 		expect((await runTotals(t, automationId)).statsCompleted).toBe(4);
+	});
+
+	it('a re-checked step completed by recovery releases the others too', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const seeded: { runId: Id<'automationRuns'>; contactId: Id<'contacts'> }[] = [];
+		for (let i = 0; i < 3; i++) {
+			const run = await seedRun(t, automationId, { email: `reader${i}@example.com` });
+			await startAndSettle(t, run.runId);
+			seeded.push(run);
+		}
+		await NO_DEFAULT_SENDER.fix(t);
+
+		// The re-check claims one step and queues its mail, then dies before its
+		// commit; recovery finds the Send and completes the step with it.
+		await t.mutation(internal.automations.configurationWait.probeWaitingStepRun, {});
+		const probed = await t.run(async (ctx) => {
+			for (const { runId, contactId } of seeded) {
+				const [stepRun] = await ctx.db
+					.query('automationStepRuns')
+					.withIndex('by_automation_run', (q) => q.eq('automationRunId', runId))
+					.collect();
+				if (stepRun?.waitingCheckedAt === undefined) return { stepRun: stepRun!, contactId };
+			}
+			throw new Error('no step was re-checked');
+		});
+		await t.mutation(internal.automations.stepOrchestration.claimStepRun, {
+			stepRunId: probed.stepRun._id,
+			attempt: 0,
+		});
+		const enqueued = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation',
+			email: 'reader@example.com',
+			contactId: probed.contactId,
+			automationId,
+			subject: 'Welcome',
+			html: '<p>Hello</p>',
+			from: 'Owlat <noreply@example.com>',
+			automationStepRunId: probed.stepRun._id,
+		});
+		if (!enqueued.ok) throw new Error('not enqueued');
+		await runDueScheduled(t);
+
+		vi.advanceTimersByTime(STEP_LEASE_MS + 1);
+		await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		await runDueScheduled(t);
+
+		expect(await sends(t)).toHaveLength(3);
+		for (const { runId } of seeded) expect((await runOf(t, runId)).status).toBe('completed');
 	});
 
 	it('a re-check tick re-runs one waiting step, not all of them', async () => {
