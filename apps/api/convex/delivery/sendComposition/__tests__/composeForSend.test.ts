@@ -1026,7 +1026,9 @@ describe('composeForSend — the postal address appears once', () => {
 	it('recognises the footer block html an older renderer stored', () => {
 		const stored =
 			'<div style="font-size:12px;color:#374151;line-height:1.6;mso-line-height-rule:exactly;text-align:center"><strong>Northwind</strong><br />1 Example Street<br />12345 Example City</div>';
-		const composed = composeForSend(campaign({ subject: 'News', htmlContent: stored }));
+		const composed = composeForSend(
+			campaign({ subject: 'News', htmlContent: stored, plainTextContent: '' })
+		);
 		expect(composed.transformConfig).not.toHaveProperty('senderAddress');
 	});
 
