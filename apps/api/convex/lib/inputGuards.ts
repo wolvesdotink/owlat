@@ -56,6 +56,33 @@ export function isJsonPrimitiveRecord(value: unknown): value is Record<string, J
 	);
 }
 
+/** The most fields a Convex object can hold. */
+const MAX_CONVEX_OBJECT_FIELDS = 1024;
+
+/**
+ * Convex refuses an object with more than 1024 fields, or with a key that is
+ * longer than 1024 characters, starts with `$`, or holds a character outside
+ * printable ASCII, and it throws while serializing a function's arguments.
+ * The contract accepts any string key, so an HTTP handler passing a
+ * client's record to a mutation checks it first and answers the caller's 400
+ * with the message returned here, naming the record as `name`. Null when the
+ * record can be stored.
+ */
+export function unstorableRecordMessage(
+	record: Record<string, unknown> | undefined,
+	name: string
+): string | null {
+	if (record === undefined) return null;
+	const keys = Object.keys(record);
+	if (keys.length > MAX_CONVEX_OBJECT_FIELDS) {
+		return `${name} can hold at most ${MAX_CONVEX_OBJECT_FIELDS} entries`;
+	}
+	const storable = (key: string) =>
+		key.length <= 1024 && !key.startsWith('$') && /^[\x20-\x7e]*$/.test(key);
+	if (keys.every(storable)) return null;
+	return `${name} keys must be printable ASCII, at most 1024 characters, and must not start with "$"`;
+}
+
 /**
  * Validate that a string looks like a valid Convex document ID.
  * Convex IDs are URL-safe base64 strings, typically 10+ characters.

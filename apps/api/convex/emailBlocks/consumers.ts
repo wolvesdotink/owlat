@@ -13,11 +13,18 @@
  *     deleted, which the walker passed by.
  */
 
-import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
+import {
+	childBlockLists,
+	normalizeBlockTreeIds,
+	ownedEntries,
+	type BlockIdRenewal,
+	type BlockTreeNode,
+} from '@owlat/shared/blockTree';
 import type { SavedBlockRef } from '@owlat/shared/types';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nextContentRevision } from '../lib/contentRevision';
+import { parseTranslations, serializeTranslations } from '../lib/emailTranslations';
 
 interface EditorBlock {
 	id: string;
@@ -70,6 +77,22 @@ function serializeContentBlocks(blocks: EditorBlock[]): string {
 	return JSON.stringify(blocks);
 }
 
+type ConsumerRow = Doc<'emailTemplates'> | Doc<'transactionalEmails'>;
+
+/** A transform's rewrite of one consumer row: its new blocks and the other fields to patch. */
+export interface ConsumerRewrite {
+	blocks: EditorBlock[];
+	patch?: Partial<Pick<ConsumerRow, 'translations'>>;
+}
+
+type ConsumerTransform = (
+	blocks: EditorBlock[],
+	row: ConsumerRow
+) => EditorBlock[] | ConsumerRewrite | null;
+
+const asRewrite = (result: EditorBlock[] | ConsumerRewrite | null): ConsumerRewrite | null =>
+	Array.isArray(result) ? { blocks: result } : result;
+
 interface WalkResult {
 	templateIds: Id<'emailTemplates'>[];
 	transactionalIds: Id<'transactionalEmails'>[];
@@ -78,17 +101,17 @@ interface WalkResult {
 /**
  * Walk both consumer tables for every row whose `linkedBlockIds`
  * contains `blockId`. For each row, run the transform on its parsed
- * block list; if the transform returns a non-null array, patch the row
- * with the serialized content. `extraPatch` is merged into every patched
- * row (used by `propagate_content` to set `htmlRenderState.stale: true`
- * atomically with the content write; and by `detach_all` to strip the
- * `linkedBlockIds` array entry).
+ * block list; if the transform returns a rewrite, patch the row with the
+ * serialized content and the rewrite's own fields. `extraPatch` is merged
+ * into every patched row (used by `propagate_content` to set
+ * `htmlRenderState.stale: true` atomically with the content write; and by
+ * `detach_all` to strip the `linkedBlockIds` array entry).
  */
 export async function walkConsumers(
 	ctx: MutationCtx,
 	blockId: Id<'emailBlocks'>,
-	transform: (blocks: EditorBlock[]) => EditorBlock[] | null,
-	extraPatch?: (row: Doc<'emailTemplates'> | Doc<'transactionalEmails'>) => Record<string, unknown>
+	transform: ConsumerTransform,
+	extraPatch?: (row: ConsumerRow) => Record<string, unknown>
 ): Promise<WalkResult> {
 	const templateIds: Id<'emailTemplates'>[] = [];
 	const transactionalIds: Id<'transactionalEmails'>[] = [];
@@ -105,12 +128,12 @@ export async function walkConsumers(
 		const linkedBlockIds = template.linkedBlockIds ?? [];
 		if (!linkedBlockIds.includes(blockId)) continue;
 
-		const blocks = parseContentBlocks(template.content);
-		const updated = transform(blocks);
-		if (!updated) continue;
+		const rewrite = asRewrite(transform(parseContentBlocks(template.content), template));
+		if (!rewrite) continue;
 
 		const patch: Record<string, unknown> = {
-			content: serializeContentBlocks(updated),
+			content: serializeContentBlocks(rewrite.blocks),
+			...rewrite.patch,
 			// The content changed under any open editor: its draft is now stale.
 			contentRevision: nextContentRevision(template),
 			updatedAt: now,
@@ -127,12 +150,12 @@ export async function walkConsumers(
 		const linkedBlockIds = email.linkedBlockIds ?? [];
 		if (!linkedBlockIds.includes(blockId)) continue;
 
-		const blocks = parseContentBlocks(email.content);
-		const updated = transform(blocks);
-		if (!updated) continue;
+		const rewrite = asRewrite(transform(parseContentBlocks(email.content), email));
+		if (!rewrite) continue;
 
 		const patch: Record<string, unknown> = {
-			content: serializeContentBlocks(updated),
+			content: serializeContentBlocks(rewrite.blocks),
+			...rewrite.patch,
 			// The content changed under any open editor: its draft is now stale.
 			contentRevision: nextContentRevision(email),
 			updatedAt: now,
@@ -146,24 +169,167 @@ export async function walkConsumers(
 }
 
 /**
- * Replace each group of blocks referencing `savedBlockId` with a freshly
- * cloned copy of `newBlocks`, preserving the original `groupId` and the
- * updated `blockName`. Returns null when no group references the block
- * (so the walker can skip the patch).
+ * The id a Block or accordion section of a linked copy has: its id in the
+ * saved block, scoped to the insertion it belongs to (`groupId`). Translation
+ * overlays, link tracking and version diffs are keyed by Block id, so a copy
+ * keeps the same ids every time a saved-block edit reaches it; the group id
+ * keeps them unique when one saved block is linked twice in a document. Both
+ * parts are generated ids, so the result is safe in an HTML id attribute
+ * (accordion sections render their id as one).
+ */
+export function linkedCopyId(groupId: string, sourceId: string): string {
+	return `${groupId}-${sourceId}`;
+}
+
+const treeNodes = (blocks: EditorBlock[]) => blocks as unknown as BlockTreeNode[];
+
+/** The saved block's root Blocks; entries that are not Block-shaped are skipped. */
+const savedBlockRoots = (content: string): EditorBlock[] =>
+	parseContentBlocks(content).filter(
+		(block) => typeof block?.id === 'string' && typeof block.type === 'string'
+	);
+
+/** Give `node` and everything nested in it its linked-copy id, in place. */
+function applyLinkedCopyIds(node: BlockTreeNode, groupId: string): void {
+	node.id = linkedCopyId(groupId, node.id);
+	for (const entry of ownedEntries(node)) {
+		entry['id'] = linkedCopyId(groupId, typeof entry['id'] === 'string' ? entry['id'] : '');
+	}
+	for (const list of childBlockLists(node)) {
+		for (const child of list) applyLinkedCopyIds(child, groupId);
+	}
+}
+
+/**
+ * The renames that move a copy's Blocks to their linked-copy ids, for the
+ * Blocks whose id is not one yet: copies inserted by the editor (fresh ids)
+ * and copies an older propagation wrote (a fresh root id, the saved block's
+ * own ids below it). A Block's source is the saved-block Block of the same
+ * id when there is one, else the Block at the same place in the saved
+ * block's previous content, which the copy was cloned from. `previous` is
+ * empty when the copy's shape differs from that content (a template restored
+ * from Recently deleted missed an edit), so a translation is never moved onto
+ * a different Block. A Block with no source keeps its id and is replaced like
+ * any other.
+ */
+function legacyCopyRenames(
+	copy: BlockTreeNode[],
+	previous: BlockTreeNode[],
+	sourceIds: ReadonlySet<string>,
+	groupId: string,
+	renames: BlockIdRenewal[]
+): void {
+	for (const [index, node] of copy.entries()) {
+		const counterpart = previous[index]?.type === node.type ? previous[index] : undefined;
+		if (!node.id.startsWith(`${groupId}-`)) {
+			const source = sourceIds.has(node.id) ? node.id : counterpart?.id;
+			if (source !== undefined) renames.push({ from: node.id, to: linkedCopyId(groupId, source) });
+		}
+		const previousLists = counterpart ? childBlockLists(counterpart) : [];
+		for (const [listIndex, list] of childBlockLists(node).entries()) {
+			legacyCopyRenames(list, previousLists[listIndex] ?? [], sourceIds, groupId, renames);
+		}
+	}
+}
+
+/** The tree's Block types and child lists, without ids or content. */
+const treeShape = (nodes: BlockTreeNode[]): string =>
+	nodes.map((node) => `${node.type}(${childBlockLists(node).map(treeShape).join('|')})`).join(',');
+
+const hasOwn = (record: object, key: string): boolean =>
+	Object.prototype.hasOwnProperty.call(record, key);
+
+function collectIds(nodes: BlockTreeNode[], ids: Set<string>): Set<string> {
+	for (const node of nodes) {
+		ids.add(node.id);
+		for (const list of childBlockLists(node)) collectIds(list, ids);
+	}
+	return ids;
+}
+
+/**
+ * The row's `translations` with each renamed Block's overlay moved to its new
+ * id in every language; undefined when nothing changes or the stored overlays
+ * cannot be read (they are then left as they are). An id that is still in
+ * the document keeps its own entry, so a Block another copy shares is not
+ * stripped of its translation.
+ */
+function carryRenamedOverlays(
+	translationsBlob: string | undefined,
+	renames: readonly BlockIdRenewal[],
+	blocks: EditorBlock[]
+): string | undefined {
+	if (renames.length === 0 || !translationsBlob) return undefined;
+	let translations: ReturnType<typeof parseTranslations>;
+	try {
+		translations = parseTranslations(translationsBlob);
+	} catch {
+		return undefined;
+	}
+	const kept = collectIds(treeNodes(blocks), new Set());
+	let changed = false;
+	for (const translation of Object.values(translations)) {
+		const overlays = translation.blocks;
+		if (!overlays) continue;
+		for (const { from, to } of renames) {
+			if (!kept.has(to) || !hasOwn(overlays, from) || hasOwn(overlays, to)) continue;
+			overlays[to] = { ...overlays[from] };
+			changed = true;
+		}
+		// Only a moved entry is removed: the overlay of a Block this edit
+		// removed stays behind, as it does for every other removed Block.
+		for (const { from, to } of renames) {
+			if (kept.has(to) && !kept.has(from) && hasOwn(overlays, from)) {
+				delete overlays[from];
+				changed = true;
+			}
+		}
+	}
+	return changed ? serializeTranslations(translations) : undefined;
+}
+
+/**
+ * Replace each group of blocks referencing `savedBlockId` with a copy of the
+ * saved block's `newContent` that has its linked-copy ids, preserving the
+ * original `groupId` and the updated `blockName`. A Block that is still in the
+ * saved block keeps its id, and with it its translation (an edited one keeps
+ * the translation of its earlier text, as an edit in the template editor
+ * does); a Block removed from the saved block leaves its overlay entry behind,
+ * as deleting a Block in the editor does. `previousContent` is the saved
+ * block's content before this edit: it maps the Blocks of copies whose ids
+ * predate linked-copy ids, whose overlays move to the new ids. Returns null
+ * when no group references the block (so the walker can skip the patch).
  */
 export function replaceLinkedBlocks(
 	emailBlocks: EditorBlock[],
 	savedBlockId: string,
-	newBlocks: EditorBlock[],
-	newName: string
-): EditorBlock[] | null {
-	const groupIds = new Set<string>();
+	previousContent: string,
+	newContent: string,
+	newName: string,
+	translations?: string
+): ConsumerRewrite | null {
+	const groups = new Map<string, EditorBlock[]>();
 	for (const block of emailBlocks) {
 		if (block.savedBlockRef?.blockId === savedBlockId) {
-			groupIds.add(block.savedBlockRef.groupId);
+			const { groupId } = block.savedBlockRef;
+			groups.set(groupId, [...(groups.get(groupId) ?? []), block]);
 		}
 	}
-	if (groupIds.size === 0) return null;
+	if (groups.size === 0) return null;
+
+	const previousBlocks = savedBlockRoots(previousContent);
+	const newBlocks = savedBlockRoots(newContent);
+
+	const sourceIds = collectIds(
+		treeNodes(newBlocks),
+		collectIds(treeNodes(previousBlocks), new Set())
+	);
+	const renames: BlockIdRenewal[] = [];
+	const previousShape = treeShape(treeNodes(previousBlocks));
+	for (const [groupId, copy] of groups) {
+		const clonedFrom = treeShape(treeNodes(copy)) === previousShape ? previousBlocks : [];
+		legacyCopyRenames(treeNodes(copy), treeNodes(clonedFrom), sourceIds, groupId, renames);
+	}
 
 	const result: EditorBlock[] = [];
 	const processedGroups = new Set<string>();
@@ -173,10 +339,11 @@ export function replaceLinkedBlocks(
 			const groupId = block.savedBlockRef.groupId;
 			if (!processedGroups.has(groupId)) {
 				processedGroups.add(groupId);
-				for (const newBlock of newBlocks) {
+				// Parsed again for each group: the ids are rewritten in place.
+				for (const copy of savedBlockRoots(newContent)) {
+					applyLinkedCopyIds(copy as unknown as BlockTreeNode, groupId);
 					result.push({
-						...JSON.parse(JSON.stringify(newBlock)),
-						id: `block_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+						...copy,
 						savedBlockRef: {
 							blockId: savedBlockId,
 							groupId,
@@ -189,7 +356,10 @@ export function replaceLinkedBlocks(
 			result.push(block);
 		}
 	}
-	return result;
+	const carried = carryRenamedOverlays(translations, renames, result);
+	return carried === undefined
+		? { blocks: result }
+		: { blocks: result, patch: { translations: carried } };
 }
 
 export function renameLinkedBlocks(

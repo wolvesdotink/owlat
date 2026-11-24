@@ -35,6 +35,7 @@ const createCtx = (overrides?: Partial<RenderContext>): RenderContext => ({
 	customCss: '',
 	variableValues: {},
 	lang: 'en',
+	assetBaseUrl: '',
 	responsiveRules: [],
 	globalRules: [],
 	warnings: [],

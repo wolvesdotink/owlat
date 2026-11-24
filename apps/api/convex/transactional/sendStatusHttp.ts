@@ -19,6 +19,7 @@ import {
 } from '../auth/apiHandlers';
 import {
 	errorResponse,
+	errorResponseFromThrow,
 	invalidInputResponse,
 	jsonResponse,
 	lastPathSegment,
@@ -60,7 +61,13 @@ export const listTransactionalSends = createAuthenticatedHandler(
 		const query = readSendListQuery(new URL(request.url).searchParams, Date.now());
 		if (!query.ok) return invalidInputResponse(query.message, query.field);
 		const { filterKey: _filterKey, ...args } = query.value;
-		const page = await ctx.runQuery(internal.transactional.sendList.listForApi, args);
+		let page;
+		try {
+			page = await ctx.runQuery(internal.transactional.sendList.listForApi, args);
+		} catch (error) {
+			// A cursor the paginator refuses is the caller's 400.
+			return errorResponseFromThrow(error, 'Failed to list transactional sends');
+		}
 		const body: CursorPaginatedResponse<TransactionalSendStatus> = {
 			data: page.data,
 			pagination: {
@@ -80,8 +87,8 @@ export const getTransactionalSend = createAuthenticatedHandler(
 		const segment = lastPathSegment(request);
 		if (!segment.ok) {
 			return segment.reason === 'missing'
-				? errorResponse('invalid_input', 'Send ID is required')
-				: errorResponse('invalid_input', 'Invalid send ID format');
+				? invalidInputResponse('Send ID is required', 'sendId')
+				: invalidInputResponse('Invalid send ID format', 'sendId');
 		}
 		const status = await ctx.runQuery(internal.transactional.sendStatus.getForApi, {
 			sendId: segment.value,

@@ -19,6 +19,7 @@ export type {
 	ApiErrorReason,
 	ApiKeyErrorReason,
 	TransactionalRefusalReason,
+	WriteRefusalReason,
 	// Contacts
 	Contact,
 	ContactSource,

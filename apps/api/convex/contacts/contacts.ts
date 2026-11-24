@@ -435,6 +435,7 @@ export const listByTeam = internalQuery({
 			listResources(ctx.db, contactListing, {
 				search: args.search,
 				paginationOpts: args.paginationOpts,
+				clientCursor: true,
 			}),
 			countFacet(ctx.db, contactListing, 'total'),
 		]);

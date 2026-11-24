@@ -9,7 +9,6 @@ import {
 	bucketPageRecipients,
 	classifyContentScan,
 	classifyStartSendSkip,
-	combineContentScan,
 	isSendPrepared,
 	makeVariantBucketer,
 	type CampaignSendResult,
@@ -32,17 +31,11 @@ import {
 // campaign from `draft|scheduled|sending` through content scan, archive,
 // audience resolution, A/B variant fanout (test cohort), and workpool
 // enqueue. See CONTEXT.md "Campaign send orchestrator (module)".
-import {
-	scanContent,
-	levelForScore,
-	checkUrlReputation,
-	urlReputationToFlags,
-	type ContentFlag,
-} from '@owlat/email-scanner';
+import { levelForScore } from '@owlat/email-scanner';
 import { scannedContentDigest, scannedSubject } from './sendCommit';
 import type { PageBucket } from './walkerCommit';
 import { logWarn } from '../lib/runtimeLog';
-import { composeArchiveSnapshot, makeUrlReputationCache } from './sendPreparation';
+import { composeArchiveSnapshot, scanCampaignContent } from './sendPreparation';
 import { planBucket } from './pageBucketPlan';
 
 // Internal action invoked by the per-minute scheduler tick to start sending
@@ -195,23 +188,7 @@ export const startCampaignSend = internalAction({
 		// EXTERNAL I/O. Content scanning: spam, phishing and prohibited content,
 		// plus URL reputation via Google Safe Browsing (blocking for campaigns).
 		const subject = scannedSubject(campaign, template);
-		const scanResultBase = scanContent(subject, template.htmlContent);
-
-		const safeBrowsingApiKey = getOptional('GOOGLE_SAFE_BROWSING_API_KEY');
-		let urlFlags: ContentFlag[] = [];
-		if (safeBrowsingApiKey) {
-			try {
-				const urlResults = await checkUrlReputation(template.htmlContent, {
-					apiKey: safeBrowsingApiKey,
-					cache: makeUrlReputationCache(ctx),
-				});
-				urlFlags = urlReputationToFlags(urlResults);
-			} catch {
-				// URL reputation check failure should not block campaign sending
-			}
-		}
-
-		const verdict = combineContentScan(scanResultBase, urlFlags);
+		const verdict = await scanCampaignContent(ctx, campaign, template, template.htmlContent);
 		const combinedLevel = levelForScore(verdict.score);
 		const scanOutcome = classifyContentScan(combinedLevel, verdict);
 		const scan = { score: verdict.score, level: combinedLevel, flags: verdict.flags };
@@ -232,7 +209,11 @@ export const startCampaignSend = internalAction({
 			read: {
 				status: campaign.status,
 				templateId: campaign.emailTemplateId,
-				contentDigest: await scannedContentDigest(subject, template.htmlContent),
+				contentDigest: await scannedContentDigest(
+					subject,
+					template.htmlContent,
+					template.htmlTranslations
+				),
 			},
 			verdict: commitVerdict,
 		});

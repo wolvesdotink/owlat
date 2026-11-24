@@ -18,7 +18,18 @@ import type { TransactionalSendStatus } from '@owlat/public-contract';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { sendStatusValidator } from '../lib/literalValidators';
+import { paginateClientCursor } from '../lib/pagination';
 import { toSendStatus } from './sendStatus';
+
+/**
+ * Bytes of sends one page reads before it ends early with a cursor to the
+ * rest. A send keeps its data variables (up to the 100,000-byte request
+ * budget each), so a full page of large ones would pass the 16 MiB one query
+ * may read. The page stops after the send that crosses this budget, and a
+ * document is at most 1 MiB, so its sends stay under 9 MiB and leave the rest
+ * for the templates it reads alongside.
+ */
+export const SEND_LIST_PAGE_BYTES = 8 * 1024 * 1024;
 
 export interface SendListPageArgs {
 	/** A normalised recipient address, or null for every recipient. */
@@ -63,7 +74,11 @@ export async function readSendListPage(db: QueryCtx['db'], args: SendListPageArg
 							.gte('_creationTime', since)
 							.lt('_creationTime', until)
 					);
-	return await query.order('desc').paginate({ numItems: args.limit, cursor: args.cursor });
+	return await paginateClientCursor(query.order('desc'), {
+		numItems: args.limit,
+		cursor: args.cursor,
+		maximumBytesRead: SEND_LIST_PAGE_BYTES,
+	});
 }
 
 export const listForApi = internalQuery({

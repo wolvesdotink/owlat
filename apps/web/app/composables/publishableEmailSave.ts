@@ -112,7 +112,10 @@ function buildPublishableEmailPayload(
 				)
 			: blocks;
 		htmlTranslations[language] = {
-			htmlContent: renderBlocksToHtml(languageBlocks as unknown as EditorBlock[], renderOptions),
+			htmlContent: renderBlocksToHtml(languageBlocks as unknown as EditorBlock[], {
+				...renderOptions,
+				lang: language,
+			}),
 			subject: overlay?.subject ?? draft.subject,
 		};
 	}
@@ -121,7 +124,7 @@ function buildPublishableEmailPayload(
 		name: draft.name,
 		subject: draft.subject,
 		content,
-		htmlContent: renderBlocksToHtml(blocks, renderOptions),
+		htmlContent: renderBlocksToHtml(blocks, { ...renderOptions, lang: base.defaultLanguage }),
 		htmlTranslations: JSON.stringify(htmlTranslations),
 		rendererVersion: EMAIL_RENDERER_VERSION,
 		linkedBlockIds: deriveLinkedBlockIds(blocks),
