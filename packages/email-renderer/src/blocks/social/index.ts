@@ -38,8 +38,14 @@ const PLATFORM_NAMES: Record<SocialPlatform, string> = Object.fromEntries(
 	])
 ) as Record<SocialPlatform, string>;
 
-const getDefaultIconUrl = (platform: SocialPlatform, style: 'filled' | 'outline'): string =>
-	`/social-icons/${style}/${platform}.png`;
+// The web app serves these from `apps/web/public/social-icons`. `assetBaseUrl`
+// is that app's absolute origin ('' keeps the path site-relative for previews
+// inside the app).
+const getDefaultIconUrl = (
+	platform: SocialPlatform,
+	style: 'filled' | 'outline',
+	assetBaseUrl = ''
+): string => `${assetBaseUrl}/social-icons/${style}/${platform}.png`;
 
 const renderIconImg = (iconSrc: string, name: string, iconSize: number): string => {
 	const safeName = escapeAttr(name);
@@ -54,7 +60,7 @@ const renderIconImg = (iconSrc: string, name: string, iconSize: number): string 
  * The inner social-icon HTML. Exported because XSS regression tests and the
  * legacy unit suite assert on its output directly.
  */
-export const renderSocialContent = (content: SocialBlockContent): string => {
+export const renderSocialContent = (content: SocialBlockContent, assetBaseUrl = ''): string => {
 	const enabledLinks = content.links.filter((link) => link.enabled && link.url);
 	if (enabledLinks.length === 0) return '';
 
@@ -67,7 +73,8 @@ export const renderSocialContent = (content: SocialBlockContent): string => {
 		const rows = enabledLinks
 			.map((link) => {
 				const name = PLATFORM_NAMES[link.platform] || link.platform;
-				const iconSrc = link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle);
+				const iconSrc =
+					link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle, assetBaseUrl);
 				const imgTag = renderIconImg(iconSrc, name, iconSize);
 				const safeUrl = escapeAttr(sanitizeUrl(link.url));
 				const cellContent = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none">${imgTag}</a>`;
@@ -80,7 +87,8 @@ export const renderSocialContent = (content: SocialBlockContent): string => {
 	const iconBlocks = enabledLinks
 		.map((link) => {
 			const name = PLATFORM_NAMES[link.platform] || link.platform;
-			const iconSrc = link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle);
+			const iconSrc =
+				link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle, assetBaseUrl);
 			const imgTag = renderIconImg(iconSrc, name, iconSize);
 			const safeUrl = escapeAttr(sanitizeUrl(link.url));
 			return `<!--[if mso | IE]><td style="vertical-align:top;padding:0 ${halfSpacing}px"><![endif]--><div style="display:inline-block;vertical-align:top;text-align:center;padding:0 ${halfSpacing}px"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none">${imgTag}</a></div><!--[if mso | IE]></td><![endif]-->`;
@@ -114,7 +122,7 @@ export const socialModule: BlockModule<'social'> = {
 					})),
 				}
 			: content;
-		const inner = renderSocialContent(transformed);
+		const inner = renderSocialContent(transformed, ctx.assetBaseUrl);
 		if (placement === 'container' && inner) {
 			// Wrap in a padding cell so nested icons get vertical rhythm between
 			// sibling container items (the container concatenates children raw).
