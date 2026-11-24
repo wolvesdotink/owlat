@@ -14,5 +14,8 @@
  *   2  A single-open accordion's radio inputs are named after its own Block
  *      (`owlat-accordion-<blockId>`) instead of sharing `owlat-accordion`, so
  *      two accordions in one email no longer close each other's sections.
+ *   3  Non-stacking columns sit in a full-width table row, a full-width
+ *      button's anchor is `box-sizing:border-box`, a button keeps an explicit
+ *      padding of 0, and a table with a border radius keeps separate borders.
  */
-export const EMAIL_RENDERER_VERSION = 2;
+export const EMAIL_RENDERER_VERSION = 3;

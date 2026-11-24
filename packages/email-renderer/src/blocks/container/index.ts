@@ -19,6 +19,7 @@ import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
 import { escapeCss, escapeCssUrl } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
+import { SEPARATE_BORDERS } from '../../helpers/table';
 import { px } from '../../helpers/padding';
 import {
 	checkShape,
@@ -77,7 +78,7 @@ const renderNested = (
 		: '';
 	const bgCss = bgColor !== 'transparent' ? `background-color:${escapeCss(bgColor)};` : '';
 	const gradientCss = escapeCss(gradientToCssOrEmpty(content.backgroundGradient));
-	const radiusCss = borderRadius > 0 ? `border-radius:${borderRadius}px;` : '';
+	const radiusCss = borderRadius > 0 ? `border-radius:${borderRadius}px;${SEPARATE_BORDERS};` : '';
 	const padding = `padding:${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px`;
 
 	const bgImage = content.backgroundImage;

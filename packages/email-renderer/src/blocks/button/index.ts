@@ -30,8 +30,8 @@ const ALIGNS_FULL = ['left', 'center', 'right', 'full'] as const;
  * fillcolor (solid) and v:fill (gradient).
  */
 const renderVmlButton = (content: ButtonBlockContent): string => {
-	const px = toPx(content.paddingX, 0) || 24;
-	const py = toPx(content.paddingY, 0) || 12;
+	const px = toPx(content.paddingX, 24);
+	const py = toPx(content.paddingY, 12);
 	const fontSize = toPx(content.fontSize, 16);
 	const fontFamily = escapeCss(content.fontFamily ?? 'Arial, sans-serif');
 	const fontWeight = toPx(content.fontWeight, 400);
@@ -82,7 +82,9 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 	const tableAlign = content.align === 'full' ? 'center' : escapeAttr(content.align);
 	let btnWidth = '';
 	if (content.align === 'full') {
-		btnWidth = 'width:100%;';
+		// The anchor carries the horizontal padding; without border-box it is
+		// wider than its cell by twice that padding.
+		btnWidth = 'width:100%;box-sizing:border-box;';
 	} else if (content.buttonWidth) {
 		btnWidth = `width:${escapeCss(content.buttonWidth)};`;
 	}
@@ -90,8 +92,8 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 	const fontSize = toPx(content.fontSize, undefined);
 	const fontFamily = content.fontFamily ? escapeCss(content.fontFamily) : 'inherit';
 	const fontWeight = toPx(content.fontWeight, undefined) ?? 'inherit';
-	const paddingX = toPx(content.paddingX, 0) || 24;
-	const paddingY = toPx(content.paddingY, 0) || 12;
+	const paddingX = toPx(content.paddingX, 24);
+	const paddingY = toPx(content.paddingY, 12);
 	const buttonBorderWidth = toPx(content.buttonBorderWidth, 0);
 
 	const tdStyles: string[] = [
