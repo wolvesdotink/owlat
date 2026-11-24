@@ -22,17 +22,30 @@ describe('renderSocialContent', () => {
 		expect(html).toContain('/social-icons/filled/facebook.png');
 	});
 
+	it('loads the default icons from the asset base URL when one is given', () => {
+		const html = renderSocialContent(makeContent(), 'https://app.owlat.example');
+		expect(html).toContain('src="https://app.owlat.example/social-icons/filled/twitter.png"');
+		expect(html).not.toContain('src="/social-icons/');
+	});
+
 	it('derives outline icon URL when iconStyle is outline', () => {
 		const html = renderSocialContent(makeContent({ iconStyle: 'outline' }));
 		expect(html).toContain('/social-icons/outline/twitter.png');
 	});
 
 	it('uses custom iconUrl when provided', () => {
-		const html = renderSocialContent(makeContent({
-			links: [
-				{ platform: 'twitter', url: 'https://x.com/test', enabled: true, iconUrl: 'https://cdn.example.com/custom-x.png' },
-			],
-		}));
+		const html = renderSocialContent(
+			makeContent({
+				links: [
+					{
+						platform: 'twitter',
+						url: 'https://x.com/test',
+						enabled: true,
+						iconUrl: 'https://cdn.example.com/custom-x.png',
+					},
+				],
+			})
+		);
 		expect(html).toContain('https://cdn.example.com/custom-x.png');
 		expect(html).not.toContain('/social-icons/filled/twitter.png');
 	});
@@ -57,12 +70,14 @@ describe('renderSocialContent', () => {
 	});
 
 	it('returns empty string when no enabled links with URLs', () => {
-		const html = renderSocialContent(makeContent({
-			links: [
-				{ platform: 'twitter', url: '', enabled: true },
-				{ platform: 'facebook', url: 'https://fb.com', enabled: false },
-			],
-		}));
+		const html = renderSocialContent(
+			makeContent({
+				links: [
+					{ platform: 'twitter', url: '', enabled: true },
+					{ platform: 'facebook', url: 'https://fb.com', enabled: false },
+				],
+			})
+		);
 		expect(html).toBe('');
 	});
 });
