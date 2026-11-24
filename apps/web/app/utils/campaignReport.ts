@@ -117,3 +117,23 @@ export function compareRates(
 		),
 	];
 }
+
+/** The send counters the report header and funnel are built from. */
+export interface ReportSendCounts {
+	/** Every recipient the campaign was addressed to, failed sends included. */
+	recipients: number;
+	/** Everything dispatched to the provider (the delivery-rate denominator). */
+	sent: number;
+}
+
+/**
+ * Split the campaign's send rows into who it was addressed to and what reached
+ * the provider. A failed send never left Owlat, so it counts as a recipient and
+ * not as sent; neither does one still queued.
+ */
+export function reportSendCounts(
+	stats: { total: number; queued: number; failed: number } | null | undefined
+): ReportSendCounts {
+	if (!stats) return { recipients: 0, sent: 0 };
+	return { recipients: stats.total, sent: stats.total - stats.queued - stats.failed };
+}

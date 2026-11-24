@@ -4,19 +4,32 @@ import { adminEntryById } from '~/lib/adminSettingsRegistry';
 import { isFeatureReachable } from '~/lib/routeFeatureGates';
 
 /**
- * The Workbench with no inbox to work from. It offers the page that adds one
- * only while the feature gate lets that page open; with mail switched off the
- * link would bounce straight back here, so the empty state says mail is off
+ * The Workbench with no inbox to work from. It offers a way to add one only
+ * while the feature gate lets that page open; with mail switched off the link
+ * would bounce straight back here, so the empty state says mail is off
  * instead, and someone who may change features (the Features page asks for the
  * admin role) gets the way there.
+ *
+ * Only an admin goes to the add-account page: creating a hosted mailbox needs
+ * `organization:manage`, so a member would get a form the server refuses. A
+ * member goes where the Postbox guard sends them: the connect wizard while
+ * external accounts are on, otherwise the guard itself, which asks an admin.
  */
 const ADD_ACCOUNT_PATH = '/dashboard/preferences/add-account';
+const CONNECT_PATH = '/dashboard/postbox/migrate';
+const POSTBOX_PATH = '/dashboard/postbox';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin } = usePermissions();
 
 const canAddAccount = computed(() => isFeatureReachable(ADD_ACCOUNT_PATH, isEnabled));
+const addAction = computed(() => {
+	if (isAdmin.value) return { to: ADD_ACCOUNT_PATH, label: 'dashboard.today.noInbox.cta' };
+	if (isEnabled('mail.external'))
+		return { to: CONNECT_PATH, label: 'dashboard.today.noInbox.ctaMember' };
+	return { to: POSTBOX_PATH, label: 'dashboard.today.noInbox.ctaAsk' };
+});
 const featuresPath = computed(() => (isAdmin.value ? adminEntryById('features')?.path : null));
 </script>
 
@@ -45,8 +58,8 @@ const featuresPath = computed(() => (isAdmin.value ? adminEntryById('features')?
 				}}
 			</p>
 		</div>
-		<UiButton v-if="canAddAccount" :to="ADD_ACCOUNT_PATH" size="sm">
-			{{ t('dashboard.today.noInbox.cta') }}
+		<UiButton v-if="canAddAccount" :to="addAction.to" size="sm">
+			{{ t(addAction.label) }}
 		</UiButton>
 		<UiButton v-else-if="featuresPath" :to="featuresPath" size="sm" variant="outline">
 			{{ t('dashboard.today.openFeatures') }}

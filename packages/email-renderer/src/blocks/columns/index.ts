@@ -53,6 +53,7 @@ export const columnsModule: BlockModule<'columns'> = {
 		if (direction === 'rtl') columnIndices = columnIndices.reverse();
 
 		const useTableCell = !content.mobileStacking;
+		let someColumnStacks = false;
 
 		const columnHtmlParts = columnIndices.map((colIdx) => {
 			const columnItems = content.columns[colIdx] || [];
@@ -66,6 +67,7 @@ export const columnsModule: BlockModule<'columns'> = {
 
 			const colStyle = content.columnStyles?.[colIdx];
 			const columnStacks = colStyle?.stackOnMobile ?? content.mobileStacking;
+			if (columnStacks) someColumnStacks = true;
 			const mobileClass = columnStacks ? ' class="owlat-col"' : '';
 
 			const colBg = colStyle?.backgroundColor
@@ -124,7 +126,22 @@ export const columnsModule: BlockModule<'columns'> = {
 		}
 
 		const inner = columnHtmlParts.join('');
-		return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="font-size:0;line-height:0;">${inner}</div>${msoColumnsClose()}`;
+		if (!useTableCell) {
+			return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="font-size:0;line-height:0;">${inner}</div>${msoColumnsClose()}`;
+		}
+		// `display:table-cell` columns need a table parent at full width; inside a
+		// plain block the browser wraps them in an anonymous table that shrinks to
+		// the content, and the percentage widths resolve against nothing. The
+		// layout stays automatic so an unbreakable word widens its column instead
+		// of running into the next one. A column that opts into stacking only
+		// leaves the row when the row stops being a table on mobile.
+		let rowClass = '';
+		if (someColumnStacks) {
+			rowClass = ' class="owlat-cols-row"';
+			const rule = '.owlat-cols-row{display:block!important}';
+			if (!ctx.responsiveRules.includes(rule)) ctx.responsiveRules.push(rule);
+		}
+		return `${msoColumnsOpen(ctx.baseWidth, direction)}<div${rowClass} style="display:table;width:100%;font-size:0;line-height:0;">${inner}</div>${msoColumnsClose()}`;
 	},
 
 	plaintext({ content, walk }) {
