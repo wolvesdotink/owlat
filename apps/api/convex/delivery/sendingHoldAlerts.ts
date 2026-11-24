@@ -311,8 +311,11 @@ export const isAlertCurrent = internalQuery({
 	handler: async (ctx, { alert }): Promise<boolean> => {
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (alert.kind === 'resolved') return !isHold(settings?.abuseStatus);
+		// The status change this raise announced is still the latest: after
+		// suspended, banned, suspended again, the first raise is stale.
 		return (
 			settings?.abuseStatus === alert.holdStatus &&
+			settings.abuseStatusChangedAt === alert.at &&
 			settings.sendingStoppedAt !== undefined &&
 			sendingHoldAlertId(settings.sendingStoppedAt) === alert.alertId
 		);

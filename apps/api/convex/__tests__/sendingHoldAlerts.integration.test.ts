@@ -492,6 +492,50 @@ describe('sending suspended and resumed on the alert channels', () => {
 		).toBe(false);
 	});
 
+	it('suspended, banned, suspended, banned: every raise is mailed, and an older raise is stale', async () => {
+		const t = await harness();
+		const statuses = ['suspended', 'banned', 'suspended', 'banned'] as const;
+		for (const [index, to] of statuses.entries()) {
+			await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+				input: { to, at: NOW + index, reason: `step ${index}`, changedBy: 'admin-1' },
+			});
+		}
+		await settle(t);
+
+		// Two people, four raises, four different dedupe keys each.
+		expect(new Set(transport.sent.map((mail) => mail.idempotencyKey)).size).toBe(8);
+		const raised = (await alertPayloads(t)).map((log) => log.payload.data);
+		const firstSuspension = {
+			kind: 'raised' as const,
+			alertId: raised[0]!['alertId'] as string,
+			holdStatus: 'suspended' as const,
+			reason: 'step 0',
+			lift: JSON.stringify({ mode: 'admin', condition: null }),
+			nextAction: '',
+			at: NOW,
+			emailMayNotArrive: true,
+		};
+		// Back on "suspended" twice removed: a retry of the first raise is not sent.
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'suspended', at: NOW + 4, reason: 'step 4', changedBy: 'admin-1' },
+		});
+		expect(
+			await t.query(internal.delivery.sendingHoldAlerts.isAlertCurrent, { alert: firstSuspension })
+		).toBe(false);
+	});
+
+	it('a suspension notice that became a ban before its fan-out is not written', async () => {
+		const t = await harness();
+		await suspend(t, NOW);
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'banned', at: NOW + 1, reason: 'phishing', changedBy: 'admin-1' },
+		});
+		await settle(t);
+
+		const notices = await t.run((ctx) => ctx.db.query('marketingNotices').collect());
+		expect(notices.map((notice) => notice.holdStatus)).toEqual(['banned']);
+	});
+
 	it('a new reason under the same status announces nothing', async () => {
 		const t = await harness();
 		await suspend(t, NOW);

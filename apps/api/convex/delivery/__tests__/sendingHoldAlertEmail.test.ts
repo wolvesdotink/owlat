@@ -127,6 +127,17 @@ describe('sending hold alert email', () => {
 		expect(committed(test)).toMatchObject({ retryDelayMs: null });
 	});
 
+	it('settles the run as nobody mailed when the directory cannot be read', async () => {
+		const test = harness(failed('terminal'));
+		test.deps.loadRecipients = vi.fn(async () => {
+			throw new Error('directory down');
+		});
+		await expect(
+			deliverSendingHoldEmailHandler(test.ctx, { alert: RAISED }, test.deps)
+		).resolves.toEqual({ accepted: 0, retrying: 0 });
+		expect(committed(test)).toMatchObject({ accepted: 0, retryUserIds: [] });
+	});
+
 	it('writes each admin the email in the language they chose', async () => {
 		const test = harness(failed('terminal'), true, { admin: 'de' });
 		test.deps.sendEmail = vi.fn(async () => ({

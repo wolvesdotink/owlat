@@ -109,13 +109,13 @@ export function sendingHoldEmail(
 
 /**
  * The provider's dedupe key. A status change while stopped shares the first
- * raise's `alertId` and kind, so it also names its status: without it the
- * provider would drop the "now banned" email as a repeat.
+ * raise's `alertId` and kind, so it also names its status and time: without
+ * them the provider would drop the "now banned" email as a repeat.
  */
 function idempotencyKey(alert: SendingHoldAlert, userId: string): string {
 	const announcement =
 		alert.kind === 'raised' && alert.previousHoldStatus
-			? `${alert.alertId}|${alert.kind}|${alert.holdStatus}`
+			? `${alert.alertId}|${alert.kind}|${alert.holdStatus}|${alert.at}`
 			: `${alert.alertId}|${alert.kind}`;
 	return `sending-hold-alert-${createHash('sha256').update(`${announcement}|${userId}`).digest('hex')}`;
 }
@@ -184,7 +184,9 @@ export async function deliverSendingHoldEmailHandler(
 	}
 	const from = systemSenderAddress();
 	if (!from) return commitOutcome(ctx, args, 0, []);
-	const recipients = (await deps.loadRecipients(ctx)).filter(
+	// A directory that cannot be read settles the run as nobody mailed, so the
+	// Center does not show the email as still sending.
+	const recipients = (await deps.loadRecipients(ctx).catch(() => [])).filter(
 		(recipient) => args.userId === undefined || recipient.userId === args.userId
 	);
 	// A failed lookup costs the recipients their language, never the email.
