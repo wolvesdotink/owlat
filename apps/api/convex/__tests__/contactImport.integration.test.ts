@@ -718,33 +718,24 @@ describe('contacts.import.importBatch — an existing contact per duplicate mode
 		}
 	);
 
-	it.each([{ withTopic: false }, { withTopic: true }])(
-		'update (topic: $withTopic) merges the row into the existing contact',
-		async ({ withTopic }) => {
-			const t = convexTest(schema, modules);
-			const topicId = await createTopic(t, false);
-			const existing = await seedExisting(t);
+	it('update with an email-only row adds the existing contact to the topic and changes nothing else', async () => {
+		const t = convexTest(schema, modules);
+		const topicId = await createTopic(t, false);
+		const existing = await seedExisting(t);
+		const before = await snapshot(t, existing._id);
 
-			const result = await t.mutation(internal.contacts.import.importBatch, {
-				rows: [{ email: 'known@example.com', firstName: 'New', properties: { company: 'Acme' } }],
-				source: 'csv',
-				handleDuplicates: 'update',
-				doiAttest: { attestSource: 'paper form' },
-				...(withTopic ? { topicAssignments: { kind: 'single' as const, topicId } } : {}),
-			});
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows: [{ email: 'known@example.com' }],
+			source: 'csv',
+			handleDuplicates: 'update',
+			topicAssignments: { kind: 'single', topicId },
+		});
 
-			expect(result).toMatchObject({
-				updated: 1,
-				addedToTopics: withTopic ? 1 : 0,
-				propertiesSet: 1,
-			});
-			const after = await snapshot(t, existing._id);
-			expect(after.contact?.firstName).toBe('New');
-			expect(after.contact?.doiStatus).toBe('confirmed');
-			expect(after.propertyValues.map((row) => row.value)).toEqual(['Acme']);
-			expect(after.memberships.map((row) => row.topicId)).toEqual(withTopic ? [topicId] : []);
-		}
-	);
+		expect(result).toMatchObject({ skipped: 1, addedToTopics: 1, propertiesSet: 0 });
+		const after = await snapshot(t, existing._id);
+		expect(after.contact).toEqual(before.contact);
+		expect(after.memberships.map((row) => row.topicId)).toEqual([topicId]);
+	});
 });
 
 describe('contacts.import.importBatch — contact activity', () => {
