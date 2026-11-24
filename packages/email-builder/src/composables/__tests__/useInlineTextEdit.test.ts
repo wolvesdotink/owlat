@@ -132,3 +132,26 @@ describe('useInlineTextEdit.exitInlineEdit — no change, no commit', () => {
 		expect(onUpdate).toHaveBeenCalledWith('b1', 'html', '<p>Loaded and typed</p>');
 	});
 });
+
+describe('useInlineTextEdit.openLinkDialog — editing a link', () => {
+	it('offers the href as written, so a variable link reopens unchanged', () => {
+		const block = textBlock('b1', '<p>x</p>');
+		const activeBlock = computed<EditorBlock | null>(() => block);
+		const edit = useInlineTextEdit({ activeBlock, onUpdate: vi.fn() });
+		edit.enterInlineEdit('b1');
+		const el = document.createElement('div');
+		el.innerHTML = `<p><a href="{{target|'https://example.com/default'}}">link</a></p>`;
+		document.body.append(el);
+		edit.inlineEditorRef.value = { el };
+		const range = document.createRange();
+		range.selectNodeContents(el.querySelector('a')!.firstChild!);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+
+		edit.openLinkDialog();
+
+		expect(edit.linkDialogIsEditing.value).toBe(true);
+		expect(edit.linkDialogInitialUrl.value).toBe("{{target|'https://example.com/default'}}");
+		el.remove();
+	});
+});
