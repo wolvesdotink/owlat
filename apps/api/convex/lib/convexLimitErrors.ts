@@ -27,3 +27,13 @@ export function isTransactionLimitError(message: string): boolean {
 export function isConvexValidationError(message: string): boolean {
 	return /does not match the schema|validator|ValidationError/i.test(message);
 }
+
+/**
+ * Whether a failure is the paginator refusing a cursor it did not issue for
+ * the query. The deployed backend names it `InvalidCursor` (the text Convex's
+ * own `usePaginatedQuery` matches on); the test backend decodes a cursor with
+ * `JSON.parse` and passes on its message.
+ */
+export function isInvalidCursorError(message: string): boolean {
+	return /InvalidCursor|is not valid JSON/.test(message);
+}

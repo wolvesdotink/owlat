@@ -1738,8 +1738,7 @@
 																},
 																"field": {
 																	"type": "string",
-																	"enum": ["dataVariables"],
-																	"description": "The request field at fault."
+																	"description": "The request field at fault: `dataVariables` on an `invalid_variables` refusal."
 																},
 																"variables": {
 																	"type": "array",

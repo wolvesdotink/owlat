@@ -113,7 +113,10 @@ function successBody(operation: PublicOperation): JsonObject {
  */
 const REASON_DATA: Partial<Record<ApiErrorReason, JsonObject>> = {
 	invalid_variables: {
-		field: { type: 'string', enum: ['dataVariables'], description: 'The request field at fault.' },
+		field: {
+			type: 'string',
+			description: 'The request field at fault: `dataVariables` on an `invalid_variables` refusal.',
+		},
 		variables: {
 			type: 'array',
 			items: { type: 'string' },

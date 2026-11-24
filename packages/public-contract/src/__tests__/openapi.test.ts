@@ -201,9 +201,13 @@ describe('error reasons', () => {
 		};
 		expect(invalid.allOf[1]!.properties!.error.properties.data.properties).toMatchObject({
 			reason: { enum: ['invalid_variables'] },
-			field: { enum: ['dataVariables'] },
+			field: { type: 'string' },
 			variables: { type: 'array', items: { type: 'string' } },
 		});
+		// Every other 400 of the route names its own field.
+		expect(
+			invalid.allOf[1]!.properties!.error.properties.data.properties['field']
+		).not.toHaveProperty('enum');
 	});
 
 	it('lists the key refusals on every keyed operation and none on the open probe', () => {

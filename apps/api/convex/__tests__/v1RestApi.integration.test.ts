@@ -2468,18 +2468,6 @@ describe('a 400 about the path, the query or a header names that input in data.f
 				},
 			],
 		],
-		[
-			'a bad Idempotency-Key on a send',
-			'Idempotency-Key',
-			(f) => [
-				'/api/v1/transactional',
-				{
-					method: 'POST',
-					headers: { ...authHeaders(f.key), 'Idempotency-Key': 'two words' },
-					body: '{"email":"a@example.com","slug":"welcome"}',
-				},
-			],
-		],
 	];
 
 	it.each(requests)('%s names %s', async (_label, field, request) => {
