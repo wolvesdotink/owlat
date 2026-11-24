@@ -183,6 +183,12 @@ export function linkedCopyId(groupId: string, sourceId: string): string {
 
 const treeNodes = (blocks: EditorBlock[]) => blocks as unknown as BlockTreeNode[];
 
+/** The saved block's root Blocks; entries that are not Block-shaped are skipped. */
+const savedBlockRoots = (content: string): EditorBlock[] =>
+	parseContentBlocks(content).filter(
+		(block) => typeof block?.id === 'string' && typeof block.type === 'string'
+	);
+
 /** Give `node` and everything nested in it its linked-copy id, in place. */
 function applyLinkedCopyIds(node: BlockTreeNode, groupId: string): void {
 	node.id = linkedCopyId(groupId, node.id);
@@ -270,8 +276,10 @@ function carryRenamedOverlays(
 			overlays[to] = { ...overlays[from] };
 			changed = true;
 		}
-		for (const { from } of renames) {
-			if (!kept.has(from) && hasOwn(overlays, from)) {
+		// Only a moved entry is removed: the overlay of a Block this edit
+		// removed stays behind, as it does for every other removed Block.
+		for (const { from, to } of renames) {
+			if (kept.has(to) && !kept.has(from) && hasOwn(overlays, from)) {
 				delete overlays[from];
 				changed = true;
 			}
@@ -309,8 +317,8 @@ export function replaceLinkedBlocks(
 	}
 	if (groups.size === 0) return null;
 
-	const previousBlocks = parseContentBlocks(previousContent);
-	const newBlocks = parseContentBlocks(newContent);
+	const previousBlocks = savedBlockRoots(previousContent);
+	const newBlocks = savedBlockRoots(newContent);
 
 	const sourceIds = collectIds(
 		treeNodes(newBlocks),
@@ -332,7 +340,7 @@ export function replaceLinkedBlocks(
 			if (!processedGroups.has(groupId)) {
 				processedGroups.add(groupId);
 				// Parsed again for each group: the ids are rewritten in place.
-				for (const copy of parseContentBlocks(newContent)) {
+				for (const copy of savedBlockRoots(newContent)) {
 					applyLinkedCopyIds(copy as unknown as BlockTreeNode, groupId);
 					result.push({
 						...copy,

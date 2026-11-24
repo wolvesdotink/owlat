@@ -870,4 +870,40 @@ describe('Saved block module — propagation keeps linked copies translated', ()
 			'g2-s-legal',
 		]);
 	});
+	it('a Block the edit removes leaves its overlay entry behind', async () => {
+		const t = convexTest(schema, modules);
+		const blockId = await seedFooter(t);
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([
+						linked(text('c-intro', '<p>Hello</p>'), blockId, 'g1'),
+						linked(container('c-box', [text('c-legal', '<p>Legal</p>')]), blockId, 'g1'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								'c-intro': { html: '<p>Hallo</p>' },
+								'c-legal': { html: '<p>Rechtliches</p>' },
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [container('s-box', [text('s-legal', '<p>Legal</p>')])]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(translatedTexts(row!, 'de')).toEqual(['<p>Rechtliches</p>']);
+		expect(Object.keys(parseTranslations(row!.translations)['de']!.blocks ?? {}).sort()).toEqual([
+			'c-intro',
+			'g1-s-legal',
+		]);
+	});
 });
