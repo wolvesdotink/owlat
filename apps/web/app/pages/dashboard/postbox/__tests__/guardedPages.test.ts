@@ -63,7 +63,9 @@ beforeAll(() => {
 			isLoading: ref(false),
 		}),
 		useFeatureFlag: () => ({
-			isEnabled: (flag: string) => flag === 'mail.external' && externalAllowed.value,
+			// Postbox pages only open with mail on (the route gate).
+			isEnabled: (flag: string) =>
+				flag === 'postbox' || (flag === 'mail.external' && externalAllowed.value),
 			isLoading: ref(false),
 		}),
 		useBackendOperation: () => ({ run: vi.fn(), isLoading: ref(false) }),

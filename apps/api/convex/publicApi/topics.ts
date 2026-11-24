@@ -22,6 +22,7 @@ export const listForApi = internalQuery({
 				{ ...topicListing, enrich: undefined },
 				{
 					paginationOpts: { numItems: args.limit, cursor: args.cursor },
+					clientCursor: true,
 				}
 			),
 			countFacet(ctx.db, topicListing, 'total'),

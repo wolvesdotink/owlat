@@ -382,6 +382,74 @@ describe('container block', () => {
 		const html = renderEmailHtml([emptyContainer]);
 		expect(html).not.toContain('Inside container');
 	});
+
+	it('keeps separate borders on a rounded container so its border is drawn round', () => {
+		const rounded = (radius: number): EditorBlock =>
+			({
+				id: 'outer',
+				type: 'container',
+				content: {
+					items: [
+						{
+							id: 'inner',
+							type: 'container',
+							content: {
+								items: [
+									{
+										id: 't',
+										type: 'text',
+										content: {
+											html: '<p>Card</p>',
+											blockType: 'paragraph',
+											fontSize: 14,
+											textColor: '#000',
+										},
+									},
+								],
+								borderWidth: 1,
+								borderStyle: 'solid',
+								borderColor: '#cccccc',
+								borderRadius: radius,
+							},
+						},
+					],
+				},
+			}) as EditorBlock;
+		// The reset in the style block is `!important`; only an inline
+		// `!important` outranks it.
+		expect(renderEmailHtml([rounded(16)])).toContain(
+			'border:1px solid #cccccc;border-radius:16px;border-collapse:separate!important;'
+		);
+		expect(renderEmailHtml([rounded(0)])).not.toContain('border-collapse:separate');
+	});
+});
+
+describe('section border radius', () => {
+	const bordered = (radius: number): EditorBlock =>
+		({
+			id: 'b',
+			type: 'text',
+			content: {
+				html: '<p>Card</p>',
+				blockType: 'paragraph',
+				fontSize: 14,
+				textColor: '#000',
+				borderWidth: 1,
+				borderStyle: 'solid',
+				borderColor: '#cccccc',
+				borderRadius: radius,
+			},
+		}) as EditorBlock;
+
+	it('keeps separate borders on a rounded section table', () => {
+		expect(renderEmailHtml([bordered(16)])).toContain(
+			'border:1px solid #cccccc;border-radius:16px;border-collapse:separate!important'
+		);
+	});
+
+	it('leaves a square section to the collapse reset', () => {
+		expect(renderEmailHtml([bordered(0)])).not.toContain('border-collapse:separate');
+	});
 });
 
 describe('accessibility', () => {

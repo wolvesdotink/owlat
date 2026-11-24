@@ -48,7 +48,7 @@ import { receiptEndpointValidator } from '../schema/apiRequestReceipts';
 import { errorResponse } from './apiResponses';
 
 /** Request header carrying the caller's key. */
-const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
+export const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
 
 /** Response header set to `true` on a response answered from a receipt. */
 const IDEMPOTENT_REPLAYED_HEADER = 'Idempotent-Replayed';
