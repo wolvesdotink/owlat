@@ -15,6 +15,7 @@ export type {
 	PaginatedResponse,
 	PaginationMeta,
 	TransactionalRefusalReason,
+	WriteRefusalReason,
 } from '@owlat/public-contract';
 
 /**

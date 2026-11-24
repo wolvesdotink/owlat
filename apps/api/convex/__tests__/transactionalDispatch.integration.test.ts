@@ -582,6 +582,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		expect(outcome.reason).toBe('invalid_variables');
 		expect(outcome.detail).toContain('"resetUrl"');
 		expect(outcome.detail).not.toContain('firstName');
+		expect(outcome.variables).toEqual(['resetUrl']);
 		expect(await t.run((ctx) => ctx.db.query('contacts').collect())).toHaveLength(0);
 	});
 });

@@ -1,6 +1,33 @@
-import type { IndexRange, IndexRangeBuilder, GenericDocument } from 'convex/server';
+import type {
+	IndexRange,
+	IndexRangeBuilder,
+	GenericDocument,
+	PaginationOptions,
+	PaginationResult,
+} from 'convex/server';
 import type { DatabaseReader } from '../_generated/server';
 import type { TableNames } from '../_generated/dataModel';
+import { throwInvalidInput } from '../_utils/errors';
+
+/**
+ * `query.paginate(opts)` for a cursor a client sent. The paginator throws on
+ * a cursor it did not issue for this query (one that does not parse, or one
+ * from another index), and a query given the same data and arguments reads
+ * the same rows, so a throw with a cursor in play is the cursor's fault: it
+ * becomes the caller's `invalid_input` naming `cursor`, not a 500. Without a
+ * cursor the throw is passed on as it came.
+ */
+export async function paginateClientCursor<Doc>(
+	query: { paginate: (opts: PaginationOptions) => Promise<PaginationResult<Doc>> },
+	opts: PaginationOptions
+): Promise<PaginationResult<Doc>> {
+	if (opts.cursor === null) return await query.paginate(opts);
+	try {
+		return await query.paginate(opts);
+	} catch {
+		throwInvalidInput('Invalid cursor', { field: 'cursor' });
+	}
+}
 
 /**
  * Count the rows of one index range by streaming them.

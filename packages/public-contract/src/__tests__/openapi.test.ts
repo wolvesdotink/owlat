@@ -179,6 +179,33 @@ describe('error reasons', () => {
 		}
 	});
 
+	it('lists the deletion refusal on every operation that writes, and on no read', () => {
+		for (const operation of PUBLIC_OPERATIONS) {
+			const listed = reasonsListed(operation.operationId, 422);
+			if (operation.method === 'GET') {
+				expect(listed, operation.operationId).not.toContain('workspace_deletion_in_progress');
+			} else {
+				expect(listed, operation.operationId).toContain('workspace_deletion_in_progress');
+			}
+		}
+	});
+
+	it("describes the send route's invalid_variables data: the field and the variables", () => {
+		const send = Object.values(paths)
+			.flatMap((methods) => Object.values(methods))
+			.find((op) => op.operationId === 'sendTransactional')!;
+		const invalid = send.responses['400']!.content['application/json'].schema as {
+			allOf: Array<{
+				properties?: { error: { properties: { data: { properties: Record<string, unknown> } } } };
+			}>;
+		};
+		expect(invalid.allOf[1]!.properties!.error.properties.data.properties).toMatchObject({
+			reason: { enum: ['invalid_variables'] },
+			field: { enum: ['dataVariables'] },
+			variables: { type: 'array', items: { type: 'string' } },
+		});
+	});
+
 	it('lists the key refusals on every keyed operation and none on the open probe', () => {
 		for (const operation of PUBLIC_OPERATIONS) {
 			for (const reason of API_KEY_ERROR_REASONS) {

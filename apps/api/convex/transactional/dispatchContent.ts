@@ -38,7 +38,7 @@ export type AttachmentRef = {
 export function validateDataVariables(
 	variables: Record<string, unknown> | undefined,
 	schema: Record<string, string> | undefined
-): { valid: boolean; error?: string } {
+): { valid: boolean; error?: string; variable?: string } {
 	if (!schema) return { valid: true };
 	if (!variables) return { valid: true };
 
@@ -72,6 +72,7 @@ export function validateDataVariables(
 			return {
 				valid: false,
 				error: `Variable "${key}" should be of type "${expectedType}", got "${actualType}"`,
+				variable: key,
 			};
 		}
 	}

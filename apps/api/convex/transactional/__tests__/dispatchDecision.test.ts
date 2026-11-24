@@ -180,7 +180,7 @@ describe('the sender and the variables', () => {
 				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
-		).toMatchObject({ reason: 'invalid_variables' });
+		).toMatchObject({ reason: 'invalid_variables', variables: ['firstName'] });
 		expect(
 			decideSenderAndVariables({
 				fromEmail: 'receipts@x.test',

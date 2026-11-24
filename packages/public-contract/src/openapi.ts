@@ -112,6 +112,15 @@ function successBody(operation: PublicOperation): JsonObject {
  * open to fields a later release adds.
  */
 const REASON_DATA: Partial<Record<ApiErrorReason, JsonObject>> = {
+	invalid_variables: {
+		field: { type: 'string', enum: ['dataVariables'], description: 'The request field at fault.' },
+		variables: {
+			type: 'array',
+			items: { type: 'string' },
+			description:
+				'The data variables at fault: the one of the wrong type, or every one the email uses without a fallback that the request left out.',
+		},
+	},
 	abuse_blocked: {
 		status: {
 			type: 'string',
