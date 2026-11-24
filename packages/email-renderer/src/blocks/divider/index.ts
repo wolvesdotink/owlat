@@ -9,6 +9,7 @@ import { fullSupport, type DividerBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { escapeAttr, escapeCss } from '../../sanitize';
 import { px } from '../../helpers/padding';
+import { wrapNestedItem } from '../../helpers/table';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
 const DIVIDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
@@ -26,10 +27,13 @@ const renderInner = (content: DividerBlockContent): string => {
 	return `<table width="${width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}" aria-hidden="true"><tr><td style="border-top:${thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
 };
 
-/** Column / container placement wraps the inner table in a padding cell. */
+/** Column / container placement wraps the inner table in the nested item cell. */
 const renderInColumn = (content: DividerBlockContent): string => {
 	const { style, align, width, thickness } = dividerParts(content);
-	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0"><table width="${width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr><td style="border-top:${thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table></td></tr></table>`;
+	return wrapNestedItem(
+		content,
+		`<table width="${width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr><td style="border-top:${thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table>`
+	);
 };
 
 export const dividerModule: BlockModule<'divider'> = {

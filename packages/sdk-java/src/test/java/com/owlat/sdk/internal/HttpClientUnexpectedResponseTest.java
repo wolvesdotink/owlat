@@ -212,4 +212,49 @@ class HttpClientUnexpectedResponseTest {
 
         assertEquals("Contact not found", ex.getMessage());
     }
+
+    @Test
+    void a2xxBodyOfOnlyWhitespaceIsUnexpectedNotANetworkError() {
+        status = 200;
+        body = " \n\t ";
+
+        UnexpectedResponseException ex = assertThrows(UnexpectedResponseException.class,
+                () -> client(2).contacts().get("contact_123"));
+
+        assertEquals(200, ex.getStatusCode());
+        assertEquals("", ex.getBodyExcerpt());
+        assertEquals(1, attempts.get());
+    }
+
+    @Test
+    void a2xxJsonDocumentFollowedByOtherContentIsUnexpected() {
+        status = 200;
+        body = "{\"data\":{\"id\":\"contact_123\",\"email\":\"user@example.com\"}} <html></html>";
+
+        UnexpectedResponseException ex = assertThrows(UnexpectedResponseException.class,
+                () -> client(2).contacts().get("contact_123"));
+
+        assertEquals(body, ex.getBodyExcerpt());
+        assertEquals(1, attempts.get());
+    }
+
+    @Test
+    void anEnvelopeFollowedByOtherContentIsUnexpected() {
+        status = 404;
+        body = "{\"error\":{\"category\":\"not_found\",\"message\":\"Contact not found\"}} trailing";
+
+        assertThrows(UnexpectedResponseException.class,
+                () -> client(0).contacts().get("contact_123"));
+    }
+
+    @Test
+    void keepsTheExcerptOnOneLineAcrossUnicodeLineSeparators() {
+        status = 500;
+        body = "one\u2028two\u2029three";
+
+        UnexpectedResponseException ex = assertThrows(UnexpectedResponseException.class,
+                () -> client(0).contacts().get("contact_123"));
+
+        assertEquals("one two three", ex.getBodyExcerpt());
+    }
 }

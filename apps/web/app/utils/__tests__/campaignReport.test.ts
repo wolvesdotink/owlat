@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	selectPreviousComparable,
 	compareRates,
+	reportSendCounts,
 	type ComparableCampaign,
 } from '~/utils/campaignReport';
 
@@ -114,5 +115,25 @@ describe('compareRates', () => {
 		);
 		expect(rows.map((r) => r.key)).toEqual(['openRate', 'clickRate']);
 		expect(rows.every((r) => r.pointsChange === 0)).toBe(true);
+	});
+});
+
+describe('reportSendCounts', () => {
+	it('counts every recipient, failed sends included, apart from what reached the provider', () => {
+		expect(reportSendCounts({ total: 1_000, queued: 0, failed: 400 })).toEqual({
+			recipients: 1_000,
+			sent: 600,
+		});
+	});
+
+	it('counts the still-queued sends as recipients but not as sent', () => {
+		expect(reportSendCounts({ total: 50, queued: 20, failed: 5 })).toEqual({
+			recipients: 50,
+			sent: 25,
+		});
+	});
+
+	it('is zero before the stats load', () => {
+		expect(reportSendCounts(undefined)).toEqual({ recipients: 0, sent: 0 });
 	});
 });

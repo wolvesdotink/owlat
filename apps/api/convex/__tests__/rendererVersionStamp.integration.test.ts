@@ -63,8 +63,8 @@ const RENDERED_V1 = {
 };
 
 describe('renderer version', () => {
-	it('is 2 since accordion radio groups were scoped to their Block', () => {
-		expect(CURRENT_RENDERER_VERSION).toBe(2);
+	it('is 4 since block margins sit outside the background and nested items keep their own box', () => {
+		expect(CURRENT_RENDERER_VERSION).toBe(4);
 	});
 });
 

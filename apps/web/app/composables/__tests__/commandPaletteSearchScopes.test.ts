@@ -230,6 +230,23 @@ describe('palette search with features switched off', () => {
 		}
 	});
 
+	it('leaves Mail scope when mail is switched off while the palette is open', async () => {
+		const enabled = ref(true);
+		vi.stubGlobal('useFeatureFlag', () => ({
+			isEnabled: (flag: string) => enabled.value || mailOff(flag),
+		}));
+		vi.stubGlobal('useRoute', () => ({ path: '/dashboard' }));
+		const palette = scope.run(() => useCommandPaletteScope(() => 'all', null))!;
+
+		palette.resetScope('mail');
+		expect(palette.prompt.value).toBe('mailSearch');
+
+		enabled.value = false;
+		await nextTick();
+		expect(palette.scope.value).toBe('everything');
+		expect(palette.prompt.value).toBe('palette');
+	});
+
 	it('leaves out hits whose page is switched off', () => {
 		vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (flag: string) => flag !== 'campaigns' }));
 		const items = scope.run(() =>

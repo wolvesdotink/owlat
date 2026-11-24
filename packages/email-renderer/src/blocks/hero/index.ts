@@ -38,10 +38,9 @@ export const heroModule: BlockModule<'hero'> = {
 
 	layout() {
 		// Hero paints its background image directly on the section's outer wrap
-		// and emits its own inner padding inside `html()`. The Walker should
-		// therefore only apply margin as outer spacing — never sum
-		// padding+margin into the section's <td>, or the bg image would be
-		// inset by the padding.
+		// and emits its own inner padding inside `html()`. The Walker must
+		// leave the section's <td> unpadded, or the bg image would be inset by
+		// the padding.
 		return { sectionMode: 'outer-only' };
 	},
 

@@ -33,6 +33,7 @@ import { recordListingCounter } from '../lib/listingCounters';
 import { loadOrderedSteps } from './steps';
 import { getLive } from '../lib/softDelete';
 import { scheduleMarketingNotice } from '../marketing/noticeEvents';
+import { automationActivationScanRefusal } from '../emailTemplates/liveContentScan';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -58,7 +59,10 @@ export type AutomationTransitionOutcome =
 				| 'illegal_edge'
 				| 'no_steps'
 				| 'invalid_trigger_config'
+				| 'content_refused'
 				| 'status_changed';
+			/** The content scanner's verdict, for `content_refused`. */
+			detail?: string;
 			from?: AutomationStatus;
 			to?: AutomationStatus;
 	  };
@@ -310,6 +314,14 @@ async function dispatch(
 		if (triggerCheck) {
 			return { ok: false, reason: triggerCheck, from, to: input.to };
 		}
+		// Every email step run sends its template's live HTML with no scan of
+		// its own, so the content is scanned before the automation goes live;
+		// template writes while it is active are scanned by their writers
+		// (`emailTemplates/liveContentScan.ts`).
+		const scanRefusal = await automationActivationScanRefusal(ctx, steps);
+		if (scanRefusal) {
+			return { ok: false, reason: 'content_refused', detail: scanRefusal, from, to: input.to };
+		}
 	}
 
 	const result = reduce(automation, input, userId);
@@ -347,6 +359,8 @@ async function dispatch(
  *   - `automationSteps` count > 0 → otherwise `reason: 'no_steps'`
  *   - Trigger config valid for trigger type → otherwise
  *     `reason: 'invalid_trigger_config'`
+ *   - Every email step's content scans clean → otherwise
+ *     `reason: 'content_refused'` with the verdict in `detail`
  *
  * Callers translate `reason` to user-facing error strings (see
  * `automations/automations.ts` for the shell mapping).

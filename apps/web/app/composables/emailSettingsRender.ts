@@ -110,7 +110,10 @@ export function renderHtmlTranslations(
 		if (language === state.defaultLanguage) continue;
 		const overlay = state.translations[language];
 		rendered[language] = {
-			htmlContent: renderBlocksToHtml(overlaid(state.content, overlay), renderOptions),
+			htmlContent: renderBlocksToHtml(overlaid(state.content, overlay), {
+				...renderOptions,
+				lang: language,
+			}),
 			subject: overlay?.subject?.trim() || state.subject,
 		};
 	}
@@ -165,7 +168,7 @@ export function renderSwappedDelivery(
 	const swapped = promoteLanguage(state, language);
 	const blocks = parseStoredBlocks(swapped.content);
 	return {
-		htmlContent: renderBlocksToHtml(blocks, renderOptions),
+		htmlContent: renderBlocksToHtml(blocks, { ...renderOptions, lang: language }),
 		plainTextContent: renderBlocksToPlainText(blocks, plainTextOverride),
 		htmlTranslations: renderHtmlTranslations(swapped, renderOptions),
 		rendererVersion: EMAIL_RENDERER_VERSION,

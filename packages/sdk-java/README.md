@@ -69,10 +69,23 @@ Owlat owlat = new Owlat(
 ### Retries
 
 Transient failures are retried automatically with exponential backoff. A `429`
-is retried after its `Retry-After`, up to 30 seconds; a longer wait (a send
+is retried after the wait it names (see below), up to 30 seconds; a longer wait (a send
 limit that refills in minutes, or the daily limit) throws a
-`RateLimitException` at once, and `getRetryAfter()` says when to try again. A
-`5xx`, network error, or timeout
+`RateLimitException` at once, and `getRetryAfter()` says when to try again.
+That wait can be hours, so hand a long one to a job queue rather than sleeping
+the thread for it.
+
+When a `429` carries both `data.retryAfter` in its error body and a
+`Retry-After` header, the body wins: it comes from the instance and goes with
+the `data.reason` it names, while the header may come from a proxy in front.
+A body value is any positive number of seconds, rounded up; a header value
+counts only as a positive whole number of seconds, so an HTTP date, a negative
+or a decimal header is ignored and the SDK backs off as for a `5xx`. A wait too
+large for a 32-bit integer is capped at 2147483647. `getRetryAfter()` on the exception is
+the wait the SDK went by, or `1` when the response named none it could read.
+The JS SDK applies the same rule.
+
+A `5xx`, network error, or timeout
 is retried for idempotent methods (`GET`/`PUT`/`DELETE`) and for a `POST` send
 made with an idempotency key. The server applies a keyed send at most once per
 key for 24 hours and answers a repeat with the first response; a send without a

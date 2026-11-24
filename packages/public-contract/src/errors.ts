@@ -26,4 +26,5 @@ export const ERROR_REASON_STATUS: Record<ApiErrorReason, number> = {
 	daily_send_limit: 429,
 	idempotency_conflict: 409,
 	idempotency_erased: 409,
+	workspace_deletion_in_progress: 422,
 };

@@ -41,6 +41,7 @@ import {
 	API_KEY_ERROR_REASONS,
 	SEND_LIST_MAX_WINDOW_DAYS,
 	TRANSACTIONAL_REFUSAL_REASONS,
+	WRITE_REFUSAL_REASONS,
 	type ApiErrorReason,
 } from './types';
 import {
@@ -134,7 +135,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [409, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'getContact',
@@ -176,7 +177,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'deleteContact',
@@ -197,7 +198,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'sendEvent',
@@ -218,7 +219,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
-		reasons: ['idempotency_conflict', 'idempotency_erased'],
+		reasons: ['idempotency_conflict', 'idempotency_erased', ...WRITE_REFUSAL_REASONS],
 	},
 	{
 		operationId: 'sendTransactional',
@@ -239,7 +240,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
-		reasons: TRANSACTIONAL_REFUSAL_REASONS,
+		reasons: [...TRANSACTIONAL_REFUSAL_REASONS, ...WRITE_REFUSAL_REASONS],
 	},
 	{
 		operationId: 'listTransactionalSends',
@@ -324,7 +325,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'removeContactFromTopic',
@@ -351,7 +352,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'getStatus',

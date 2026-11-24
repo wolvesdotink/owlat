@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { renderEmailHtml, renderBlockFragment } from '../renderer';
-import type { ButtonBlockContent, EditorBlock } from '@owlat/shared';
+import type {
+	ButtonBlockContent,
+	ColumnItem,
+	ContainerItem,
+	EditorBlock,
+	ImageBlockContent,
+	TextBlockContent,
+} from '@owlat/shared';
 
 const textBlock: EditorBlock = {
 	id: '1',
@@ -382,6 +389,74 @@ describe('container block', () => {
 		const html = renderEmailHtml([emptyContainer]);
 		expect(html).not.toContain('Inside container');
 	});
+
+	it('keeps separate borders on a rounded container so its border is drawn round', () => {
+		const rounded = (radius: number): EditorBlock =>
+			({
+				id: 'outer',
+				type: 'container',
+				content: {
+					items: [
+						{
+							id: 'inner',
+							type: 'container',
+							content: {
+								items: [
+									{
+										id: 't',
+										type: 'text',
+										content: {
+											html: '<p>Card</p>',
+											blockType: 'paragraph',
+											fontSize: 14,
+											textColor: '#000',
+										},
+									},
+								],
+								borderWidth: 1,
+								borderStyle: 'solid',
+								borderColor: '#cccccc',
+								borderRadius: radius,
+							},
+						},
+					],
+				},
+			}) as EditorBlock;
+		// The reset in the style block is `!important`; only an inline
+		// `!important` outranks it.
+		expect(renderEmailHtml([rounded(16)])).toContain(
+			'border:1px solid #cccccc;border-radius:16px;border-collapse:separate!important;'
+		);
+		expect(renderEmailHtml([rounded(0)])).not.toContain('border-collapse:separate');
+	});
+});
+
+describe('section border radius', () => {
+	const bordered = (radius: number): EditorBlock =>
+		({
+			id: 'b',
+			type: 'text',
+			content: {
+				html: '<p>Card</p>',
+				blockType: 'paragraph',
+				fontSize: 14,
+				textColor: '#000',
+				borderWidth: 1,
+				borderStyle: 'solid',
+				borderColor: '#cccccc',
+				borderRadius: radius,
+			},
+		}) as EditorBlock;
+
+	it('keeps separate borders on a rounded section table', () => {
+		expect(renderEmailHtml([bordered(16)])).toContain(
+			'border:1px solid #cccccc;border-radius:16px;border-collapse:separate!important'
+		);
+	});
+
+	it('leaves a square section to the collapse reset', () => {
+		expect(renderEmailHtml([bordered(0)])).not.toContain('border-collapse:separate');
+	});
 });
 
 describe('accessibility', () => {
@@ -393,6 +468,16 @@ describe('accessibility', () => {
 	it('sets custom lang attribute', () => {
 		const html = renderEmailHtml([textBlock], { lang: 'fr' });
 		expect(html).toContain('lang="fr"');
+	});
+
+	it('keeps a region subtag in the lang attribute', () => {
+		expect(renderEmailHtml([textBlock], { lang: 'pt-BR' })).toContain(' lang="pt-BR"');
+	});
+
+	it('renders lang="en" for a value that is not a language tag', () => {
+		const html = renderEmailHtml([textBlock], { lang: 'de" onmouseover="x' });
+		expect(html).toContain(' lang="en"');
+		expect(html).not.toContain('onmouseover');
 	});
 
 	it('adds scope="col" on table headers', () => {
@@ -463,6 +548,229 @@ describe('mobileFontSize', () => {
 		};
 		const html = renderEmailHtml([block]);
 		expect(html).toContain('[data-block-id="a\\5c "] div{font-size:14px!important}');
+	});
+});
+
+describe('mobileFontSize on headings and nested text', () => {
+	const text = (id: string, extra: Partial<TextBlockContent>): EditorBlock => ({
+		id,
+		type: 'text',
+		content: {
+			html: 'Words',
+			blockType: 'paragraph',
+			fontSize: 34,
+			textColor: '#333',
+			mobileFontSize: 24,
+			...extra,
+		},
+	});
+
+	it('targets the heading tag a root heading renders', () => {
+		const block = text('head', { blockType: 'h1' });
+		expect(renderBlockFragment(block)).toContain('<h1 style="font-size:34px');
+		expect(renderEmailHtml([block])).toContain(
+			'[data-block-id="head"] h1{font-size:24px!important}'
+		);
+	});
+
+	it('marks the cell of a nested text item and targets it', () => {
+		const columns: EditorBlock = {
+			id: 'cols',
+			type: 'columns',
+			content: {
+				columnCount: 1,
+				ratio: 'equal',
+				mobileStacking: true,
+				columns: [[text('inner', {}) as ColumnItem]],
+			},
+		};
+		expect(renderBlockFragment(columns)).toContain(
+			'<td data-block-id="inner" style="padding:8px 0;font-size:34px'
+		);
+		expect(renderEmailHtml([columns])).toContain(
+			'td[data-block-id="inner"]{font-size:24px!important}'
+		);
+	});
+});
+
+describe('block margin', () => {
+	it('sits outside the background of a root block', () => {
+		const block: EditorBlock = {
+			id: 'card',
+			type: 'text',
+			content: {
+				html: 'Card',
+				blockType: 'paragraph',
+				fontSize: 16,
+				textColor: '#333',
+				backgroundColor: '#fde68a',
+				paddingTop: 16,
+				paddingRight: 24,
+				paddingBottom: 16,
+				paddingLeft: 24,
+				marginTop: 4,
+				marginRight: 30,
+				marginBottom: 8,
+				marginLeft: 30,
+			},
+		};
+		const html = renderBlockFragment(block);
+		expect(html).toMatch(
+			/<td style="padding:4px 30px 8px 30px"><table [^>]*style="background-color:#fde68a"[^>]*><tr><td style="padding:16px 24px 16px 24px;/
+		);
+	});
+
+	it('keeps a full-width block inside its margin', () => {
+		const html = renderBlockFragment({
+			id: 'wide',
+			type: 'text',
+			content: {
+				html: 'Wide',
+				blockType: 'paragraph',
+				fontSize: 16,
+				textColor: '#333',
+				backgroundColor: '#fde68a',
+				fullWidth: true,
+				marginRight: 30,
+				marginLeft: 30,
+			},
+		});
+		expect(html).toContain('<td style="padding:0px 30px 0px 30px">');
+		expect(html).toContain(
+			'<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner">'
+		);
+	});
+
+	it('leaves a block without margin in a single section table', () => {
+		const block: EditorBlock = {
+			id: 'plain',
+			type: 'text',
+			content: { html: 'Plain', blockType: 'paragraph', fontSize: 16, textColor: '#333' },
+		};
+		const html = renderBlockFragment(block);
+		expect(html).toContain(
+			'<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" data-block-id="plain"><tr><td style="padding:16px 24px 16px 24px;'
+		);
+	});
+});
+
+describe('nested item spacing and background', () => {
+	const inContainer = (item: ContainerItem): EditorBlock =>
+		({
+			id: 'box',
+			type: 'container',
+			content: {
+				items: [item],
+				maxWidth: 600,
+				paddingTop: 0,
+				paddingRight: 0,
+				paddingBottom: 0,
+				paddingLeft: 0,
+				backgroundColor: 'transparent',
+				borderRadius: 0,
+			},
+		}) as unknown as EditorBlock;
+	const nestedText = (extra: Record<string, unknown>): ContainerItem => ({
+		id: 'n1',
+		type: 'text',
+		content: {
+			html: 'Nested',
+			blockType: 'paragraph',
+			fontSize: 16,
+			textColor: '#333',
+			...extra,
+		} as TextBlockContent,
+	});
+
+	it("applies a nested text item's own padding, background, radius and border", () => {
+		const html = renderBlockFragment(
+			inContainer(
+				nestedText({
+					paddingTop: 4,
+					paddingRight: 12,
+					paddingBottom: 4,
+					paddingLeft: 12,
+					backgroundColor: '#bfdbfe',
+					borderRadius: 6,
+					borderWidth: 1,
+					borderStyle: 'solid',
+					borderColor: '#1d4ed8',
+				})
+			)
+		);
+		expect(html).toContain(
+			'style="background-color:#bfdbfe;border:1px solid #1d4ed8;border-radius:6px;border-collapse:separate!important"><tr><td style="padding:4px 12px 4px 12px;font-size:16px'
+		);
+	});
+
+	it("puts a nested item's margin outside its background", () => {
+		const html = renderBlockFragment(
+			inContainer(nestedText({ backgroundColor: '#bfdbfe', marginTop: 10, marginBottom: 10 }))
+		);
+		expect(html).toMatch(
+			/<td style="padding:10px 0px 10px 0px"><table [^>]*style="background-color:#bfdbfe"><tr><td style="padding:8px 0;font-size:16px/
+		);
+	});
+
+	it('keeps 8px 0 for the padding the editor writes into a new column item', () => {
+		const html = renderBlockFragment(
+			inContainer(
+				nestedText({ paddingTop: 16, paddingRight: 0, paddingBottom: 16, paddingLeft: 0 })
+			)
+		);
+		expect(html).toContain(
+			'<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0;font-size:16px'
+		);
+	});
+
+	it('applies padding and background to nested image, button and divider items', () => {
+		const box = { paddingTop: 2, paddingRight: 6, paddingBottom: 2, paddingLeft: 6 };
+		const html = [
+			inContainer({
+				id: 'img',
+				type: 'image',
+				content: {
+					src: 'https://example.com/a.png',
+					alt: 'A',
+					width: 100,
+					align: 'center',
+					backgroundColor: '#eeeeee',
+					...box,
+				} as ImageBlockContent,
+			}),
+			inContainer({
+				id: 'btn',
+				type: 'button',
+				content: {
+					text: 'Go',
+					url: 'https://example.com',
+					backgroundColor: '#007bff',
+					textColor: '#ffffff',
+					align: 'center',
+					borderRadius: 4,
+					paddingX: 24,
+					paddingY: 12,
+					blockBackgroundColor: '#dddddd',
+					...box,
+				},
+			}),
+			inContainer({
+				id: 'div',
+				type: 'divider',
+				content: { color: '#cccccc', thickness: 1, width: 100, style: 'solid', ...box },
+			}),
+		]
+			.map((block) => renderBlockFragment(block))
+			.join('');
+		expect(html).toContain(
+			'style="background-color:#eeeeee"><tr><td style="padding:2px 6px 2px 6px"><table cellpadding="0"'
+		);
+		expect(html).toContain(
+			'style="background-color:#dddddd"><tr><td style="padding:2px 6px 2px 6px">'
+		);
+		expect(html).toMatch(
+			/role="presentation"><tr><td style="padding:2px 6px 2px 6px"><table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="center"><tr><td style="border-top:1px solid #cccccc/
+		);
 	});
 });
 
@@ -906,5 +1214,44 @@ describe('column background images', () => {
 		const html = renderEmailHtml([colBlock]);
 		expect(html).toContain("background-image:url('https://example.com/bg.jpg')");
 		expect(html).toContain('background-size:cover');
+	});
+});
+
+describe('assetBaseUrl', () => {
+	const socialBlock: EditorBlock = {
+		id: 's1',
+		type: 'social',
+		content: {
+			links: [{ platform: 'facebook', url: 'https://example.com', enabled: true }],
+			iconStyle: 'filled',
+			align: 'center',
+			iconSize: 32,
+			iconSpacing: 8,
+			iconColor: '#000000',
+		},
+	};
+
+	it('keeps the default icons site-relative without one', () => {
+		expect(renderEmailHtml([socialBlock])).toContain('src="/social-icons/filled/facebook.png"');
+	});
+
+	it('prefixes the default icons with the origin, without a doubled slash', () => {
+		const html = renderEmailHtml([socialBlock], { assetBaseUrl: 'https://app.owlat.example/' });
+		expect(html).toContain('src="https://app.owlat.example/social-icons/filled/facebook.png"');
+	});
+
+	it('drops a query or fragment from the base', () => {
+		const html = renderEmailHtml([socialBlock], {
+			assetBaseUrl: 'https://app.owlat.example/?x=1#top',
+		});
+		expect(html).toContain('src="https://app.owlat.example/social-icons/filled/facebook.png"');
+	});
+
+	it('ignores a value that is not an absolute http(s) URL', () => {
+		for (const assetBaseUrl of ['javascript:alert(1)', 'app.owlat.example', ' ']) {
+			expect(renderEmailHtml([socialBlock], { assetBaseUrl })).toContain(
+				'src="/social-icons/filled/facebook.png"'
+			);
+		}
 	});
 });
