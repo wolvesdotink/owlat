@@ -28,10 +28,9 @@ import { throwInvalidState } from '../_utils/errors';
 // bounded: `sending` is a transient state; a deployment runs a handful at once.
 const SENDING_CAMPAIGN_SCAN = 200;
 
-// bounded: an active automation is one a team built by hand. A full page is
-// treated as "may be in use", so an automation past the cap is never sent
-// unscanned.
-const ACTIVE_AUTOMATION_SCAN = 200;
+// bounded: the email steps that send one template. A full page is treated as
+// "may be in use", so a step past the cap is never sent unscanned.
+const TEMPLATE_STEP_SCAN = 500;
 
 const LEVEL_RANK = { clean: 0, suspicious: 1, blocked: 2 } as const;
 
@@ -66,7 +65,8 @@ async function scanForSendingCampaigns(
 	let worst: ContentScanResult | null = null;
 	for (const campaign of sending) {
 		const asMain = campaign.emailTemplateId === template._id;
-		const asVariantB = resolveVariantBSource(campaign).templateId === template._id;
+		const variantB = resolveVariantBSource(campaign);
+		const asVariantB = variantB.templateId === template._id;
 		if (asMain) {
 			worst = worse(
 				worst,
@@ -77,6 +77,18 @@ async function scanForSendingCampaigns(
 					campaign.subject
 				)
 			);
+			// A subject test sends the same HTML under variant B's subject.
+			if (variantB.subject !== undefined) {
+				worst = worse(
+					worst,
+					scanPublishableVariants(
+						template.subject,
+						htmlContent,
+						template.htmlTranslations,
+						variantB.subject
+					)
+				);
+			}
 		}
 		if (asVariantB) {
 			worst = worse(
@@ -116,30 +128,23 @@ function scanEmailStep(step: Doc<'automationSteps'>, template: Doc<'emailTemplat
 
 /**
  * The worst scan of this template across the email steps of active
- * automations that send it, or null when none does.
+ * automations that send it, or null when every one scans clean.
  */
 async function scanForActiveAutomations(
 	ctx: MutationCtx,
 	template: Doc<'emailTemplates'>
 ): Promise<ContentScanResult | null> {
-	const active = await ctx.db
-		.query('automations')
-		.withIndex('by_deleted_at_and_status', (q) =>
-			q.eq('deletedAt', undefined).eq('status', 'active')
-		)
-		.take(ACTIVE_AUTOMATION_SCAN);
+	const steps = await ctx.db
+		.query('automationSteps')
+		.withIndex('by_email_template', (q) => q.eq('config.emailTemplateId', template._id))
+		.take(TEMPLATE_STEP_SCAN);
 	let worst: ContentScanResult | null = null;
-	for (const automation of active) {
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect(); // bounded: one automation's steps
-		for (const step of steps) {
-			if (emailStepTemplateId(step) !== template._id) continue;
-			worst = worse(worst, scanEmailStep(step, template));
-		}
+	for (const step of steps) {
+		const automation = await ctx.db.get(step.automationId);
+		if (automation?.status !== 'active' || automation.deletedAt !== undefined) continue;
+		worst = worse(worst, scanEmailStep(step, template));
 	}
-	if (active.length === ACTIVE_AUTOMATION_SCAN) {
+	if (steps.length === TEMPLATE_STEP_SCAN) {
 		worst = worse(worst, scanContent(template.subject, template.htmlContent ?? ''));
 	}
 	return worst;

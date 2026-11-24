@@ -212,6 +212,33 @@ describe('editor saves of a template that is going out are scanned', () => {
 		expect((await rowOf(t, replacedSubject))?.subject).toBe('SUSPICIOUS-MARKER');
 	});
 
+	it("scans a subject test's variant B subject with the saved content", async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'sending',
+					emailTemplateId: templateId,
+					subject: 'June news',
+					isABTest: true,
+					abTestConfig: {
+						testType: 'subject',
+						variantBSubject: 'SUSPICIOUS-MARKER deals',
+						splitPercentage: 20,
+						winnerCriteria: 'open_rate',
+						testDuration: 4,
+					},
+				})
+			);
+		});
+
+		await expect(saveSubject(t, templateId, 'June news, again')).rejects.toThrow(
+			/sending campaign/
+		);
+	});
+
 	it("scans an active automation step's own subject with the saved content", async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t);
