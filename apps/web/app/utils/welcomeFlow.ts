@@ -12,7 +12,7 @@
  *   "returning" user and never bounced there again.
  * - {@link isWelcomeTriggerPath} — the middleware only performs that check on the
  *   app's landing surfaces (the dashboard home + Postbox), never app-wide.
- * - {@link visibleChecklistSteps} / {@link isChecklistComplete} — the checklist
+ * - {@link visibleChecklistSteps} — the checklist
  *   ADAPTS to the instance mode: import + "AI learns your history" + the
  *   post-import sending switch appear only in migration mode; a fresh-start
  *   instance shows just the universal steps.
@@ -277,19 +277,6 @@ export function completedChecklistSteps(
 		if (isStepComplete(step.id, signals)) done.add(step.id);
 	}
 	return done;
-}
-
-/**
- * Whether the checklist has nothing left to do: every VISIBLE step for the mode
- * is complete. A completed checklist section disappears for good (see
- * `buildGettingStarted` in `~/utils/gettingStarted`).
- */
-export function isChecklistComplete(
-	mode: OnboardingMode,
-	completed: ReadonlySet<ChecklistStepId>,
-	audience: ChecklistAudience = 'admin'
-): boolean {
-	return visibleChecklistSteps(mode, audience).every((step) => completed.has(step.id));
 }
 
 /**
