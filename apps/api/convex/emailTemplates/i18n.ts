@@ -16,6 +16,7 @@ import {
 	updateTranslationPatch,
 } from '../lib/emailTranslations';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
+import { scanLiveTemplateWrite } from './liveContentScan';
 
 // Query to get email template content for a specific language
 // Returns the content for the requested language, falling back to default language if not available
@@ -73,6 +74,7 @@ export const addTranslation = authedMutation({
 			'personalization'
 		);
 		await ctx.db.patch(args.templateId, patch);
+		await scanLiveTemplateWrite(ctx, args.templateId, 'editor');
 		// The revision this write stored; the next write builds on it.
 		return { templateId: args.templateId, contentRevision: patch.contentRevision };
 	},
@@ -115,6 +117,7 @@ export const updateTranslation = authedMutation({
 			'personalization'
 		);
 		await ctx.db.patch(args.templateId, patch);
+		await scanLiveTemplateWrite(ctx, args.templateId, 'editor');
 		// The revision this write stored; the next write builds on it.
 		return { templateId: args.templateId, contentRevision: patch.contentRevision };
 	},
@@ -146,6 +149,7 @@ export const removeTranslation = authedMutation({
 			'personalization'
 		);
 		await ctx.db.patch(args.templateId, patch);
+		await scanLiveTemplateWrite(ctx, args.templateId, 'editor');
 		// The revision this write stored; the next write builds on it.
 		return { templateId: args.templateId, contentRevision: patch.contentRevision };
 	},
@@ -185,6 +189,7 @@ export const setDefaultLanguage = authedMutation({
 				args.templateId,
 				await withRenderedTranslations(ctx, template, patch, 'personalization')
 			);
+			await scanLiveTemplateWrite(ctx, args.templateId, 'editor');
 		}
 		return args.templateId;
 	},

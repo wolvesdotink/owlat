@@ -23,6 +23,7 @@ import { captureTemplateVersion } from './versions';
 import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
+import { scanLiveTemplateWrite } from './liveContentScan';
 
 // Query to get a single email template by ID; null once it is in Recently
 // deleted, so an open editor shows it as gone.
@@ -106,6 +107,9 @@ export const update = authedMutation({
 		};
 
 		await ctx.db.patch(args.templateId, updates);
+		if (updates.htmlContent !== undefined) {
+			await scanLiveTemplateWrite(ctx, args.templateId, 'editor');
+		}
 		if (coedit) await markCoeditSaved(ctx, coedit, updates.contentRevision);
 
 		// Persisted version history (the editor's undo stack dies with the tab).

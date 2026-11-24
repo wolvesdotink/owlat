@@ -258,10 +258,8 @@ export const updateTrigger = automationsMutation({
 
 // Translate the lifecycle's typed `reason` to a human-facing message. The
 // lifecycle owns the typed contract; the human string is shell-local.
-function reasonToMessage(
-	reason: Extract<AutomationTransitionOutcome, { ok: false }>['reason']
-): string {
-	switch (reason) {
+function reasonToMessage(outcome: Extract<AutomationTransitionOutcome, { ok: false }>): string {
+	switch (outcome.reason) {
 		case 'automation_not_found':
 			return 'Automation not found';
 		case 'illegal_edge':
@@ -270,6 +268,8 @@ function reasonToMessage(
 			return 'Automation must have at least one step to be activated';
 		case 'invalid_trigger_config':
 			return 'Automation trigger is missing required configuration';
+		case 'content_refused':
+			return outcome.detail ?? 'Content refused by our content scanner';
 		case 'status_changed':
 			return 'The automation was paused or resumed since; nothing was undone';
 	}
@@ -301,7 +301,7 @@ async function changeStatus(
 		userId,
 		...(args.ifStatusChangedAt !== undefined ? { ifStatusChangedAt: args.ifStatusChangedAt } : {}),
 	});
-	if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
+	if (!outcome.ok) throwInvalidState(reasonToMessage(outcome));
 	return { statusChangedAt: outcome.applied === 'transitioned' ? at : null };
 }
 
@@ -318,7 +318,7 @@ export const activate = automationsMutation({
 			input: { to: 'active', at: Date.now() },
 			userId: session.userId,
 		});
-		if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
+		if (!outcome.ok) throwInvalidState(reasonToMessage(outcome));
 	},
 });
 
