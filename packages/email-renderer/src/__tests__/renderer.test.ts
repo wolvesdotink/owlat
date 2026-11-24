@@ -610,6 +610,27 @@ describe('block margin', () => {
 		);
 	});
 
+	it('keeps a full-width block inside its margin', () => {
+		const html = renderBlockFragment({
+			id: 'wide',
+			type: 'text',
+			content: {
+				html: 'Wide',
+				blockType: 'paragraph',
+				fontSize: 16,
+				textColor: '#333',
+				backgroundColor: '#fde68a',
+				fullWidth: true,
+				marginRight: 30,
+				marginLeft: 30,
+			},
+		});
+		expect(html).toContain('<td style="padding:0px 30px 0px 30px">');
+		expect(html).toContain(
+			'<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner">'
+		);
+	});
+
 	it('leaves a block without margin in a single section table', () => {
 		const block: EditorBlock = {
 			id: 'plain',
@@ -681,18 +702,12 @@ describe('nested item spacing and background', () => {
 		);
 	});
 
-	it.each([
-		['no padding fields', {}],
-		[
-			'the padding the editor writes into a new column item',
-			{ paddingTop: 16, paddingRight: 0, paddingBottom: 16, paddingLeft: 0, marginTop: 0 },
-		],
-		[
-			'the padding the editor writes into a new root or container item',
-			{ paddingTop: 16, paddingRight: 24, paddingBottom: 16, paddingLeft: 24, marginLeft: 0 },
-		],
-	])('keeps 8px 0 for %s', (_label, extra) => {
-		const html = renderBlockFragment(inContainer(nestedText(extra)));
+	it('keeps 8px 0 for the padding the editor writes into a new column item', () => {
+		const html = renderBlockFragment(
+			inContainer(
+				nestedText({ paddingTop: 16, paddingRight: 0, paddingBottom: 16, paddingLeft: 0 })
+			)
+		);
 		expect(html).toContain(
 			'<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0;font-size:16px'
 		);

@@ -54,8 +54,7 @@ const getDarkModeVars = (block: EditorBlock): string => {
 export const getBlockDataAttrs = (block: Pick<EditorBlock, 'id'>): string => {
 	const id: unknown = block.id;
 	if (typeof id !== 'string') return '';
-	const safeId = id.replace(/"/g, '&quot;');
-	return ` data-block-id="${safeId}"`;
+	return ` data-block-id="${escapeAttr(id)}"`;
 };
 
 /**
@@ -129,7 +128,10 @@ export const wrapSection = (
 	if (isFullWidth) {
 		// Full-width: outer table at 100% width with background, inner content at baseWidth
 		const outerBg = bgColor ? ` style="background-color:${bgColor}"` : '';
-		section = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${outerBg}${classAttr}${dataAttrs}><tr><td align="center"><table width="${px(ctx.baseWidth, 0)}" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner"><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table></td></tr></table>`;
+		// Inside a margin cell the content is narrower than the base width, so
+		// a fixed-width inner table would overflow the margin.
+		const innerWidth = margin ? '100%' : `${px(ctx.baseWidth, 0)}`;
+		section = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${outerBg}${classAttr}${dataAttrs}><tr><td align="center"><table width="${innerWidth}" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner"><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table></td></tr></table>`;
 	} else {
 		section = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${tableStyleAttr}${classAttr}${dataAttrs}><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table>`;
 	}
@@ -166,9 +168,16 @@ export const wrapNestedItem = (
 	innerHtml: string,
 	shell: NestedItemShell = {}
 ): string => {
-	const bgColor = escapeCss(shell.background ?? getSectionBackground(content));
+	// Nested items ignored these fields until they were drawn, so stored data
+	// may hold a non-string colour; it is skipped instead of failing the render.
+	const background = shell.background ?? getSectionBackground(content);
+	const bgColor = typeof background === 'string' ? escapeCss(background) : '';
 	const border = getSectionBorder({ content } as EditorBlock);
-	const hasBorder = border.width > 0 && border.style !== 'none';
+	const hasBorder =
+		border.width > 0 &&
+		border.style !== 'none' &&
+		typeof border.style === 'string' &&
+		typeof border.color === 'string';
 	const borderRadius = shell.borderRadius ?? getSectionBorderRadius({ content } as EditorBlock);
 
 	const tableStyles: string[] = [];
