@@ -80,11 +80,12 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	if (input.viewInBrowserUrl) {
 		transformConfig.viewInBrowserUrl = input.viewInBrowserUrl;
 	}
+	// Labels both the view-in-browser link and the footer's links.
+	if (input.footerLanguage) transformConfig.footerLanguage = input.footerLanguage;
 
 	if (input.unsubscribeUrl && input.preferenceUrl) {
 		transformConfig.unsubscribeUrl = input.unsubscribeUrl;
 		transformConfig.preferenceUrl = input.preferenceUrl;
-		if (input.footerLanguage) transformConfig.footerLanguage = input.footerLanguage;
 		if (input.senderAddress) transformConfig.senderAddress = input.senderAddress;
 	}
 

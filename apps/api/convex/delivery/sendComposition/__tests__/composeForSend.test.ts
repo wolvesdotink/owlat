@@ -993,6 +993,53 @@ describe('composeForSend — the postal address appears once', () => {
 		expect(occurrences(composed.text)).toBe(1);
 	});
 
+	it.each([
+		{ name: 'Northwind', address: '1 Example Street\n12345 Example City' },
+		{ name: "Smith & O'Brien", address: '1 Example Street\n12345 Example City' },
+		{ name: '', address: '1 Example Street\n12345 Example City' },
+	])(
+		'leaves the address out once for a footer block saved without the mark ($name)',
+		({ name, address }) => {
+			const oldKit = { ...kit, footerCompanyName: name, footerAddress: address };
+			// The block as the builder inserted it before it carried the flag.
+			const legacy = brandFooterBlocks(oldKit, () => 'old').map((block) => {
+				const { postalAddress: _flag, ...content } = block.content as { postalAddress?: true };
+				return { ...block, content } as typeof block;
+			});
+			const template = {
+				subject: 'News',
+				htmlContent: renderEmailHtml(legacy),
+				plainTextContent: renderPlainText(legacy),
+			};
+			expect(template.htmlContent).not.toContain('data-owlat-postal-address');
+			const composed = composeForSend({
+				...campaign(template),
+				senderAddress: senderPostalAddress(oldKit),
+			});
+			const html = transformHtml(composed.html, composed.transformConfig!);
+			expect(occurrences(html)).toBe(1);
+			expect(occurrences(composed.text)).toBe(1);
+			expect(html).toContain('href="https://app.example/unsubscribe?token=u"');
+		}
+	);
+
+	it('keeps the address when an unmarked block shows a different one', () => {
+		const oldKit = { ...kit, footerAddress: '9 Former Road\n12345 Example City' };
+		const legacy = brandFooterBlocks(oldKit, () => 'old').map((block) => {
+			const { postalAddress: _flag, ...content } = block.content as { postalAddress?: true };
+			return { ...block, content } as typeof block;
+		});
+		const composed = composeForSend(
+			campaign({
+				subject: 'News',
+				htmlContent: renderEmailHtml(legacy),
+				plainTextContent: renderPlainText(legacy),
+			})
+		);
+		const html = transformHtml(composed.html, composed.transformConfig!);
+		expect(occurrences(html)).toBe(1);
+	});
+
 	it('still prints the address when the body has no footer block', () => {
 		const bare = { subject: 'News', htmlContent: '<p>Hello</p>', plainTextContent: 'Hello' };
 		const composed = composeForSend(campaign(bare));
