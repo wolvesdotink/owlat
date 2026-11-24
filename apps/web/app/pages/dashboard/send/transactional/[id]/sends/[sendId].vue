@@ -100,6 +100,7 @@ const contactName = computed(() => {
 				:clicked-at="send.clickedAt"
 				:bounced-at="send.bouncedAt"
 				:complained-at="send.complainedAt"
+				:failed-at="send.failedAt"
 				:open-count="send.openCount"
 				:clicked-links="send.clickedLinks"
 				:error-message="send.errorMessage"

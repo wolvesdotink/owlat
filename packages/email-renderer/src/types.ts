@@ -36,8 +36,18 @@ export interface RenderOptions {
 	customCss?: string;
 	/** Variable values for conditional content evaluation */
 	variableValues?: Record<string, string>;
-	/** Language for the HTML document (default: 'en') */
+	/**
+	 * Language of the HTML document, a BCP 47 tag such as `de` or `pt-BR`
+	 * (default: 'en'). A value that is not a language tag renders as 'en'.
+	 */
 	lang?: string;
+	/**
+	 * Absolute http(s) origin the renderer's own assets (the social block's
+	 * default icons) are loaded from, such as `https://app.example.com`. Unset,
+	 * they keep a site-relative path, which resolves inside the web app but not
+	 * in a recipient's mail client, so HTML that is sent must set it.
+	 */
+	assetBaseUrl?: string;
 	/** Transform function applied to all link URLs before rendering (UTM, click tracking) */
 	linkTransform?: (url: string, context: { blockType: string; blockId: string }) => string;
 	/** Callback invoked for non-fatal rendering warnings */
@@ -119,6 +129,8 @@ export interface RenderContext {
 	variableValues: Record<string, string>;
 	/** Language for the HTML document (default: 'en') */
 	lang: string;
+	/** `RenderOptions.assetBaseUrl` without a trailing slash; '' leaves asset paths site-relative. */
+	assetBaseUrl: string;
 	/** Collected responsive CSS rules injected into mobile media query */
 	responsiveRules: string[];
 	/** Collected global CSS rules injected into <style> block outside any media query */

@@ -82,7 +82,11 @@ function fromCodePoint(code: number): string {
 	return String.fromCodePoint(code);
 }
 
-function decodeEntities(text: string): string {
+/**
+ * Decode the named entities above and every numeric one, in one pass. The
+ * template-variable grammar uses it to read a fallback written in HTML.
+ */
+export function decodeHtmlEntities(text: string): string {
 	return text.replace(
 		ENTITY,
 		(_m, dec: string | undefined, hex: string | undefined, named: string | undefined) => {
@@ -161,10 +165,10 @@ export function htmlToPlainText(html: string, options: HtmlToPlainTextOptions = 
 			.replace(LINE_BREAK_TAG, '\n')
 			.replace(PARAGRAPH_END_TAG, '\n\n')
 			.replace(TAG, '');
-		return decodeEntities(text)
+		return decodeHtmlEntities(text)
 			.replace(/\n{3,}/g, '\n\n')
 			.trim();
 	}
 	const text = dropHiddenContent(html, ' ', options.meter).replace(TAG, ' ');
-	return decodeEntities(text).replace(/\s+/g, ' ').trim();
+	return decodeHtmlEntities(text).replace(/\s+/g, ' ').trim();
 }

@@ -7,6 +7,7 @@
  * ready-to-paste snippets against it.
  */
 import { BookOpenIcon, CheckIcon, CopyIcon, ExternalLinkIcon } from '@coolicons/vue';
+import { API_QUICKSTART_ROUTES } from '~/lib/apiQuickstartRoutes';
 
 const { t } = useI18n();
 
@@ -33,43 +34,13 @@ const curlExample = computed(() =>
 	].join('\n')
 );
 
-const endpoints = computed(() => [
-	{
-		method: 'GET/POST',
-		path: '/api/v1/contacts',
-		description: t('dashboard.admin.team.api.docs.endpoints.contacts'),
-	},
-	{
-		method: 'GET/PUT/DELETE',
-		path: '/api/v1/contacts/:id',
-		description: t('dashboard.admin.team.api.docs.endpoints.contact'),
-	},
-	{
-		method: 'POST',
-		path: '/api/v1/events',
-		description: t('dashboard.admin.team.api.docs.endpoints.events'),
-	},
-	{
-		method: 'POST',
-		path: '/api/v1/transactional',
-		description: t('dashboard.admin.team.api.docs.endpoints.transactional'),
-	},
-	{
-		method: '*',
-		path: '/api/v1/topics/…',
-		description: t('dashboard.admin.team.api.docs.endpoints.topics'),
-	},
-	{
-		method: 'GET',
-		path: '/api/v1/health',
-		description: t('dashboard.admin.team.api.docs.endpoints.health'),
-	},
-	{
-		method: 'GET',
-		path: '/api/v1/openapi.json',
-		description: t('dashboard.admin.team.api.docs.endpoints.openapi'),
-	},
-]);
+const endpoints = computed(() =>
+	API_QUICKSTART_ROUTES.map((route) => ({
+		method: route.methods.join('/'),
+		path: route.path,
+		description: t(`dashboard.admin.team.api.docs.endpoints.${route.key}`),
+	}))
+);
 </script>
 
 <template>
