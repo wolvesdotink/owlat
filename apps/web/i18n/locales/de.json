@@ -2882,6 +2882,7 @@
 					"clicked": "Geklickt",
 					"complained": "Beschwerde",
 					"delivered": "Zugestellt",
+					"failed": "Fehlgeschlagen",
 					"opened": "Geöffnet",
 					"queued": "In Warteschlange",
 					"sent": "Gesendet"
@@ -10822,11 +10823,16 @@
 						"endpoints": {
 							"contact": "Einen Kontakt lesen, aktualisieren oder löschen",
 							"contacts": "Kontakte auflisten oder anlegen",
+							"domains": "Versanddomains und die DNS-Einträge, die jede braucht",
 							"events": "Eigene Ereignisse erfassen",
 							"health": "Statusprüfung",
+							"limits": "Die Sendelimits dieses Schlüssels und was davon übrig ist",
 							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
-							"topics": "Themen und Abonnements verwalten",
-							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body)"
+							"status": "Ob diese Instanz senden kann, und wenn nicht, warum",
+							"topicContacts": "Einen Kontakt zu einem Thema hinzufügen oder daraus entfernen",
+							"topics": "Themen auflisten",
+							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body) oder Sendungen auflisten",
+							"transactionalSend": "Zustellstatus einer Sendung"
 						},
 						"fullReference": "Vollständige API-Referenz",
 						"intro": "Authentifiziere dich mit einem eingeschränkten API-Schlüssel aus {settingsLink}.",
@@ -14397,6 +14403,8 @@
 				"title": "Noch kein Postfach zum Arbeiten",
 				"body": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank: was dich braucht, was sich getan hat und was angekommen ist. Verbinde ein Postfach, um loszulegen.",
 				"cta": "Postfach verbinden",
+				"ctaAsk": "Postfach bei einem Admin anfragen",
+				"ctaMember": "Konto verbinden",
 				"mailOff": {
 					"title": "Mail ist in diesem Workspace ausgeschaltet",
 					"bodyAdmin": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank. Schalte unter Funktionen persönliche Mail oder externe Postfächer ein, um eines hinzuzufügen.",
@@ -14885,6 +14893,10 @@
 			"externalCta": "Konto verbinden",
 			"externalHeading": "Verbinde deine E-Mails",
 			"loading": "Postfach wird geladen",
+			"mailOffAdminBody": "Schalte unter Funktionen persönliche Mail oder externe Postfächer ein, um ein Postfach einzurichten.",
+			"mailOffCta": "Funktionen öffnen",
+			"mailOffHeading": "Mail ist in diesem Workspace ausgeschaltet",
+			"mailOffMemberBody": "Solange Mail ausgeschaltet ist, kann niemand ein Postfach einrichten. Ein Admin kann Mail einschalten.",
 			"requestOperation": "Postfach anfragen",
 			"reservedBody": "{address} ist für dich reserviert. Es erscheint hier automatisch, sobald es bereit ist.",
 			"reservedHeading": "Dein Postfach wird eingerichtet"

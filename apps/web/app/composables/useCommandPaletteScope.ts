@@ -16,7 +16,7 @@ import {
 import type { PaletteMode } from '~/lib/commandPalette';
 import { isFeatureReachable } from '~/lib/routeFeatureGates';
 import { MAIL_SEARCH_PATH } from '~/composables/useCommandPaletteObjectItems';
-import { type MaybeRefOrGetter, toValue } from 'vue';
+import { type MaybeRefOrGetter, toValue, watch } from 'vue';
 
 /**
  * What the overlay is doing with what you type right now. `argument` is an open
@@ -66,6 +66,12 @@ export function useCommandPaletteScope(
 		}
 		scope.value = routeScope();
 	}
+
+	// A feature switched off while the palette is open takes its scope with it;
+	// otherwise Enter would still start a search the instance no longer offers.
+	watch([isAskAvailable, isMailAvailable], () => {
+		if (!isScopeAvailable(scope.value)) scope.value = routeScope();
+	});
 
 	/** Tab. Skips a scope the instance switched off; never a dead key. */
 	function cycleScope() {

@@ -148,3 +148,46 @@ describe('EmailSendTimeline error details', () => {
 		w.unmount();
 	});
 });
+
+describe('EmailSendTimeline steps of a failed send', () => {
+	const steps = (w: ReturnType<typeof mountTimeline>) =>
+		w.findAll('[data-testid="timeline-event"]').map((row) => row.attributes('data-key'));
+
+	it('ends at the failure instead of listing steps the send will never reach', () => {
+		const w = mountTimeline({
+			status: 'failed',
+			queuedAt: 1,
+			sentAt: undefined,
+			deliveredAt: undefined,
+			failedAt: 5,
+			showQueued: true,
+		});
+
+		expect(steps(w)).toEqual(['queued', 'failed']);
+		expect(w.text()).not.toContain('Not yet reached');
+		expect(w.find('[data-key="failed"]').text()).toContain('Failed');
+		w.unmount();
+	});
+
+	it('shows the failure alone on a transactional send, which hides the queued step', () => {
+		const w = mountTimeline({
+			status: 'failed',
+			sentAt: undefined,
+			deliveredAt: undefined,
+			failedAt: 5,
+			showQueued: false,
+		});
+
+		expect(steps(w)).toEqual(['failed']);
+		expect(w.text()).not.toContain('Not yet reached');
+		w.unmount();
+	});
+
+	it('still lists the steps a send on its way has yet to reach', () => {
+		const w = mountTimeline({ status: 'sent', sentAt: 1, deliveredAt: undefined });
+
+		expect(steps(w)).toEqual(['sent', 'delivered', 'opened', 'clicked']);
+		expect(w.text()).toContain('Not yet reached');
+		w.unmount();
+	});
+});
