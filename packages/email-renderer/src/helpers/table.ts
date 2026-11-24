@@ -4,7 +4,8 @@ import type { RenderContext } from '../types';
 import type { BlockLayout } from '../blocks/_module';
 import {
 	getSectionPadding,
-	getMarginOnlyPadding,
+	getSectionMargin,
+	getNestedItemPadding,
 	getSectionBackground,
 	getSectionBorder,
 	getSectionBorderRadius,
@@ -50,7 +51,7 @@ const getDarkModeVars = (block: EditorBlock): string => {
  * string id (stored data from a direct caller is not trusted) renders
  * without the attribute instead of failing the whole render.
  */
-const getBlockDataAttrs = (block: EditorBlock): string => {
+export const getBlockDataAttrs = (block: Pick<EditorBlock, 'id'>): string => {
 	const id: unknown = block.id;
 	if (typeof id !== 'string') return '';
 	const safeId = id.replace(/"/g, '&quot;');
@@ -82,9 +83,8 @@ export const wrapSection = (
 ): string => {
 	const padding =
 		layout?.padding ??
-		(layout?.sectionMode === 'outer-only'
-			? getMarginOnlyPadding(block.content)
-			: getSectionPadding(block.content));
+		(layout?.sectionMode === 'outer-only' ? '0px 0px 0px 0px' : getSectionPadding(block.content));
+	const margin = getSectionMargin(block.content);
 	const bgColor = escapeCss(layout?.background ?? getSectionBackground(block.content));
 	const border = getSectionBorder(block);
 	const borderRadius = layout?.borderRadius ?? getSectionBorderRadius(block);
@@ -114,26 +114,81 @@ export const wrapSection = (
 	}
 
 	const tableStyleAttr = tableStyles.length > 0 ? ` style="${tableStyles.join(';')}"` : '';
-	const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
+	// With a margin cell around the section, hiding on one viewport hides that
+	// cell, so the margin goes with the block. Every other class stays on the
+	// table that carries the background.
+	const visibility: string[] = margin
+		? classes.filter((cls) => cls === 'owlat-hide-mobile' || cls === 'owlat-hide-desktop')
+		: [];
+	const boxClasses = classes.filter((cls) => !visibility.includes(cls));
+	const classAttr = boxClasses.length > 0 ? ` class="${boxClasses.join(' ')}"` : '';
 	const dataAttrs = getBlockDataAttrs(block);
 	const fontFamily = escapeCss(ctx.theme.fontFamily);
 
-	const sectionTable = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${tableStyleAttr}${classAttr}${dataAttrs}><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table>`;
-
+	let section: string;
 	if (isFullWidth) {
 		// Full-width: outer table at 100% width with background, inner content at baseWidth
 		const outerBg = bgColor ? ` style="background-color:${bgColor}"` : '';
-		return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${outerBg}${classAttr}${dataAttrs}><tr><td align="center"><table width="${px(ctx.baseWidth, 0)}" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner"><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table></td></tr></table>`;
+		section = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${outerBg}${classAttr}${dataAttrs}><tr><td align="center"><table width="${px(ctx.baseWidth, 0)}" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner"><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table></td></tr></table>`;
+	} else {
+		section = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${tableStyleAttr}${classAttr}${dataAttrs}><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table>`;
 	}
 
-	return sectionTable;
+	if (!margin) return section;
+	const marginClassAttr = visibility.length > 0 ? ` class="${visibility.join(' ')}"` : '';
+	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${marginClassAttr}><tr><td style="padding:${margin}">${section}</td></tr></table>`;
 };
 
+/** What a nested item's module adds to the shell `wrapNestedItem` draws. */
+export interface NestedItemShell {
+	/** Background colour of the item's box. Omit to read `content.backgroundColor`. */
+	background?: string;
+	/** Corner radius of the item's box. Omit to read `content.borderRadius`. */
+	borderRadius?: number;
+	/** Declarations appended to the cell's padding, such as fused text styles. */
+	cellStyle?: string;
+	/** Attributes written on the cell, each with its leading space. */
+	cellAttrs?: string;
+}
+
 /**
- * Wraps a block's HTML in the column-item shell used at column/container placement
- * by most blocks (the outer `<table><tr><td style="padding:8px 0">` wrapper).
- * Blocks that need different shells (text fuses styles, spacer is the cell)
- * don't use this helper.
+ * Wraps a nested item's HTML (a column or container child) in its cell: the
+ * item's padding (see `getNestedItemPadding`), and its background, border and
+ * corner radius on the table around the cell. A margin goes in a further cell
+ * outside that table, as `wrapSection` does for a root block. An item that
+ * sets none of these renders as `<table><tr><td style="padding:8px 0">`.
+ *
+ * The radius is drawn only with a background or border to round, so a nested
+ * image's radius, which also rounds the image, adds nothing invisible.
  */
-export const wrapColumnItem = (innerHtml: string): string =>
-	`<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0">${innerHtml}</td></tr></table>`;
+export const wrapNestedItem = (
+	content: EditorBlock['content'],
+	innerHtml: string,
+	shell: NestedItemShell = {}
+): string => {
+	const bgColor = escapeCss(shell.background ?? getSectionBackground(content));
+	const border = getSectionBorder({ content } as EditorBlock);
+	const hasBorder = border.width > 0 && border.style !== 'none';
+	const borderRadius = shell.borderRadius ?? getSectionBorderRadius({ content } as EditorBlock);
+
+	const tableStyles: string[] = [];
+	if (bgColor) tableStyles.push(`background-color:${bgColor}`);
+	if (hasBorder) {
+		tableStyles.push(
+			`border:${border.width}px ${escapeCss(border.style)} ${escapeCss(border.color)}`
+		);
+	}
+	if (borderRadius > 0 && (bgColor || hasBorder)) {
+		tableStyles.push(`border-radius:${borderRadius}px`);
+		tableStyles.push(SEPARATE_BORDERS);
+	}
+	const tableStyleAttr = tableStyles.length > 0 ? ` style="${tableStyles.join(';')}"` : '';
+	const cellStyle = shell.cellStyle
+		? `padding:${getNestedItemPadding(content)};${shell.cellStyle}`
+		: `padding:${getNestedItemPadding(content)}`;
+	const item = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${tableStyleAttr}><tr><td${shell.cellAttrs ?? ''} style="${cellStyle}">${innerHtml}</td></tr></table>`;
+
+	const margin = getSectionMargin(content);
+	if (!margin) return item;
+	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:${margin}">${item}</td></tr></table>`;
+};

@@ -35,20 +35,63 @@ export function px(value: unknown, fallback: number | undefined): number | undef
 	return fallback;
 }
 
+/**
+ * A block's own padding. Its margin is not part of it: `wrapSection` draws the
+ * margin in a cell outside the table that carries the background and border.
+ */
 export const getSectionPadding = (content: EditorBlock['content']): string => {
 	const c = content as CommonBlockProperties;
-	const paddingTop = px(c.paddingTop, DEFAULT_PADDING.top);
-	const paddingRight = px(c.paddingRight, DEFAULT_PADDING.right);
-	const paddingBottom = px(c.paddingBottom, DEFAULT_PADDING.bottom);
-	const paddingLeft = px(c.paddingLeft, DEFAULT_PADDING.left);
-	const marginTop = px(c.marginTop, DEFAULT_MARGIN.top);
-	const marginRight = px(c.marginRight, DEFAULT_MARGIN.right);
-	const marginBottom = px(c.marginBottom, DEFAULT_MARGIN.bottom);
-	const marginLeft = px(c.marginLeft, DEFAULT_MARGIN.left);
-	const top = paddingTop + marginTop;
-	const right = paddingRight + marginRight;
-	const bottom = paddingBottom + marginBottom;
-	const left = paddingLeft + marginLeft;
+	const top = px(c.paddingTop, DEFAULT_PADDING.top);
+	const right = px(c.paddingRight, DEFAULT_PADDING.right);
+	const bottom = px(c.paddingBottom, DEFAULT_PADDING.bottom);
+	const left = px(c.paddingLeft, DEFAULT_PADDING.left);
+	return `${top}px ${right}px ${bottom}px ${left}px`;
+};
+
+/**
+ * The CSS padding of the cell that holds a block's margin, or `null` when the
+ * block has no margin, so a block without one keeps a single table.
+ */
+export const getSectionMargin = (content: EditorBlock['content']): string | null => {
+	const c = content as CommonBlockProperties;
+	const top = px(c.marginTop, DEFAULT_MARGIN.top);
+	const right = px(c.marginRight, DEFAULT_MARGIN.right);
+	const bottom = px(c.marginBottom, DEFAULT_MARGIN.bottom);
+	const left = px(c.marginLeft, DEFAULT_MARGIN.left);
+	if (top === 0 && right === 0 && bottom === 0 && left === 0) return null;
+	return `${top}px ${right}px ${bottom}px ${left}px`;
+};
+
+/** Padding of a nested item that sets none of its own. */
+const NESTED_ITEM_PADDING = '8px 0';
+
+/**
+ * Padding sets the editor writes into every new nested item: a column item
+ * gets the vertical block padding with no sides, a container item the full
+ * root default. The renderer drew `8px 0` for nested items whatever they
+ * stored, so these sets still mean "not set" and keep that padding; reading
+ * them as set would move every existing email.
+ */
+const EDITOR_NESTED_PADDINGS: readonly (readonly number[])[] = [
+	[DEFAULT_PADDING.top, DEFAULT_PADDING.right, DEFAULT_PADDING.bottom, DEFAULT_PADDING.left],
+	[DEFAULT_PADDING.top, 0, DEFAULT_PADDING.bottom, 0],
+];
+
+/**
+ * The CSS padding of a nested item's cell: its own padding when it sets one
+ * that differs from the editor's defaults, otherwise `8px 0`. A side it leaves
+ * unset takes its value from `8px 0`.
+ */
+export const getNestedItemPadding = (content: EditorBlock['content']): string => {
+	const c = content as CommonBlockProperties;
+	const sides = [c.paddingTop, c.paddingRight, c.paddingBottom, c.paddingLeft].map((v) =>
+		px(v, undefined)
+	);
+	if (sides.every((side) => side === undefined)) return NESTED_ITEM_PADDING;
+	if (EDITOR_NESTED_PADDINGS.some((set) => set.every((value, i) => sides[i] === value))) {
+		return NESTED_ITEM_PADDING;
+	}
+	const [top = 8, right = 0, bottom = 8, left = 0] = sides;
 	return `${top}px ${right}px ${bottom}px ${left}px`;
 };
 
@@ -68,20 +111,6 @@ export const getSectionBackground = (content: EditorBlock['content']): string =>
 		return bgColor;
 	}
 	return '';
-};
-
-/**
- * Margin-only padding for blocks that own their inner padding directly (e.g.
- * `hero` paints a background image flush to the section's outer table edges).
- * The Walker invokes this when `layout()` returns `sectionMode: 'outer-only'`.
- */
-export const getMarginOnlyPadding = (content: EditorBlock['content']): string => {
-	const c = content as CommonBlockProperties;
-	const top = px(c.marginTop, DEFAULT_MARGIN.top);
-	const right = px(c.marginRight, DEFAULT_MARGIN.right);
-	const bottom = px(c.marginBottom, DEFAULT_MARGIN.bottom);
-	const left = px(c.marginLeft, DEFAULT_MARGIN.left);
-	return `${top}px ${right}px ${bottom}px ${left}px`;
 };
 
 export const getSectionBorder = (

@@ -17,5 +17,10 @@
  *   3  Non-stacking columns sit in a full-width table row, a full-width
  *      button's anchor is `box-sizing:border-box`, a button keeps an explicit
  *      padding of 0, and a table with a border radius keeps separate borders.
+ *   4  A root block's margin is a cell outside the table that carries its
+ *      background and border. A nested text, image, button or divider item
+ *      draws its own padding (unless it is an editor default), margin,
+ *      background, border and corner radius. `mobileFontSize` reaches root
+ *      headings and nested text.
  */
-export const EMAIL_RENDERER_VERSION = 3;
+export const EMAIL_RENDERER_VERSION = 4;

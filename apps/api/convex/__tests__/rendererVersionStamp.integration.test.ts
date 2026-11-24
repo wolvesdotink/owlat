@@ -63,8 +63,8 @@ const RENDERED_V1 = {
 };
 
 describe('renderer version', () => {
-	it('is 3 since rounded tables keep separate borders and column rows fill their width', () => {
-		expect(CURRENT_RENDERER_VERSION).toBe(3);
+	it('is 4 since block margins sit outside the background and nested items keep their own box', () => {
+		expect(CURRENT_RENDERER_VERSION).toBe(4);
 	});
 });
 

@@ -10,7 +10,7 @@
 import { fullSupport, type ButtonBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { gradientToCss } from '../../helpers/gradient';
-import { wrapColumnItem } from '../../helpers/table';
+import { wrapNestedItem } from '../../helpers/table';
 import { px as toPx } from '../../helpers/padding';
 import { escapeAttr, escapeCss, escapeHtml, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
@@ -196,7 +196,12 @@ export const buttonModule: BlockModule<'button'> = {
 			? { ...content, url: transformUrl(content.url, 'button', block.id, ctx) }
 			: content;
 		const inner = renderButtonContent(transformed);
-		return placement === 'root' ? inner : wrapColumnItem(inner);
+		if (placement === 'root') return inner;
+		const layout = buttonModule.layout!(content);
+		return wrapNestedItem(content, inner, {
+			background: layout.background,
+			borderRadius: layout.borderRadius,
+		});
 	},
 
 	plaintext({ content }) {
