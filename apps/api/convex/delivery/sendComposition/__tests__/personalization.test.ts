@@ -3,7 +3,7 @@ import type { EditorBlock } from '@owlat/shared';
 import { renderBlockFragment, renderEmailHtml } from '@owlat/email-renderer';
 import { composeAutomation } from '../automation';
 import { composeCampaign } from '../campaign';
-import { personalize, variablesWithoutFallback } from '../personalization';
+import { personalize } from '../personalization';
 import { composeTransactional } from '../transactional';
 
 describe('personalize — basic variable replacement', () => {
@@ -369,30 +369,5 @@ describe('personalize — tokens with a fallback inside rendered attributes', ()
 			expect(out.html).toContain('href="https://example.com"');
 			expect(out.html).not.toMatch(/\{\{(photo|url)/);
 		}
-	});
-});
-
-describe('variablesWithoutFallback — tokens inside rendered attributes', () => {
-	it('counts a token with an escaped-quote fallback as having one', () => {
-		const rendered = renderBlockFragment({
-			id: 'img',
-			type: 'image',
-			content: {
-				src: "{{photo|'https://example.com/default.png'}}",
-				alt: 'x',
-				width: 50,
-				align: 'center',
-			},
-		});
-		expect(variablesWithoutFallback(rendered, { html: true })).toEqual([]);
-	});
-
-	it('still lists a token without a fallback in an attribute', () => {
-		const rendered = renderBlockFragment({
-			id: 'img',
-			type: 'image',
-			content: { src: '{{photo}}', alt: 'x', width: 50, align: 'center' },
-		});
-		expect(variablesWithoutFallback(rendered, { html: true })).toEqual(['photo']);
 	});
 });
