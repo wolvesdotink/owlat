@@ -30,10 +30,11 @@ export function isConvexValidationError(message: string): boolean {
 
 /**
  * Whether a failure is the paginator refusing a cursor it did not issue for
- * the query. The deployed backend names it `InvalidCursor` (the text Convex's
- * own `usePaginatedQuery` matches on); the test backend decodes a cursor with
- * `JSON.parse` and passes on its message.
+ * the query. The deployed backend says "Failed to parse cursor" for one that
+ * does not decode and names a cursor from another query `InvalidCursor` (the
+ * text Convex's own `usePaginatedQuery` matches on); the test backend decodes
+ * a cursor with `JSON.parse` and passes on its message.
  */
 export function isInvalidCursorError(message: string): boolean {
-	return /InvalidCursor|is not valid JSON/.test(message);
+	return /Failed to parse cursor|InvalidCursor|is not valid JSON/.test(message);
 }

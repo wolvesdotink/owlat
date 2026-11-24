@@ -19,7 +19,11 @@ async function thrown(promise: Promise<unknown>): Promise<unknown> {
 
 describe('paginateClientCursor', () => {
 	it.each([
-		['the deployed InvalidCursor refusal', new Error('InvalidCursor: Failed to parse cursor')],
+		['the deployed refusal of a cursor that does not decode', new Error('Failed to parse cursor')],
+		[
+			'the deployed refusal of a cursor from another query',
+			new Error('InvalidCursor: Tried to run a query starting from a cursor'),
+		],
 		[
 			'the test backend cursor decode failure',
 			new Error('Unexpected token \'o\', "not-a-cursor" is not valid JSON'),
