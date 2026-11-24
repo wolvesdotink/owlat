@@ -29,8 +29,8 @@ const props = defineProps<{
 	};
 	reportStatus: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
 	hasSendStarted: boolean;
-	/** Everything dispatched to the provider. */
-	sentCount: number;
+	/** Everyone the campaign was addressed to, failed sends included. */
+	recipientCount: number;
 	sendPlan:
 		| FunctionReturnType<typeof api.campaigns.sendPlanQueries.getCampaignSendPlan>
 		| undefined;
@@ -153,7 +153,7 @@ const timingLine = computed(() => {
 						<span class="tabular-nums">
 							{{
 								t('dashboard.campaigns.detail.report.recipients', {
-									count: formatNumber(sentCount),
+									count: formatNumber(recipientCount),
 								})
 							}}
 						</span>
