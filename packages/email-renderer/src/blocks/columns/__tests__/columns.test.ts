@@ -78,4 +78,20 @@ describe('Enhanced Columns Block', () => {
 		});
 		expect(html).toContain('display:table-cell');
 	});
+
+	it('puts non-stacking columns in a full-width table row so they keep their widths', () => {
+		const html = renderEmailHtml([makeColumnsBlock({ mobileStacking: false })], {
+			inlineCss: false,
+		});
+		expect(html).toContain(
+			'<div style="display:table;width:100%;table-layout:fixed;font-size:0;line-height:0;">'
+		);
+	});
+
+	it('leaves the stacking row a plain block', () => {
+		const html = renderEmailHtml([makeColumnsBlock({ mobileStacking: true })], {
+			inlineCss: false,
+		});
+		expect(html).not.toContain('display:table;');
+	});
 });

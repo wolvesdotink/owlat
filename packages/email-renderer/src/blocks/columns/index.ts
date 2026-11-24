@@ -124,7 +124,13 @@ export const columnsModule: BlockModule<'columns'> = {
 		}
 
 		const inner = columnHtmlParts.join('');
-		return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="font-size:0;line-height:0;">${inner}</div>${msoColumnsClose()}`;
+		// `display:table-cell` columns need a table parent at full width; inside a
+		// plain block the browser wraps them in an anonymous table that shrinks to
+		// the content, and the percentage widths resolve against nothing.
+		const rowStyle = useTableCell
+			? 'display:table;width:100%;table-layout:fixed;font-size:0;line-height:0;'
+			: 'font-size:0;line-height:0;';
+		return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="${rowStyle}">${inner}</div>${msoColumnsClose()}`;
 	},
 
 	plaintext({ content, walk }) {
