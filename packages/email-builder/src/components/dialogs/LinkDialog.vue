@@ -32,8 +32,9 @@ onMounted(() => {
 function handleApply() {
 	const url = urlInput.value.trim();
 	if (!url) return;
-	// Auto-add https:// if missing protocol
-	const finalUrl = /^(https?:\/\/|mailto:|tel:)/.test(url) ? url : `https://${url}`;
+	// Auto-add https:// if missing protocol. A link that starts with a variable
+	// gets its scheme from the variable's value or fallback at send time.
+	const finalUrl = /^(https?:\/\/|mailto:|tel:|\{\{)/.test(url) ? url : `https://${url}`;
 	emit('apply', finalUrl);
 }
 
@@ -69,12 +70,7 @@ function handleKeydown(event: KeyboardEvent) {
 		</div>
 
 		<template #footer>
-			<UiButton
-				v-if="isEditing"
-				variant="danger-ghost"
-				size="sm"
-				@click="emit('remove')"
-			>
+			<UiButton v-if="isEditing" variant="danger-ghost" size="sm" @click="emit('remove')">
 				<template #iconLeft>
 					<LinkBreakIcon class="w-3.5 h-3.5" />
 				</template>

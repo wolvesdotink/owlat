@@ -243,4 +243,43 @@ describe('Campaign send orchestrator — pre-send content scan gate', () => {
 		);
 		expect(job?.phase).toBe('resolving');
 	});
+	it('scans every translation the walker can send, not only the default language', async () => {
+		(mockedScanContent as Mock).mockImplementation((_subject: string, html: string) =>
+			html.includes('BLOCKED-MARKER')
+				? {
+						score: 80,
+						pass: false,
+						flags: [
+							{ type: 'prohibited_content', severity: 'high', description: 'Prohibited content' },
+						],
+						level: 'blocked',
+					}
+				: { score: 0, pass: true, flags: [], level: 'clean' }
+		);
+
+		const t = convexTest(schema, modules);
+		const { campaignId } = await setupSendableCampaign(t);
+		await t.run(async (ctx) => {
+			const campaign = await ctx.db.get(campaignId);
+			await ctx.db.patch(campaign!.emailTemplateId!, {
+				supportedLanguages: ['en', 'de'],
+				htmlTranslations: JSON.stringify({
+					de: { subject: 'Hallo', htmlContent: '<p>BLOCKED-MARKER</p>' },
+				}),
+			});
+		});
+
+		try {
+			const result = await t.action(internal.campaigns.send.startCampaignSend, { campaignId });
+			expect(result.reason).toMatch(/blocked/i);
+		} finally {
+			// Back to the mock's clean default for any case after this one.
+			(mockedScanContent as Mock).mockReset();
+		}
+
+		expect(await countSends(t, campaignId)).toBe(0);
+		const campaign = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(campaign?.status).toBe('draft');
+		expect(campaign?.contentBlockReason).toMatch(/Prohibited content/);
+	});
 });

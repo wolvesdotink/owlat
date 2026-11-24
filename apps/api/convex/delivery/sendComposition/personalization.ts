@@ -1,4 +1,5 @@
 import { escapeHtml } from '@owlat/shared/html';
+import { matchTemplateVariables, replaceTemplateVariables } from '@owlat/shared/templateVariables';
 /**
  * Send composition (module) — personalization leaf.
  *
@@ -40,18 +41,21 @@ function applyEscape(value: string, escape: EscapePolicy): string {
 	return value;
 }
 
-/** A `{{name}}` or `{{name|'fallback'}}` token: group 1 the name, group 2 the fallback. */
-const VARIABLE_TOKEN = /\{\{(\w+)(?:\|'([^']*)')?\}\}/g;
-
 /**
  * The variables `content` uses without a fallback, in order of first use. A
  * token with a fallback (even an empty one, `{{name|''}}`) renders without its
  * value; one without renders blank, so the caller has to supply it.
+ *
+ * `html: true` for rendered HTML, where a fallback inside an attribute has its
+ * quotes escaped; the send reads that content the same way.
  */
-export function variablesWithoutFallback(content: string): string[] {
+export function variablesWithoutFallback(
+	content: string,
+	syntax: { html?: boolean } = {}
+): string[] {
 	const names = new Set<string>();
-	for (const match of content.matchAll(VARIABLE_TOKEN)) {
-		if (match[2] === undefined) names.add(match[1]!);
+	for (const token of matchTemplateVariables(content, syntax)) {
+		if (token.fallback === undefined) names.add(token.name);
 	}
 	return [...names];
 }
@@ -62,7 +66,10 @@ export function variablesWithoutFallback(content: string): string[] {
  *
  * The fallback string follows the same escape policy as the value — when
  * `escape: 'html'`, both substituted values and fallbacks are HTML-escaped.
- * This matches the pre-deepening worker behaviour for fallbacks.
+ * The `html` policy also reads the content as HTML: the renderer escapes
+ * attribute values, so a token in an image `src` or a link `href` arrives as
+ * `{{photo|&#39;https://…&#39;}}`. Its fallback is entity-decoded before the
+ * escape, so what lands in the attribute is escaped exactly once.
  *
  * Missing variables, `undefined`, `null`, and empty-string values all
  * trigger the fallback path (or `''` if no fallback declared).
@@ -72,13 +79,17 @@ export function personalize(
 	variables: Record<string, unknown>,
 	options: { escape: EscapePolicy }
 ): string {
-	return content.replace(VARIABLE_TOKEN, (_match, variable, fallback) => {
-		const value = variables[variable as keyof typeof variables];
-		if (value !== undefined && value !== null && value !== '') {
-			return applyEscape(String(value), options.escape);
-		}
-		return fallback ? applyEscape(fallback, options.escape) : '';
-	});
+	return replaceTemplateVariables(
+		content,
+		(variable, fallback) => {
+			const value = variables[variable];
+			if (value !== undefined && value !== null && value !== '') {
+				return applyEscape(String(value), options.escape);
+			}
+			return fallback ? applyEscape(fallback, options.escape) : '';
+		},
+		{ html: options.escape === 'html' }
+	);
 }
 
 /**

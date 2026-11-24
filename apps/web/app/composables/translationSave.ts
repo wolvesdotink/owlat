@@ -155,7 +155,10 @@ export function buildTranslationUpdate(
 		subject: overlay.subject,
 		...(overlay.previewText !== undefined ? { previewText: overlay.previewText } : {}),
 		blocks: JSON.stringify(overlay.blocks),
-		htmlContent: renderLanguageHtml(base.content, overlay.blocks, renderOptions),
+		htmlContent: renderLanguageHtml(base.content, overlay.blocks, {
+			...renderOptions,
+			lang: language,
+		}),
 		rendererVersion: EMAIL_RENDERER_VERSION,
 		expectedContentRevision: base.revision,
 	};

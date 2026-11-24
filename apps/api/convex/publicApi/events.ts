@@ -11,25 +11,16 @@ import {
 	errorResponseFromThrow,
 	invalidInputResponse,
 } from '../auth/apiResponses';
-import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
+import { isValidEmail, normalizeEmail, unstorableRecordMessage } from '../lib/inputGuards';
 import type { SendEventResponse } from '@owlat/public-contract';
 import { decodeRequest, sendEventRequestSchema } from '@owlat/public-contract/schemas';
 import {
+	IDEMPOTENCY_KEY_HEADER,
 	idempotencyRefusalResponse,
 	readIdempotencyKey,
 	replayHeaders,
 	resolveIdempotency,
 } from '../auth/apiRequestReceipts';
-
-/**
- * Convex refuses an object key that is longer than 1024 characters, starts
- * with `$`, or holds a character outside printable ASCII, and it throws while
- * serializing the mutation's arguments. The contract accepts any string key,
- * so the handler checks them before the call and answers the caller's 400.
- */
-function isStorablePropertyName(name: string): boolean {
-	return name.length <= 1024 && !name.startsWith('$') && /^[\x20-\x7e]*$/.test(name);
-}
 
 /**
  * POST /api/v1/events - Send an event to trigger automations
@@ -46,7 +37,9 @@ export const sendEvent = createAuthenticatedHandler(
 		const denied = requireScope(auth, 'events:write', request.headers.get('Origin'));
 		if (denied) return denied;
 		const idempotencyKey = readIdempotencyKey(request);
-		if (!idempotencyKey.ok) return errorResponse('invalid_input', idempotencyKey.message);
+		if (!idempotencyKey.ok) {
+			return invalidInputResponse(idempotencyKey.message, IDEMPOTENCY_KEY_HEADER);
+		}
 		let raw: unknown;
 		try {
 			raw = await request.json();
@@ -59,12 +52,8 @@ export const sendEvent = createAuthenticatedHandler(
 		if (!isValidEmail(body.email)) {
 			return invalidInputResponse('Invalid email format', 'email');
 		}
-		if (!Object.keys(body.eventProperties ?? {}).every(isStorablePropertyName)) {
-			return invalidInputResponse(
-				'eventProperties keys must be printable ASCII, at most 1024 characters, and must not start with "$"',
-				'eventProperties'
-			);
-		}
+		const unstorable = unstorableRecordMessage(body.eventProperties, 'eventProperties');
+		if (unstorable) return invalidInputResponse(unstorable, 'eventProperties');
 
 		const createContactIfNotExists = body.createContactIfNotExists ?? false;
 		const idempotency = await resolveIdempotency(ctx, idempotencyKey.key, 'events', () => ({

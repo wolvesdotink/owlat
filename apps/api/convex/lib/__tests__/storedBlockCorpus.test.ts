@@ -14,7 +14,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../constants';
 import {
 	renderPublishableEmail,
@@ -99,6 +99,11 @@ describe('stored EditorBlock corpus', () => {
 			expect.arrayContaining(Object.keys(SERVER_RENDERED))
 		);
 	});
+
+	// The renderer's snapshots load the default social icons site-relatively; the
+	// server prefixes them with SITE_URL, which the test setup sets.
+	beforeEach(() => vi.stubEnv('SITE_URL', ''));
+	afterEach(() => vi.unstubAllEnvs());
 
 	it.each(serverRendered)('$name renders on the server as snapshotted', (fixture) => {
 		const rendered = renderPublishableEmail(

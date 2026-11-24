@@ -25,9 +25,10 @@ import type { ValidatorContext } from '../validators/registry';
  * Each field overrides the Walker's default for that one concern; omit any
  * field to fall through to the default. This is how blocks declare the few
  * placement-side things that aren't pure HTML — the section's background
- * source, its padding, and whether the section's own outer wrap should sum
- * padding+margin (`'normal'`) or only apply margin and let the block emit
- * its own inner padding (`'outer-only'`, e.g. hero with a full-bleed bg).
+ * source, its padding, and whether the section's cell applies the block's
+ * padding (`'normal'`) or none, letting the block emit its own inner padding
+ * (`'outer-only'`, e.g. hero with a full-bleed bg). The margin is outside the
+ * section in both modes.
  */
 export interface BlockLayout {
 	/** Section background color. Omit → Walker reads `content.backgroundColor`. Pass `''` for none. */
@@ -36,7 +37,7 @@ export interface BlockLayout {
 	gradient?: string;
 	/** Section border radius in px. Omit → Walker reads `content.borderRadius`. Pass `0` for none. */
 	borderRadius?: number;
-	/** CSS padding shorthand for the section's outer `<td>`. Omit → Walker computes padding+margin sum. */
+	/** CSS padding shorthand for the section's `<td>`. Omit → Walker reads the block's padding. */
 	padding?: string;
 	/** How the Walker wraps the block. Default `'normal'`. */
 	sectionMode?: 'normal' | 'outer-only';

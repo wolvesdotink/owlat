@@ -365,7 +365,20 @@ All errors extend `OwlatError` and include:
 
 ## Rate Limiting
 
-The API enforces rate limits (10 requests per second per API key), and transactional sends have per-recipient and daily limits. The SDK retries a `429` after its `Retry-After` when that is 30 seconds or less. A longer wait is thrown at once as a `RateLimitError`, so a request handler is not held up by a sleep that cannot outlast the limit; `retryAfter` says when to try again and `data.reason` which limit was hit. The SDK includes rate limit info in error responses:
+The API enforces rate limits (10 requests per second per API key), and transactional sends have per-recipient and daily limits. The SDK retries a `429` after the wait it names, as set out below, when that is 30 seconds or less. A longer wait is thrown at once as a `RateLimitError`, so a request handler is not held up by a sleep that cannot outlast the limit; `retryAfter` says when to try again and `data.reason` which limit was hit.
+
+When a `429` carries both `data.retryAfter` in its error body and a
+`Retry-After` header, the body wins: it comes from the instance and goes with
+the `data.reason` it names, while the header may come from a proxy in front.
+A body value is any positive number of seconds, rounded up; a header value
+counts only as a positive whole number of seconds, so an HTTP date, a negative
+or a decimal header is ignored and the SDK backs off as for a `5xx`. A wait too
+large for a 32-bit integer is capped at 2147483647. `retryAfter` on the error is
+the wait the SDK went by, or `1` when the response named none it could read.
+The Java SDK applies the same rule.
+
+That wait can be hours (a daily limit resets at midnight), so don't sleep for it
+unbounded. Wait out a short one, and hand a long one to a job queue:
 
 ```typescript
 try {
@@ -376,8 +389,13 @@ try {
 		console.log(`Remaining: ${error.rateLimit?.remaining}`);
 		console.log(`Retry after: ${error.retryAfter}s`);
 
-		// Wait and retry
-		await sleep(error.retryAfter * 1000);
+		if (error.retryAfter <= 60) {
+			await sleep(error.retryAfter * 1000);
+			// ...and retry once
+		} else {
+			// A send limit that resets in minutes or hours: schedule the job instead.
+			await queue.add(job, { delay: error.retryAfter * 1000 });
+		}
 	}
 }
 ```

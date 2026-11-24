@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { createHttpClient } from '../src/utils/fetch';
+import { bodyExcerpt } from '../src/utils/errorResponse';
+import type * as ErrorResponse from '../src/utils/errorResponse';
 import {
 	OwlatError,
 	AuthenticationError,
@@ -29,6 +31,12 @@ function mockFetch(status: number, body?: unknown, headers: Record<string, strin
 		return new Response(responseBody, { status, headers: responseHeaders });
 	});
 }
+
+// A pass-through spy, so a test can count the excerpts the client builds.
+vi.mock('../src/utils/errorResponse', async (importOriginal) => {
+	const actual = await importOriginal<typeof ErrorResponse>();
+	return { ...actual, bodyExcerpt: vi.fn(actual.bodyExcerpt) };
+});
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -491,6 +499,47 @@ describe('createHttpClient', () => {
 
 			await rejection(http.get('/x'));
 			expect(spy).toHaveBeenCalledTimes(3);
+		});
+
+		it('builds the excerpt only for the error it throws, not for retried attempts', async () => {
+			mockText(503, HTML_502);
+			const excerpts = vi.mocked(bodyExcerpt);
+			excerpts.mockClear();
+			const http = createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
+				maxRetries: 2,
+				initialDelayMs: 0,
+			});
+
+			await rejection(http.get('/x'));
+			expect(excerpts).toHaveBeenCalledTimes(1);
+		});
+
+		it('treats a 2xx body of only whitespace as unexpected, without retrying', async () => {
+			const spy = mockText(200, ' \n\t ');
+			const http = createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
+				maxRetries: 2,
+				initialDelayMs: 0,
+			});
+
+			const error = await rejection(http.get('/api/v1/contacts'));
+			expect(error).toMatchObject({ statusCode: 200, bodyExcerpt: '' });
+			expect(spy).toHaveBeenCalledTimes(1);
+		});
+
+		it('treats a 2xx JSON document followed by other content as unexpected', async () => {
+			mockText(200, '{"data":{}} <html></html>');
+			const http = createClient();
+
+			const error = await rejection(http.get('/api/v1/contacts'));
+			expect(error).toMatchObject({ statusCode: 200, bodyExcerpt: '{"data":{}} <html></html>' });
+		});
+
+		it('keeps the excerpt on one line across Unicode line separators', async () => {
+			mockText(500, 'one\u2028two\u2029three');
+			const http = createClient();
+
+			const error = await rejection(http.get('/x'));
+			expect(error.bodyExcerpt).toBe('one two three');
 		});
 
 		it('keeps a 429 without the envelope a RateLimitError', async () => {
@@ -956,6 +1005,111 @@ describe('createHttpClient', () => {
 			expect(spy).toHaveBeenCalledTimes(2);
 			expect(sleeps(timers)).toEqual([seconds * 1000]);
 		});
+
+		/** One 429 with the given body `data` and headers, then a success. */
+		function mock429Once(data: Record<string, unknown>, headers: Record<string, string>) {
+			return vi
+				.spyOn(globalThis, 'fetch')
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({ error: { message: 'Slow down', category: 'rate_limited', data } }),
+						{ status: 429, headers }
+					)
+				)
+				.mockResolvedValueOnce(new Response(JSON.stringify({ data: 'ok' }), { status: 200 }));
+		}
+
+		it('takes the wait from data.retryAfter over a shorter Retry-After header', async () => {
+			const spy = mock429Once({ retryAfter: 3600 }, { 'Retry-After': '2' });
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
+
+			const outcome = await settle(http.get('/test'));
+
+			expect(outcome.ok).toBe(false);
+			expect((outcome as { error: RateLimitError }).error.retryAfter).toBe(3600);
+			expect(spy).toHaveBeenCalledTimes(1);
+			expect(sleeps(timers)).toEqual([]);
+		});
+
+		it('waits out data.retryAfter over a longer Retry-After header', async () => {
+			const spy = mock429Once({ retryAfter: 2 }, { 'Retry-After': '3600' });
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
+
+			const outcome = await settle(http.get('/test'));
+
+			expect(outcome.ok).toBe(true);
+			expect(spy).toHaveBeenCalledTimes(2);
+			expect(sleeps(timers)).toEqual([2000]);
+		});
+
+		it('rounds a fractional data.retryAfter up to whole seconds', async () => {
+			mock429Once({ retryAfter: 1.5 }, {});
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
+
+			await settle(http.get('/test'));
+
+			expect(sleeps(timers)).toEqual([2000]);
+		});
+
+		it.each([
+			['negative', -5],
+			['zero', 0],
+			['a string', '5'],
+		])('ignores a data.retryAfter that is %s and takes the header', async (_name, value) => {
+			mock429Once({ retryAfter: value }, { 'Retry-After': '2' });
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
+
+			await settle(http.get('/test'));
+
+			expect(sleeps(timers)).toEqual([2000]);
+		});
+
+		it.each([
+			['an HTTP date', 'Wed, 21 Oct 2026 07:28:00 GMT'],
+			['negative', '-5'],
+			['zero', '0'],
+			['a decimal', '1.5'],
+			['not a number', 'soon'],
+		])('keeps the backoff for a Retry-After header that is %s', async (_name, header) => {
+			const spy = mock429Once({}, { 'Retry-After': header });
+			const timers = vi.spyOn(globalThis, 'setTimeout');
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
+
+			const outcome = await settle(http.get('/test'));
+
+			expect(outcome.ok).toBe(true);
+			expect(spy).toHaveBeenCalledTimes(2);
+			expect(sleeps(timers)).toEqual([500]);
+		});
+
+		it('reports a retryAfter of 1 when no value it carries is readable', async () => {
+			mock429Once({ retryAfter: -5 }, { 'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT' });
+			const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 0 });
+
+			const outcome = await settle(http.get('/test'));
+
+			expect((outcome as { error: RateLimitError }).error.retryAfter).toBe(1);
+		});
+
+		it.each([
+			['header', {}, { 'Retry-After': '99999999999' }],
+			['body', { retryAfter: 1e300 }, {}],
+		])(
+			'caps an absurdly large wait from the %s and throws it at once',
+			async (_name, data, headers) => {
+				const spy = mock429Once(data, headers);
+				const http = createHttpClient(API_KEY, BASE_URL, DEADLINE, { maxRetries: 2 });
+
+				const outcome = await settle(http.get('/test'));
+
+				expect((outcome as { error: RateLimitError }).error.retryAfter).toBe(2_147_483_647);
+				expect(spy).toHaveBeenCalledTimes(1);
+			}
+		);
 
 		it('keeps the backoff for a 429 without Retry-After', async () => {
 			const spy = vi
