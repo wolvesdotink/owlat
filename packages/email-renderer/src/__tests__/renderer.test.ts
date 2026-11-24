@@ -470,6 +470,16 @@ describe('accessibility', () => {
 		expect(html).toContain('lang="fr"');
 	});
 
+	it('keeps a region subtag in the lang attribute', () => {
+		expect(renderEmailHtml([textBlock], { lang: 'pt-BR' })).toContain(' lang="pt-BR"');
+	});
+
+	it('renders lang="en" for a value that is not a language tag', () => {
+		const html = renderEmailHtml([textBlock], { lang: 'de" onmouseover="x' });
+		expect(html).toContain(' lang="en"');
+		expect(html).not.toContain('onmouseover');
+	});
+
 	it('adds scope="col" on table headers', () => {
 		const tableBlock: EditorBlock = {
 			id: 'tbl',
@@ -1204,5 +1214,44 @@ describe('column background images', () => {
 		const html = renderEmailHtml([colBlock]);
 		expect(html).toContain("background-image:url('https://example.com/bg.jpg')");
 		expect(html).toContain('background-size:cover');
+	});
+});
+
+describe('assetBaseUrl', () => {
+	const socialBlock: EditorBlock = {
+		id: 's1',
+		type: 'social',
+		content: {
+			links: [{ platform: 'facebook', url: 'https://example.com', enabled: true }],
+			iconStyle: 'filled',
+			align: 'center',
+			iconSize: 32,
+			iconSpacing: 8,
+			iconColor: '#000000',
+		},
+	};
+
+	it('keeps the default icons site-relative without one', () => {
+		expect(renderEmailHtml([socialBlock])).toContain('src="/social-icons/filled/facebook.png"');
+	});
+
+	it('prefixes the default icons with the origin, without a doubled slash', () => {
+		const html = renderEmailHtml([socialBlock], { assetBaseUrl: 'https://app.owlat.example/' });
+		expect(html).toContain('src="https://app.owlat.example/social-icons/filled/facebook.png"');
+	});
+
+	it('drops a query or fragment from the base', () => {
+		const html = renderEmailHtml([socialBlock], {
+			assetBaseUrl: 'https://app.owlat.example/?x=1#top',
+		});
+		expect(html).toContain('src="https://app.owlat.example/social-icons/filled/facebook.png"');
+	});
+
+	it('ignores a value that is not an absolute http(s) URL', () => {
+		for (const assetBaseUrl of ['javascript:alert(1)', 'app.owlat.example', ' ']) {
+			expect(renderEmailHtml([socialBlock], { assetBaseUrl })).toContain(
+				'src="/social-icons/filled/facebook.png"'
+			);
+		}
 	});
 });

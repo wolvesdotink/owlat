@@ -64,7 +64,10 @@ export interface FillPreviewVariablesOptions {
 	values?: Record<string, string>;
 	/** Display labels per variable key, used as a default before humanizing */
 	labels?: Record<string, string>;
-	/** HTML-escape substituted values (use for HTML/AMP output, not plain text) */
+	/**
+	 * The content is rendered HTML: escape substituted values and find tokens
+	 * inside escaped attributes (use for HTML/AMP output, not plain text)
+	 */
 	escape?: boolean;
 }
 
@@ -99,6 +102,8 @@ export function fillPreviewVariables(
 				humanizeVariableKey(key)
 			);
 		},
-		{ escape: escape ? escapeHtml : undefined }
+		// Escaped output is rendered HTML, read with the HTML form of the grammar
+		// so a token inside an escaped attribute resolves too.
+		{ escape: escape ? escapeHtml : undefined, html: escape }
 	);
 }

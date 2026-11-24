@@ -9,6 +9,9 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -39,11 +42,15 @@ class HttpClientRetryAfterTest {
     private final AtomicInteger requests = new AtomicInteger();
     private final List<Long> delays = new CopyOnWriteArrayList<>();
     private volatile String retryAfter;
+    /** JSON for {@code data.retryAfter} in the 429's envelope, or null for none. */
+    private volatile String bodyRetryAfter;
 
     @BeforeEach
     void start() throws IOException {
         requests.set(0);
         delays.clear();
+        retryAfter = null;
+        bodyRetryAfter = null;
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", this::handle);
         server.start();
@@ -60,7 +67,8 @@ class HttpClientRetryAfterTest {
         boolean first = requests.getAndIncrement() == 0;
         byte[] response = (first
                 ? "{\"error\":{\"category\":\"rate_limited\",\"message\":\"Too many emails to this recipient\","
-                        + "\"data\":{\"reason\":\"recipient_rate_limited\"}}}"
+                        + "\"data\":{\"reason\":\"recipient_rate_limited\""
+                        + (bodyRetryAfter != null ? ",\"retryAfter\":" + bodyRetryAfter : "") + "}}}"
                 : "{\"data\":{\"id\":\"msg_1\",\"status\":\"queued\"}}")
                 .getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -123,5 +131,97 @@ class HttpClientRetryAfterTest {
 
         assertEquals(2, requests.get());
         assertEquals(List.of(500L), delays);
+    }
+
+    @Test
+    void bodyRetryAfterLongerThanTheCapIsThrownAtOnceOverAShortHeader() {
+        retryAfter = "2";
+        bodyRetryAfter = "3600";
+
+        RateLimitException ex = assertThrows(RateLimitException.class,
+                () -> transactional().send(params()));
+
+        assertEquals(3600, ex.getRetryAfter());
+        assertEquals(1, requests.get());
+        assertEquals(List.of(), delays);
+    }
+
+    @Test
+    void bodyRetryAfterIsWaitedOutOverALongHeader() {
+        retryAfter = "3600";
+        bodyRetryAfter = "2";
+
+        transactional().send(params());
+
+        assertEquals(2, requests.get());
+        assertEquals(List.of(2_000L), delays);
+    }
+
+    @Test
+    void theExceptionReportsTheWaitTheClientUsed() {
+        retryAfter = "2";
+        bodyRetryAfter = "5";
+
+        RateLimitException ex = assertThrows(RateLimitException.class,
+                () -> new TransactionalResource(new HttpClient("sk_test_123", baseUrl, Duration.ofSeconds(10),
+                        RetryConfig.disabled(), delays::add)).send(params()));
+
+        assertEquals(5, ex.getRetryAfter());
+    }
+
+    @Test
+    void fractionalBodyRetryAfterIsRoundedUp() {
+        bodyRetryAfter = "1.5";
+
+        transactional().send(params());
+
+        assertEquals(List.of(2_000L), delays);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"-5", "0", "\"5\""})
+    void unreadableBodyRetryAfterFallsBackToTheHeader(String value) {
+        retryAfter = "2";
+        bodyRetryAfter = value;
+
+        transactional().send(params());
+
+        assertEquals(List.of(2_000L), delays);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Wed, 21 Oct 2026 07:28:00 GMT", "-5", "0", "1.5", "+5", "soon"})
+    void unreadableHeaderKeepsTheBackoff(String header) {
+        retryAfter = header;
+
+        transactional().send(params());
+
+        assertEquals(2, requests.get());
+        assertEquals(List.of(500L), delays);
+    }
+
+    @Test
+    void noReadableValueReportsARetryAfterOfOne() {
+        retryAfter = "0";
+        bodyRetryAfter = "-5";
+
+        RateLimitException ex = assertThrows(RateLimitException.class,
+                () -> new TransactionalResource(new HttpClient("sk_test_123", baseUrl, Duration.ofSeconds(10),
+                        RetryConfig.disabled(), delays::add)).send(params()));
+
+        assertEquals(1, ex.getRetryAfter());
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"99999999999,", ",1e300"})
+    void anAbsurdlyLargeWaitIsCappedAndThrownAtOnce(String header, String body) {
+        retryAfter = header;
+        bodyRetryAfter = body;
+
+        RateLimitException ex = assertThrows(RateLimitException.class,
+                () -> transactional().send(params()));
+
+        assertEquals(Integer.MAX_VALUE, ex.getRetryAfter());
+        assertEquals(1, requests.get());
     }
 }

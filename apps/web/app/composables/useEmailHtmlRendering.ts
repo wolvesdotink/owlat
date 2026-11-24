@@ -8,6 +8,8 @@ export interface RenderOptions {
 	theme?: EmailTheme;
 	variableType: VariableType;
 	minify?: boolean;
+	/** Language the HTML declares; the renderer falls back to 'en'. */
+	lang?: string;
 	/** Comparison previews only: the Blocks to outline, by id. Never set on HTML that is saved or sent. */
 	diffOutlines?: Readonly<Record<string, BlockChangeKind>>;
 }
@@ -32,6 +34,7 @@ export function useEmailHtmlRendering() {
 			theme: options.theme,
 			variableType: options.variableType,
 			minify: options.minify,
+			lang: options.lang,
 			diffOutlines: options.diffOutlines,
 		});
 	};
@@ -89,7 +92,10 @@ export function useEmailHtmlRendering() {
 			languages.map(async (language) => {
 				const languageContent = await loadLanguageContent(language);
 				if (!languageContent) return null;
-				const htmlContent = renderContentToHtml(languageContent.content, options);
+				const htmlContent = renderContentToHtml(languageContent.content, {
+					...options,
+					lang: language,
+				});
 				return [language, { htmlContent, subject: languageContent.subject }] as const;
 			})
 		);

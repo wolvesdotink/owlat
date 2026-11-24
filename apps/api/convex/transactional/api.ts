@@ -28,8 +28,13 @@ import {
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
-import { jsonResponse, errorResponse, invalidInputResponse } from '../auth/apiResponses';
-import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
+import {
+	jsonResponse,
+	errorResponse,
+	errorResponseFromThrow,
+	invalidInputResponse,
+} from '../auth/apiResponses';
+import { isValidEmail, normalizeEmail, unstorableRecordMessage } from '../lib/inputGuards';
 import { featureDisabledMessage } from '../lib/featureFlags';
 import { utf8Bytes } from '../lib/bytes';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
@@ -42,6 +47,7 @@ import type { DispatchRejectionReason } from './dispatch';
 import type { SendIntakeAbuseState } from '../delivery/sendIntakeGates';
 import { prepareAttachments, uploadAndDispatch, type PreparedAttachment } from './attachmentIntake';
 import {
+	IDEMPOTENCY_KEY_HEADER,
 	IDEMPOTENCY_REFUSAL_MESSAGES,
 	idempotencyRefusalResponse,
 	readIdempotencyKey,
@@ -94,14 +100,17 @@ function envelopeBytes(body: SendTransactionalBody): number {
 }
 
 /**
- * The checks the contract's schema leaves to the server: email syntax and the
- * envelope budget. Returns the 400 to send, or null when the body passes. No
- * DB access — this is the boundary check the module trusts has run.
+ * The checks the contract's schema leaves to the server: email syntax, the
+ * `dataVariables` keys Convex can store, and the envelope budget. Returns the
+ * 400 to send, or null when the body passes. No DB access — this is the
+ * boundary check the module trusts has run.
  */
 function validateDecodedBody(body: SendTransactionalBody): Response | null {
 	if (!isValidEmail(body.email)) {
 		return invalidInputResponse('Invalid email format', 'email');
 	}
+	const unstorable = unstorableRecordMessage(body.dataVariables, 'dataVariables');
+	if (unstorable) return invalidInputResponse(unstorable, 'dataVariables');
 	if (envelopeBytes(body) > MAX_ENVELOPE_BYTES) {
 		return errorResponse(
 			'invalid_input',
@@ -300,7 +309,9 @@ export const sendTransactional = createAuthenticatedHandler(
 			});
 		}
 		const idempotencyKey = readIdempotencyKey(request);
-		if (!idempotencyKey.ok) return errorResponse('invalid_input', idempotencyKey.message);
+		if (!idempotencyKey.ok) {
+			return invalidInputResponse(idempotencyKey.message, IDEMPOTENCY_KEY_HEADER);
+		}
 		let raw: unknown;
 		try {
 			raw = await request.json();
@@ -344,14 +355,20 @@ export const sendTransactional = createAuthenticatedHandler(
 			: // The schema refuses a body naming neither.
 				{ kind: 'slug' as const, slug: body.slug! };
 
-		const intake = await uploadAndDispatch(ctx, prepared, {
-			templateLookup,
-			email: normalizeEmail(body.email),
-			dataVariables: body.dataVariables,
-			language: body.language,
-			...(idempotency ? { idempotency } : {}),
-			apiKeyId: auth.keyId,
-		});
+		let intake: Awaited<ReturnType<typeof uploadAndDispatch>>;
+		try {
+			intake = await uploadAndDispatch(ctx, prepared, {
+				templateLookup,
+				email: normalizeEmail(body.email),
+				dataVariables: body.dataVariables,
+				language: body.language,
+				...(idempotency ? { idempotency } : {}),
+				apiKeyId: auth.keyId,
+			});
+		} catch (error) {
+			// A write the deletion fence refused keeps its own 422.
+			return errorResponseFromThrow(error, 'Failed to send transactional email');
+		}
 		if (!intake.ok) return intake.response;
 		const outcome = intake.outcome;
 		if (!outcome.ok) {
@@ -361,7 +378,10 @@ export const sendTransactional = createAuthenticatedHandler(
 			}
 			const map = REJECTION_RESPONSE_MAP[outcome.reason];
 			return errorResponse(map.category, outcome.detail || map.defaultMessage, {
-				data: { reason: outcome.reason },
+				data: {
+					reason: outcome.reason,
+					...(outcome.variables && { field: 'dataVariables', variables: outcome.variables }),
+				},
 				...(outcome.retryAfterMs !== undefined && {
 					retryAfter: Math.max(1, Math.ceil(outcome.retryAfterMs / 1000)),
 				}),

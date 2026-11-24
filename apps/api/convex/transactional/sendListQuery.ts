@@ -67,11 +67,24 @@ function decodeCursor(raw: string): CursorPayload | null {
 	}
 }
 
+/**
+ * Whether a timestamp's written date is one the calendar has. `Date.parse`
+ * rolls a day past the month's end into the next month (February 30 reads as
+ * March 2), so the written day is checked against the month's length; the
+ * offset does not matter for that.
+ */
+function isCalendarDate(raw: string): boolean {
+	const written = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+	if (!written) return true;
+	const [year, month, day] = written.slice(1).map(Number) as [number, number, number];
+	return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
 function readTimestamp(params: URLSearchParams, name: string): number | null | Refusal {
 	const raw = params.get(name);
 	if (!raw) return null;
 	const at = Date.parse(raw);
-	if (Number.isNaN(at)) {
+	if (Number.isNaN(at) || !isCalendarDate(raw)) {
 		return { ok: false, message: `${name} must be an ISO 8601 timestamp`, field: name };
 	}
 	return at;
@@ -86,7 +99,7 @@ export function readSendListQuery(
 	now: number
 ): { ok: true; value: SendListQuery } | Refusal {
 	const page = readListQuery(params);
-	if (!page.ok) return { ok: false, message: page.message };
+	if (!page.ok) return page;
 	if (page.value.search !== undefined) {
 		return {
 			ok: false,

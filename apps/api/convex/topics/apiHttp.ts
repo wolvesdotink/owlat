@@ -31,10 +31,10 @@ import {
  */
 function topicIdFromPath(segment: PathSegment): Id<'topics'> | Response {
 	if (!segment.ok && segment.reason === 'missing') {
-		return errorResponse('invalid_input', 'Topic ID is required');
+		return invalidInputResponse('Topic ID is required', 'topicId');
 	}
 	if (!segment.ok || !isValidConvexId(segment.value)) {
-		return errorResponse('invalid_input', 'Invalid topic ID format');
+		return invalidInputResponse('Invalid topic ID format', 'topicId');
 	}
 	return segment.value as Id<'topics'>;
 }
@@ -52,15 +52,20 @@ export const listTopics = createAuthenticatedHandler(
 		const denied = requireScope(auth, 'topics:read', request.headers.get('Origin'));
 		if (denied) return denied;
 		const query = readListQuery(new URL(request.url).searchParams);
-		if (!query.ok) return errorResponse('invalid_input', query.message);
+		if (!query.ok) return invalidInputResponse(query.message, query.field);
 		if (query.value.search !== undefined) {
 			return invalidInputResponse('Topics cannot be searched', 'search');
 		}
-		const page = await ctx.runQuery(internal.publicApi.topics.listForApi, {
-			limit: query.value.limit,
-			cursor: query.value.cursor,
-		});
-		return jsonResponse(page);
+		try {
+			const page = await ctx.runQuery(internal.publicApi.topics.listForApi, {
+				limit: query.value.limit,
+				cursor: query.value.cursor,
+			});
+			return jsonResponse(page);
+		} catch (error) {
+			// A cursor the paginator refuses is the caller's 400.
+			return errorResponseFromThrow(error, 'Failed to list topics');
+		}
 	}
 );
 
@@ -149,7 +154,7 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 		const topicId = topicIdFromPath(pathSegmentAfter(request, 'topics'));
 		if (topicId instanceof Response) return topicId;
 
-		const emailOrId = contactRefFromPath(pathSegmentAfter(request, 'contacts'));
+		const emailOrId = contactRefFromPath(pathSegmentAfter(request, 'contacts'), 'emailOrId');
 		if (emailOrId instanceof Response) return emailOrId;
 
 		// Check if the topic exists and belongs to the organization
@@ -165,7 +170,9 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 		const resolved = await resolveContactRef(
 			ctx,
 			isEmail ? { email: emailOrId } : { id: emailOrId },
-			isEmail ? { notFoundMessage: `Contact with email "${emailOrId}" not found` } : undefined
+			isEmail
+				? { notFoundMessage: `Contact with email "${emailOrId}" not found`, field: 'emailOrId' }
+				: { field: 'emailOrId' }
 		);
 		if (resolved instanceof Response) return resolved;
 		const contactId: Id<'contacts'> = resolved._id;

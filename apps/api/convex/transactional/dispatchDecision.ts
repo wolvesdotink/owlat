@@ -58,6 +58,8 @@ export type DispatchRefusal = {
 	abuse?: SendIntakeAbuseState;
 	/** Set on the volume-cap refusals: when the cap admits the next send. */
 	retryAfterMs?: number;
+	/** Set on `invalid_variables`: the data variables at fault. */
+	variables?: string[];
 };
 
 export type DispatchOutcome =
@@ -225,7 +227,12 @@ export function decideSenderAndVariables(input: {
 	const { template } = input;
 	const validation = validateDataVariables(input.dataVariables, template.dataVariablesSchema);
 	if (!validation.valid) {
-		return { ok: false, reason: 'invalid_variables', detail: validation.error };
+		return {
+			ok: false,
+			reason: 'invalid_variables',
+			detail: validation.error,
+			...(validation.variable !== undefined && { variables: [validation.variable] }),
+		};
 	}
 	const missing = missingDataVariables(
 		input.content,
@@ -239,6 +246,7 @@ export function decideSenderAndVariables(input: {
 			ok: false,
 			reason: 'invalid_variables',
 			detail: `Missing data ${one ? 'variable' : 'variables'} ${names}: the email uses ${one ? 'it' : 'them'} without a fallback. Supply ${one ? 'it' : 'them'}, or mark ${one ? 'it' : 'them'} optional in the template's variables to send ${one ? 'it' : 'them'} empty.`,
+			variables: missing,
 		};
 	}
 	return undefined;

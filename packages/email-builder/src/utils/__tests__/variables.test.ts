@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { renderBlockFragment } from '@owlat/email-renderer';
 import {
 	containsVariable,
 	extractVariableName,
@@ -84,6 +85,27 @@ describe('fillPreviewVariables', () => {
 		expect(
 			fillPreviewVariables('{{first_name}}', { values: { first_name: '<b>x</b>' }, escape: true })
 		).toBe('&lt;b&gt;x&lt;/b&gt;');
+	});
+
+	it('resolves a fallback inside a rendered image src, escaped once', () => {
+		const html = renderBlockFragment({
+			id: 'img',
+			type: 'image',
+			content: {
+				src: "{{photo|'https://example.com/a.png?x=1&y=2'}}",
+				alt: 'x',
+				width: 50,
+				align: 'center',
+			},
+		});
+		const filled = fillPreviewVariables(html, { escape: true });
+		expect(filled).toContain('src="https://example.com/a.png?x=1&amp;y=2"');
+		expect(
+			fillPreviewVariables(html, {
+				values: { photo: 'https://cdn.example.com/b.png' },
+				escape: true,
+			})
+		).toContain('src="https://cdn.example.com/b.png"');
 	});
 
 	it('does not escape when escape is off (plain text)', () => {

@@ -919,6 +919,7 @@ import type * as emailBlocks_renderingPool from '../emailBlocks/renderingPool.js
 import type * as emailTemplates_emails from '../emailTemplates/emails.js';
 import type * as emailTemplates_i18n from '../emailTemplates/i18n.js';
 import type * as emailTemplates_lifecycle from '../emailTemplates/lifecycle.js';
+import type * as emailTemplates_liveContentScan from '../emailTemplates/liveContentScan.js';
 import type * as emailTemplates_listing from '../emailTemplates/listing.js';
 import type * as emailTemplates_deletion from '../emailTemplates/deletion.js';
 import type * as emailTemplates_translate from '../emailTemplates/translate.js';
@@ -2962,6 +2963,7 @@ declare const fullApi: ApiFromModules<{
 	'emailTemplates/emails': typeof emailTemplates_emails;
 	'emailTemplates/i18n': typeof emailTemplates_i18n;
 	'emailTemplates/lifecycle': typeof emailTemplates_lifecycle;
+	'emailTemplates/liveContentScan': typeof emailTemplates_liveContentScan;
 	'emailTemplates/listing': typeof emailTemplates_listing;
 	'emailTemplates/deletion': typeof emailTemplates_deletion;
 	'emailTemplates/translate': typeof emailTemplates_translate;
