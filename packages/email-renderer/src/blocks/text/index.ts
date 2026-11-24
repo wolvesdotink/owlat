@@ -15,6 +15,7 @@ import { stripHtml, extractLinks, underlineHeading } from '../../helpers/text';
 import { escapeAttr, escapeCss, escapeCssString, sanitizeRawHtml } from '../../sanitize';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 import { px } from '../../helpers/padding';
+import { getBlockDataAttrs, wrapNestedItem } from '../../helpers/table';
 
 const DEFAULT_FONT_SIZE = 16;
 const DEFAULT_LINE_HEIGHT = 1.5;
@@ -76,17 +77,28 @@ const postalAddressAttribute = (content: TextBlockContent): string =>
 
 const renderRoot = (content: TextBlockContent): string => {
 	const styles = baseStyles(content, true, false);
-	const tag =
-		content.blockType === 'h1' || content.blockType === 'h2' || content.blockType === 'h3'
-			? content.blockType
-			: 'div';
+	const tag = rootTag(content);
 	if (tag !== 'div') styles.push('margin:0', 'padding:0');
 	return `<${tag}${postalAddressAttribute(content)} style="${styles.join(';')}">${content.html}</${tag}>`;
 };
 
-const renderInColumn = (content: TextBlockContent): string => {
+/** The tag `renderRoot` puts the text in, which carries its font size. */
+const rootTag = (content: TextBlockContent): 'h1' | 'h2' | 'h3' | 'div' =>
+	content.blockType === 'h1' || content.blockType === 'h2' || content.blockType === 'h3'
+		? content.blockType
+		: 'div';
+
+/**
+ * A nested item's id is not on any section table, so the cell that carries its
+ * font size is marked with it when a mobile size has to find that cell.
+ */
+const renderInColumn = (content: TextBlockContent, id: string): string => {
 	const styles = baseStyles(content, false, true);
-	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td${postalAddressAttribute(content)} style="padding:8px 0;${styles.join(';')}">${content.html}</td></tr></table>`;
+	const idAttr = px(content.mobileFontSize, 0) ? getBlockDataAttrs({ id }) : '';
+	return wrapNestedItem(content, content.html, {
+		cellStyle: styles.join(';'),
+		cellAttrs: `${idAttr}${postalAddressAttribute(content)}`,
+	});
 };
 
 export const textModule: BlockModule<'text'> = {
@@ -121,12 +133,14 @@ export const textModule: BlockModule<'text'> = {
 		return content;
 	},
 
-	responsiveCss({ block, content }) {
+	responsiveCss({ block, content, placement }) {
 		const mobileFontSize = px(content.mobileFontSize, 0);
 		if (!mobileFontSize) return [];
-		return [
-			`[data-block-id="${escapeCssString(block.id)}"] div{font-size:${mobileFontSize}px!important}`,
-		];
+		// The size sits inline on the element that holds the text: the div or
+		// heading inside a root section, or the cell of a nested item.
+		const id = `[data-block-id="${escapeCssString(block.id)}"]`;
+		const target = placement === 'root' ? `${id} ${rootTag(content)}` : `td${id}`;
+		return [`${target}{font-size:${mobileFontSize}px!important}`];
 	},
 
 	html({ block, content, ctx, placement }) {
@@ -139,7 +153,7 @@ export const textModule: BlockModule<'text'> = {
 		const transformed = ctx.linkTransform
 			? { ...sanitized, html: transformHtmlLinks(sanitized.html, 'text', block.id, ctx) }
 			: sanitized;
-		return placement === 'root' ? renderRoot(transformed) : renderInColumn(transformed);
+		return placement === 'root' ? renderRoot(transformed) : renderInColumn(transformed, block.id);
 	},
 
 	plaintext({ content }) {

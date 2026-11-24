@@ -3,7 +3,8 @@ import {
 	getSectionPadding,
 	getSectionBackground,
 	getSectionBorder,
-	getMarginOnlyPadding,
+	getSectionMargin,
+	getNestedItemPadding,
 } from '../../helpers/padding';
 import { buttonModule } from '../../blocks/button';
 import { heroModule } from '../../blocks/hero';
@@ -15,7 +16,7 @@ describe('getSectionPadding', () => {
 		expect(result).toBe('16px 24px 16px 24px');
 	});
 
-	it('combines padding and margin', () => {
+	it('leaves the margin out of the padding', () => {
 		const content = {
 			paddingTop: 10,
 			paddingRight: 20,
@@ -27,7 +28,7 @@ describe('getSectionPadding', () => {
 			marginLeft: 5,
 		};
 		const result = getSectionPadding(content as unknown as EditorBlock['content']);
-		expect(result).toBe('15px 25px 15px 25px');
+		expect(result).toBe('10px 20px 10px 20px');
 	});
 });
 
@@ -89,8 +90,8 @@ describe('heroModule.layout', () => {
 	});
 });
 
-describe('getMarginOnlyPadding', () => {
-	it('returns margin-only padding string (used by hero sections)', () => {
+describe('getSectionMargin', () => {
+	it('returns the margin alone', () => {
 		const content = {
 			marginTop: 5,
 			marginRight: 10,
@@ -101,11 +102,40 @@ describe('getMarginOnlyPadding', () => {
 			paddingBottom: 99,
 			paddingLeft: 99,
 		} as unknown as EditorBlock['content'];
-		expect(getMarginOnlyPadding(content)).toBe('5px 10px 5px 10px');
+		expect(getSectionMargin(content)).toBe('5px 10px 5px 10px');
 	});
 
-	it('defaults to zero when margins are unset', () => {
-		expect(getMarginOnlyPadding({} as EditorBlock['content'])).toBe('0px 0px 0px 0px');
+	it('returns null when every margin is zero or unset', () => {
+		expect(getSectionMargin({} as EditorBlock['content'])).toBeNull();
+		expect(getSectionMargin({ marginTop: 0 } as EditorBlock['content'])).toBeNull();
+	});
+});
+
+describe('getNestedItemPadding', () => {
+	const pad = (content: Record<string, unknown>) =>
+		getNestedItemPadding(content as unknown as EditorBlock['content']);
+
+	it('keeps 8px 0 when the item sets no padding', () => {
+		expect(pad({})).toBe('8px 0');
+	});
+
+	it('keeps 8px 0 for the padding sets the editor writes by default', () => {
+		expect(pad({ paddingTop: 16, paddingRight: 0, paddingBottom: 16, paddingLeft: 0 })).toBe(
+			'8px 0'
+		);
+		expect(pad({ paddingTop: 16, paddingRight: 24, paddingBottom: 16, paddingLeft: 24 })).toBe(
+			'8px 0'
+		);
+	});
+
+	it('applies any other padding, filling unset sides from 8px 0', () => {
+		expect(pad({ paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0 })).toBe(
+			'0px 0px 0px 0px'
+		);
+		expect(pad({ paddingTop: 16, paddingRight: 0, paddingBottom: 4, paddingLeft: 0 })).toBe(
+			'16px 0px 4px 0px'
+		);
+		expect(pad({ paddingLeft: 12 })).toBe('8px 0px 8px 12px');
 	});
 });
 
