@@ -249,6 +249,29 @@ describe('editor saves of a template that is going out are scanned', () => {
 		);
 	});
 
+	it('ignores a step retyped away from email that kept its email config', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await t.run(async (ctx) => {
+			const automationId = await ctx.db.insert(
+				'automations',
+				createTestAutomation({ status: 'active', activatedAt: Date.now() })
+			);
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({
+					automationId,
+					stepIndex: 0,
+					stepType: 'delay',
+					config: { emailTemplateId: templateId, subjectOverride: 'SUSPICIOUS-MARKER' },
+				})
+			);
+		});
+
+		await saveSubject(t, templateId, 'June news, again');
+		expect((await rowOf(t, templateId))?.subject).toBe('June news, again');
+	});
+
 	it('lets a flagged save land where nothing is sending, for the start to scan', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t);

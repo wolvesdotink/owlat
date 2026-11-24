@@ -28,8 +28,8 @@ import { throwInvalidState } from '../_utils/errors';
 // bounded: `sending` is a transient state; a deployment runs a handful at once.
 const SENDING_CAMPAIGN_SCAN = 200;
 
-// bounded: the email steps that send one template. A full page is treated as
-// "may be in use", so a step past the cap is never sent unscanned.
+// bounded: the steps that reference one template. A full page refuses the
+// write, so a step past the cap is never sent unscanned.
 const TEMPLATE_STEP_SCAN = 500;
 
 const LEVEL_RANK = { clean: 0, suspicious: 1, blocked: 2 } as const;
@@ -138,14 +138,19 @@ async function scanForActiveAutomations(
 		.query('automationSteps')
 		.withIndex('by_email_template', (q) => q.eq('config.emailTemplateId', template._id))
 		.take(TEMPLATE_STEP_SCAN);
+	if (steps.length === TEMPLATE_STEP_SCAN) {
+		throwInvalidState(
+			`More than ${TEMPLATE_STEP_SCAN - 1} automation steps use this template, too many to scan this save against. ` +
+				'Point some of them at a copy of the template, then save again.'
+		);
+	}
 	let worst: ContentScanResult | null = null;
 	for (const step of steps) {
+		// A step retyped away from email keeps its old config, and sends nothing.
+		if (step.stepType !== 'email') continue;
 		const automation = await ctx.db.get(step.automationId);
 		if (automation?.status !== 'active' || automation.deletedAt !== undefined) continue;
 		worst = worse(worst, scanEmailStep(step, template));
-	}
-	if (steps.length === TEMPLATE_STEP_SCAN) {
-		worst = worse(worst, scanContent(template.subject, template.htmlContent ?? ''));
 	}
 	return worst;
 }
