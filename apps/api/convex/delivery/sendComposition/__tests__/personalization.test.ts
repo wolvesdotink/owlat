@@ -1,10 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { personalize } from '../personalization';
+import type { EditorBlock } from '@owlat/shared';
+import { renderBlockFragment, renderEmailHtml } from '@owlat/email-renderer';
+import { composeAutomation } from '../automation';
+import { composeCampaign } from '../campaign';
+import { personalize, variablesWithoutFallback } from '../personalization';
+import { composeTransactional } from '../transactional';
 
 describe('personalize — basic variable replacement', () => {
 	it('replaces a single variable with its value', () => {
 		expect(personalize('Hello {{firstName}}!', { firstName: 'John' }, { escape: 'plain' })).toBe(
-			'Hello John!',
+			'Hello John!'
 		);
 	});
 
@@ -13,24 +18,20 @@ describe('personalize — basic variable replacement', () => {
 			personalize(
 				'Hello {{firstName}} {{lastName}}!',
 				{ firstName: 'John', lastName: 'Doe' },
-				{ escape: 'plain' },
-			),
+				{ escape: 'plain' }
+			)
 		).toBe('Hello John Doe!');
 	});
 
 	it('returns content unchanged when no variables present', () => {
 		expect(personalize('Hello there!', { firstName: 'John' }, { escape: 'plain' })).toBe(
-			'Hello there!',
+			'Hello there!'
 		);
 	});
 
 	it('handles mixed existing and missing variables', () => {
 		expect(
-			personalize(
-				'Hello {{firstName}} {{lastName}}!',
-				{ firstName: 'John' },
-				{ escape: 'plain' },
-			),
+			personalize('Hello {{firstName}} {{lastName}}!', { firstName: 'John' }, { escape: 'plain' })
 		).toBe('Hello John !');
 	});
 
@@ -39,14 +40,14 @@ describe('personalize — basic variable replacement', () => {
 			personalize(
 				'{{firstName}}{{lastName}}',
 				{ firstName: 'John', lastName: 'Doe' },
-				{ escape: 'plain' },
-			),
+				{ escape: 'plain' }
+			)
 		).toBe('JohnDoe');
 	});
 
 	it('handles the same variable multiple times', () => {
 		expect(
-			personalize('Hi {{name}}, {{name}} is a great name!', { name: 'John' }, { escape: 'plain' }),
+			personalize('Hi {{name}}, {{name}} is a great name!', { name: 'John' }, { escape: 'plain' })
 		).toBe('Hi John, John is a great name!');
 	});
 
@@ -62,19 +63,19 @@ describe('personalize — missing values', () => {
 
 	it('returns empty string for undefined value', () => {
 		expect(personalize('Hello {{firstName}}!', { firstName: undefined }, { escape: 'plain' })).toBe(
-			'Hello !',
+			'Hello !'
 		);
 	});
 
 	it('returns empty string for null value', () => {
 		expect(personalize('Hello {{firstName}}!', { firstName: null }, { escape: 'plain' })).toBe(
-			'Hello !',
+			'Hello !'
 		);
 	});
 
 	it('returns empty string for empty-string value', () => {
 		expect(personalize('Hello {{firstName}}!', { firstName: '' }, { escape: 'plain' })).toBe(
-			'Hello !',
+			'Hello !'
 		);
 	});
 });
@@ -82,35 +83,31 @@ describe('personalize — missing values', () => {
 describe('personalize — fallback syntax', () => {
 	it('uses fallback when variable is missing', () => {
 		expect(personalize("Hello {{firstName|'friend'}}!", {}, { escape: 'plain' })).toBe(
-			'Hello friend!',
+			'Hello friend!'
 		);
 	});
 
 	it('does NOT use fallback when variable has a value', () => {
 		expect(
-			personalize("Hello {{firstName|'friend'}}!", { firstName: 'John' }, { escape: 'plain' }),
+			personalize("Hello {{firstName|'friend'}}!", { firstName: 'John' }, { escape: 'plain' })
 		).toBe('Hello John!');
 	});
 
 	it('uses fallback when value is undefined', () => {
 		expect(
-			personalize(
-				"Hello {{firstName|'friend'}}!",
-				{ firstName: undefined },
-				{ escape: 'plain' },
-			),
+			personalize("Hello {{firstName|'friend'}}!", { firstName: undefined }, { escape: 'plain' })
 		).toBe('Hello friend!');
 	});
 
 	it('uses fallback when value is null', () => {
 		expect(
-			personalize("Hello {{firstName|'friend'}}!", { firstName: null }, { escape: 'plain' }),
+			personalize("Hello {{firstName|'friend'}}!", { firstName: null }, { escape: 'plain' })
 		).toBe('Hello friend!');
 	});
 
 	it('uses fallback when value is empty string', () => {
 		expect(
-			personalize("Hello {{firstName|'friend'}}!", { firstName: '' }, { escape: 'plain' }),
+			personalize("Hello {{firstName|'friend'}}!", { firstName: '' }, { escape: 'plain' })
 		).toBe('Hello friend!');
 	});
 
@@ -120,13 +117,13 @@ describe('personalize — fallback syntax', () => {
 
 	it('handles fallback with spaces', () => {
 		expect(personalize("Hello {{firstName|'dear friend'}}!", {}, { escape: 'plain' })).toBe(
-			'Hello dear friend!',
+			'Hello dear friend!'
 		);
 	});
 
 	it('handles multiple variables with different fallbacks', () => {
 		expect(
-			personalize("Hello {{firstName|'friend'}}, from {{company|'us'}}!", {}, { escape: 'plain' }),
+			personalize("Hello {{firstName|'friend'}}, from {{company|'us'}}!", {}, { escape: 'plain' })
 		).toBe('Hello friend, from us!');
 	});
 });
@@ -134,13 +131,13 @@ describe('personalize — fallback syntax', () => {
 describe('personalize — non-string values', () => {
 	it('stringifies number values', () => {
 		expect(personalize('You have {{count}} items.', { count: 42 }, { escape: 'plain' })).toBe(
-			'You have 42 items.',
+			'You have 42 items.'
 		);
 	});
 
 	it('stringifies boolean values', () => {
 		expect(personalize('Active: {{isActive}}', { isActive: true }, { escape: 'plain' })).toBe(
-			'Active: true',
+			'Active: true'
 		);
 	});
 
@@ -150,7 +147,7 @@ describe('personalize — non-string values', () => {
 
 	it('handles false as a valid value', () => {
 		expect(personalize('Status: {{status}}', { status: false }, { escape: 'plain' })).toBe(
-			'Status: false',
+			'Status: false'
 		);
 	});
 });
@@ -158,19 +155,23 @@ describe('personalize — non-string values', () => {
 describe('personalize — escape: plain (passthrough)', () => {
 	it('does not escape HTML-significant characters in values', () => {
 		expect(
-			personalize('Hi {{firstName}}', { firstName: '<script>alert(1)</script>' }, { escape: 'plain' }),
+			personalize(
+				'Hi {{firstName}}',
+				{ firstName: '<script>alert(1)</script>' },
+				{ escape: 'plain' }
+			)
 		).toBe('Hi <script>alert(1)</script>');
 	});
 
 	it('does not escape ampersand or quotes', () => {
-		expect(
-			personalize('Hi {{name}}', { name: `O'Reilly & "Co"` }, { escape: 'plain' }),
-		).toBe(`Hi O'Reilly & "Co"`);
+		expect(personalize('Hi {{name}}', { name: `O'Reilly & "Co"` }, { escape: 'plain' })).toBe(
+			`Hi O'Reilly & "Co"`
+		);
 	});
 
 	it('does not escape fallback', () => {
 		expect(personalize("Hi {{name|'<b>fallback</b>'}}", {}, { escape: 'plain' })).toBe(
-			'Hi <b>fallback</b>',
+			'Hi <b>fallback</b>'
 		);
 	});
 });
@@ -181,8 +182,8 @@ describe('personalize — escape: html', () => {
 			personalize(
 				'Hi {{firstName}}',
 				{ firstName: `<a href="x">O'Reilly & Co</a>` },
-				{ escape: 'html' },
-			),
+				{ escape: 'html' }
+			)
 		).toBe('Hi &lt;a href=&quot;x&quot;&gt;O&#39;Reilly &amp; Co&lt;/a&gt;');
 	});
 
@@ -202,17 +203,196 @@ describe('personalize — escape: html', () => {
 		expect(personalize('{{name}}', { name: 'a"b' }, { escape: 'html' })).toBe('a&quot;b');
 	});
 
-	it("escapes single quotes", () => {
+	it('escapes single quotes', () => {
 		expect(personalize('{{name}}', { name: "a'b" }, { escape: 'html' })).toBe('a&#39;b');
 	});
 
 	it('escapes the fallback string the same way (consistency with worker)', () => {
 		expect(personalize("Hi {{name|'<b>x</b>'}}", {}, { escape: 'html' })).toBe(
-			'Hi &lt;b&gt;x&lt;/b&gt;',
+			'Hi &lt;b&gt;x&lt;/b&gt;'
 		);
 	});
 
 	it('passes plain text unchanged when no HTML-significant characters present', () => {
 		expect(personalize('Hi {{name}}', { name: 'John' }, { escape: 'html' })).toBe('Hi John');
+	});
+});
+
+const HTML = { escape: 'html' } as const;
+
+describe('personalize — tokens with a fallback inside rendered attributes', () => {
+	// The renderer attribute-escapes every URL, so the quotes around a fallback
+	// reach the send path as `&#39;`.
+	const image = (src: string): EditorBlock => ({
+		id: 'img',
+		type: 'image',
+		content: { src, alt: 'x', width: 50, align: 'center' },
+	});
+	const button = (url: string): EditorBlock => ({
+		id: 'btn',
+		type: 'button',
+		content: {
+			text: 'Open',
+			url,
+			backgroundColor: '#000000',
+			textColor: '#ffffff',
+			align: 'center',
+			borderRadius: 4,
+			paddingX: 16,
+			paddingY: 8,
+		},
+	});
+
+	it('uses the fallback for an image src without a value', () => {
+		const rendered = renderBlockFragment(image("{{photo|'https://example.com/default.png'}}"));
+		const out = personalize(rendered, {}, HTML);
+		expect(out).toContain('src="https://example.com/default.png"');
+		expect(out).not.toContain('{{');
+	});
+
+	it('uses the value for an image src when one is given', () => {
+		const rendered = renderBlockFragment(image("{{photo|'https://example.com/default.png'}}"));
+		const out = personalize(rendered, { photo: 'https://cdn.example.com/a.png' }, HTML);
+		expect(out).toContain('src="https://cdn.example.com/a.png"');
+		expect(out).not.toContain('default.png');
+	});
+
+	it('uses the fallback for a button url without a value, in both the HTML and the Outlook button', () => {
+		const rendered = renderBlockFragment(button("{{url|'https://example.com'}}"));
+		const out = personalize(rendered, {}, HTML);
+		expect(out).toContain('href="https://example.com"');
+		expect(out).not.toContain('{{');
+	});
+
+	it('uses the value for a button url when one is given', () => {
+		const rendered = renderBlockFragment(button("{{url|'https://example.com'}}"));
+		const out = personalize(rendered, { url: 'https://owlat.example/x' }, HTML);
+		expect(out).toContain('href="https://owlat.example/x"');
+		expect(out).not.toContain('{{');
+	});
+
+	it('attribute-escapes a fallback exactly once and keeps it inside the attribute', () => {
+		const rendered = renderBlockFragment(
+			image(`{{photo|'https://example.com/a.png?x=1&y=2" onerror="alert(1)'}}`)
+		);
+		const out = personalize(rendered, {}, HTML);
+		expect(out).toContain(
+			'src="https://example.com/a.png?x=1&amp;y=2&quot; onerror=&quot;alert(1)"'
+		);
+		expect(out).not.toContain('&amp;amp;');
+		expect(out).not.toContain('" onerror="');
+	});
+
+	it('attribute-escapes a value exactly once', () => {
+		const rendered = renderBlockFragment(button("{{url|'https://example.com'}}"));
+		const out = personalize(rendered, { url: `https://example.com/?a=1&b='2'"` }, HTML);
+		expect(out).toContain('href="https://example.com/?a=1&amp;b=&#39;2&#39;&quot;"');
+	});
+
+	it('decodes an entity in a fallback written in HTML text before escaping it once', () => {
+		expect(personalize("<p>{{name|'Tom &amp; Jerry'}}</p>", {}, HTML)).toBe(
+			'<p>Tom &amp; Jerry</p>'
+		);
+	});
+
+	it('leaves a fallback holding a quote unresolved and escaped', () => {
+		const rendered = renderBlockFragment(image(`{{photo|'https://example.com/it's.png'}}`));
+		const out = personalize(rendered, {}, HTML);
+		expect(out).toContain('src="{{photo|&#39;https://example.com/it&#39;s.png&#39;}}"');
+	});
+
+	it('leaves the escaped quote alone outside the html policy', () => {
+		expect(personalize('{{name|&#39;x&#39;}}', {}, { escape: 'plain' })).toBe(
+			'{{name|&#39;x&#39;}}'
+		);
+	});
+
+	it('resolves the fallback in every attribute and in the preheader', () => {
+		const fb = (name: string) => `{{${name}|'https://example.com/${name}?a=1&b=2'}}`;
+		const rendered = renderEmailHtml(
+			[
+				{
+					id: 'img',
+					type: 'image',
+					content: {
+						src: fb('src'),
+						darkSrc: fb('dark'),
+						linkUrl: fb('link'),
+						alt: 'x',
+						width: 50,
+						align: 'center',
+					},
+				},
+				{ id: 'txt', type: 'text', content: { html: `<p><a href="${fb('textLink')}">a</a></p>` } },
+				{
+					id: 'menu',
+					type: 'menu',
+					content: { items: [{ label: 'Home', url: fb('menu') }], align: 'center' },
+				},
+				{
+					id: 'social',
+					type: 'social',
+					content: {
+						links: [{ platform: 'x', url: fb('social'), enabled: true }],
+						iconStyle: 'filled',
+						align: 'center',
+						iconSize: 24,
+						iconSpacing: 8,
+						iconColor: '#000000',
+					},
+				},
+			] as EditorBlock[],
+			{ preheaderText: "Hi {{firstName|'there & you'}}" }
+		);
+		const out = personalize(rendered, {}, HTML);
+		for (const name of ['src', 'dark', 'link', 'textLink', 'menu', 'social']) {
+			expect(out).toContain(`https://example.com/${name}?a=1&amp;b=2`);
+		}
+		expect(out).toContain('Hi there &amp; you');
+		expect(out).not.toContain('{{');
+		expect(out).not.toContain('&amp;amp;');
+	});
+
+	it('resolves the fallback in every send composer', () => {
+		const htmlContent = renderEmailHtml([
+			image("{{photo|'https://example.com/default.png'}}"),
+			button("{{url|'https://example.com'}}"),
+		]);
+		const template = { subject: 'Hi', htmlContent };
+		const outputs = [
+			composeCampaign({ kind: 'campaign', template, contactInfo: { email: 'a@example.com' } }),
+			composeAutomation({ kind: 'automation', template, contactInfo: { email: 'a@example.com' } }),
+			composeTransactional({ kind: 'transactional', template, dataVariables: {} }),
+		];
+		for (const out of outputs) {
+			expect(out.html).toContain('src="https://example.com/default.png"');
+			expect(out.html).toContain('href="https://example.com"');
+			expect(out.html).not.toMatch(/\{\{(photo|url)/);
+		}
+	});
+});
+
+describe('variablesWithoutFallback — tokens inside rendered attributes', () => {
+	it('counts a token with an escaped-quote fallback as having one', () => {
+		const rendered = renderBlockFragment({
+			id: 'img',
+			type: 'image',
+			content: {
+				src: "{{photo|'https://example.com/default.png'}}",
+				alt: 'x',
+				width: 50,
+				align: 'center',
+			},
+		});
+		expect(variablesWithoutFallback(rendered, { html: true })).toEqual([]);
+	});
+
+	it('still lists a token without a fallback in an attribute', () => {
+		const rendered = renderBlockFragment({
+			id: 'img',
+			type: 'image',
+			content: { src: '{{photo}}', alt: 'x', width: 50, align: 'center' },
+		});
+		expect(variablesWithoutFallback(rendered, { html: true })).toEqual(['photo']);
 	});
 });

@@ -23,18 +23,68 @@
  * three different policies over one grammar.
  */
 
+import { decodeHtmlEntities } from '@owlat/mail-message/text/htmlToPlainText';
+
 /** Source of the token pattern; a fresh RegExp per call keeps `lastIndex` sane. */
 const TOKEN_SOURCE = String.raw`\{\{(\w+)(?:\|'([^']*)')?\}\}`;
 
+/**
+ * The same grammar as it reads inside HTML. The renderer attribute-escapes
+ * every URL and alt text, so a fallback's quotes reach the HTML as `&#39;`
+ * (or another spelling of the same character); a text node may carry them
+ * literally. The fallback is HTML source here: it may hold no quote in any
+ * spelling, and the caller gets it entity-decoded so its own escape is the
+ * only one the output carries.
+ */
+const HTML_QUOTE = String.raw`(?:'|&#0*39;|&#[xX]0*27;|&apos;)`;
+const HTML_TOKEN_SOURCE = String.raw`\{\{(\w+)(?:\|${HTML_QUOTE}((?:[^'&]|&(?!#0*39;|#[xX]0*27;|apos;))*)${HTML_QUOTE})?\}\}`;
+
+/**
+ * Which form of the grammar to read. `html: true` is for rendered HTML, where
+ * tokens may sit inside escaped attribute values.
+ */
+export interface TemplateVariableSyntax {
+	html?: boolean;
+}
+
 /** A new global matcher for the token grammar (fresh, so `lastIndex` is 0). */
-function templateVariablePattern(): RegExp {
-	return new RegExp(TOKEN_SOURCE, 'g');
+function templateVariablePattern(syntax: TemplateVariableSyntax = {}): RegExp {
+	return new RegExp(syntax.html ? HTML_TOKEN_SOURCE : TOKEN_SOURCE, 'g');
+}
+
+/** The fallback as text: decoded when it was read from HTML. */
+function fallbackText(
+	fallback: string | undefined,
+	syntax: TemplateVariableSyntax
+): string | undefined {
+	return fallback !== undefined && syntax.html ? decodeHtmlEntities(fallback) : fallback;
 }
 
 /** Does this string carry at least one `{{token}}`? */
-export function containsTemplateVariable(value: string | undefined | null): boolean {
+export function containsTemplateVariable(
+	value: string | undefined | null,
+	syntax: TemplateVariableSyntax = {}
+): boolean {
 	if (!value) return false;
-	return new RegExp(TOKEN_SOURCE).test(value);
+	return templateVariablePattern(syntax).test(value);
+}
+
+/** One token as written: its name and, when it declared one, its fallback as text. */
+export interface TemplateVariableToken {
+	name: string;
+	fallback: string | undefined;
+}
+
+/** Every token in `value`, in order of appearance, duplicates included. */
+export function matchTemplateVariables(
+	value: string | undefined | null,
+	syntax: TemplateVariableSyntax = {}
+): TemplateVariableToken[] {
+	if (!value) return [];
+	return [...value.matchAll(templateVariablePattern(syntax))].map((match) => ({
+		name: match[1]!,
+		fallback: fallbackText(match[2], syntax),
+	}));
 }
 
 /**
@@ -42,13 +92,11 @@ export function containsTemplateVariable(value: string | undefined | null): bool
  * callers that want a set say so, and the order matters to anything that
  * prompts for values in reading order.
  */
-export function extractTemplateVariableNames(value: string | undefined | null): string[] {
-	if (!value) return [];
-	const names: string[] = [];
-	const pattern = templateVariablePattern();
-	let match: RegExpExecArray | null;
-	while ((match = pattern.exec(value)) !== null) names.push(match[1]!);
-	return names;
+export function extractTemplateVariableNames(
+	value: string | undefined | null,
+	syntax: TemplateVariableSyntax = {}
+): string[] {
+	return matchTemplateVariables(value, syntax).map((token) => token.name);
 }
 
 /**
@@ -56,7 +104,8 @@ export function extractTemplateVariableNames(value: string | undefined | null): 
  * `undefined` to LEAVE THE TOKEN VERBATIM — which is how a caller says "I don't
  * know this one", without having to invent a placeholder syntax of its own.
  *
- * `fallback` is the token's inline default when it declared one.
+ * `fallback` is the token's inline default when it declared one, as text
+ * (entity-decoded under `html: true`).
  */
 export type TemplateVariableResolver = (
 	name: string,
@@ -67,16 +116,21 @@ export type TemplateVariableResolver = (
  * Walk `content` and rewrite each `{{token}}` through `resolve`.
  *
  * `escape` is the caller's, not ours: HTML output must escape substituted
- * values (they are untrusted data), plain-text output must not.
+ * values (they are untrusted data), plain-text output must not. HTML output
+ * also reads with `html: true`, so a token inside an escaped attribute is
+ * found and its fallback is escaped once, by `escape`.
  */
 export function replaceTemplateVariables(
 	content: string,
 	resolve: TemplateVariableResolver,
-	options: { escape?: (value: string) => string } = {}
+	options: { escape?: (value: string) => string } & TemplateVariableSyntax = {}
 ): string {
 	const escape = options.escape ?? ((value: string) => value);
-	return content.replace(templateVariablePattern(), (match, name: string, fallback?: string) => {
-		const resolved = resolve(name, fallback);
-		return resolved === null || resolved === undefined ? match : escape(resolved);
-	});
+	return content.replace(
+		templateVariablePattern(options),
+		(match, name: string, fallback?: string) => {
+			const resolved = resolve(name, fallbackText(fallback, options));
+			return resolved === null || resolved === undefined ? match : escape(resolved);
+		}
+	);
 }

@@ -202,7 +202,7 @@ export function missingDataVariables(
 ): string[] {
 	const used = new Set([
 		...variablesWithoutFallback(content.subject),
-		...variablesWithoutFallback(content.html),
+		...variablesWithoutFallback(content.html, { html: true }),
 		...variablesWithoutFallback(content.plainText ?? ''),
 	]);
 	const optional = new Set(optionalVariables);
