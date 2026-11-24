@@ -16,7 +16,13 @@ function refuse(problem: string): never {
  */
 export function normalizeBaseUrl(value: unknown): string {
 	if (typeof value !== 'string' || value.trim() === '') refuse('is required');
-	if (/\s/.test(value)) refuse('must not contain whitespace');
+	const hasControl = [...value].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f);
+	if (/\s/.test(value) || hasControl) refuse('must not contain whitespace or control characters');
+	// The URL parser repairs `https:host` and reads `\` as `/`, but the string
+	// itself is what each request path is appended to, so it must already be
+	// in the plain form.
+	if (!/^https?:\/\//i.test(value) || value.includes('\\'))
+		refuse('must be an absolute http or https URL, such as https://rest.api.example.com');
 
 	let url: URL;
 	try {
@@ -24,8 +30,6 @@ export function normalizeBaseUrl(value: unknown): string {
 	} catch {
 		refuse('must be an absolute http or https URL, such as https://rest.api.example.com');
 	}
-	if (url.protocol !== 'http:' && url.protocol !== 'https:')
-		refuse('must be an absolute http or https URL, such as https://rest.api.example.com');
 	// Checked on the input: the parser drops an empty `?` or `#`.
 	if (value.includes('?') || value.includes('#'))
 		refuse('must not have a query string or fragment, since each request appends its path');

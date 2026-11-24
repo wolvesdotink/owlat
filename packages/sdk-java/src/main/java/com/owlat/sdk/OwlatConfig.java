@@ -133,7 +133,8 @@ public class OwlatConfig {
             throw refused(NOT_HTTP);
         }
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-        if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null) {
+        if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null
+                || uri.getPort() > 65535) {
             throw refused(NOT_HTTP);
         }
         if (value.indexOf('?') >= 0 || value.indexOf('#') >= 0) {
