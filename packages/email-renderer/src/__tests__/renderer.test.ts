@@ -942,6 +942,13 @@ describe('assetBaseUrl', () => {
 		expect(html).toContain('src="https://app.owlat.example/social-icons/filled/facebook.png"');
 	});
 
+	it('drops a query or fragment from the base', () => {
+		const html = renderEmailHtml([socialBlock], {
+			assetBaseUrl: 'https://app.owlat.example/?x=1#top',
+		});
+		expect(html).toContain('src="https://app.owlat.example/social-icons/filled/facebook.png"');
+	});
+
 	it('ignores a value that is not an absolute http(s) URL', () => {
 		for (const assetBaseUrl of ['javascript:alert(1)', 'app.owlat.example', ' ']) {
 			expect(renderEmailHtml([socialBlock], { assetBaseUrl })).toContain(

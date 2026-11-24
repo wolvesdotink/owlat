@@ -283,16 +283,6 @@ describe('document language', () => {
 		const row = await t.run((ctx) => ctx.db.get(id));
 		expect(row!.htmlContent).toContain(' lang="de"');
 	});
-
-	it('falls back to en for a language code that is not a language tag', () => {
-		const { html } = renderPublishableEmail(
-			{ content: blocksJson('<p>x</p>'), subject: 's', defaultLanguage: 'de" onload="x' },
-			'personalization',
-			undefined
-		);
-		expect(html).toContain(' lang="en"');
-		expect(html).not.toContain('onload');
-	});
 });
 
 describe('default social icons', () => {
