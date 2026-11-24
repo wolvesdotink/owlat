@@ -137,7 +137,7 @@ describe('editor saves of a template that is going out are scanned', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'campaigns',
-				createTestCampaign({ status: 'sending', emailTemplateId: templateId })
+				createTestCampaign({ status: 'sending', emailTemplateId: templateId, subject: undefined })
 			);
 		});
 
@@ -167,7 +167,7 @@ describe('editor saves of a template that is going out are scanned', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'campaigns',
-				createTestCampaign({ status: 'sending', emailTemplateId: templateId })
+				createTestCampaign({ status: 'sending', emailTemplateId: templateId, subject: undefined })
 			);
 		});
 		const before = (await rowOf(t, templateId))?.htmlTranslations;
@@ -180,6 +180,46 @@ describe('editor saves of a template that is going out are scanned', () => {
 			})
 		).rejects.toThrow(/sending campaign/);
 		expect((await rowOf(t, templateId))?.htmlTranslations).toBe(before);
+	});
+
+	it("scans a sending campaign's subject override with the saved content, not the template's subject", async () => {
+		const t = convexTest(schema, modules);
+		const flaggedOverride = await seedTemplate(t);
+		const replacedSubject = await seedTemplate(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'sending',
+					emailTemplateId: flaggedOverride,
+					subject: 'SUSPICIOUS-MARKER deals',
+				})
+			);
+			await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'sending',
+					emailTemplateId: replacedSubject,
+					subject: 'June news',
+				})
+			);
+		});
+
+		await expect(saveSubject(t, flaggedOverride, 'June news, again')).rejects.toThrow(
+			/sending campaign/
+		);
+		await saveSubject(t, replacedSubject, 'SUSPICIOUS-MARKER');
+		expect((await rowOf(t, replacedSubject))?.subject).toBe('SUSPICIOUS-MARKER');
+	});
+
+	it("scans an active automation step's own subject with the saved content", async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await seedAutomation(t, templateId, 'active', 'SUSPICIOUS-MARKER');
+
+		await expect(saveSubject(t, templateId, 'June news, again')).rejects.toThrow(
+			/active automation/
+		);
 	});
 
 	it('lets a flagged save land where nothing is sending, for the start to scan', async () => {
@@ -230,6 +270,17 @@ describe('switching an automation on scans its email steps', () => {
 		if (outcome.ok) return;
 		expect(outcome.detail).toMatch(/Content flagged.*spammy/);
 		expect((await t.run(async (ctx) => ctx.db.get(automationId)))?.status).toBe('paused');
+	});
+
+	it('scans a template in Recently deleted, which a restore brings back', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await t.run(async (ctx) =>
+			ctx.db.patch(templateId, { htmlContent: '<p>BLOCKED-MARKER</p>', deletedAt: Date.now() })
+		);
+		const automationId = await seedAutomation(t, templateId, 'draft');
+
+		expect(await activate(t, automationId)).toMatchObject({ ok: false, reason: 'content_refused' });
 	});
 
 	it('activates an automation whose content scans clean', async () => {

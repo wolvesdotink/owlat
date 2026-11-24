@@ -28,26 +28,64 @@ import { throwInvalidState } from '../_utils/errors';
 // bounded: `sending` is a transient state; a deployment runs a handful at once.
 const SENDING_CAMPAIGN_SCAN = 200;
 
-// bounded: read only after a scan came back non-clean. A full page is treated
-// as "may be in use", so an automation past the cap is never sent unscanned.
+// bounded: an active automation is one a team built by hand. A full page is
+// treated as "may be in use", so an automation past the cap is never sent
+// unscanned.
 const ACTIVE_AUTOMATION_SCAN = 200;
 
-/** Whether a campaign that is sending right now reads this template's HTML. */
-async function isSendingCampaignTemplate(
+const LEVEL_RANK = { clean: 0, suspicious: 1, blocked: 2 } as const;
+
+/** The worse of two scans; null stands for "nothing flagged yet". */
+function worse(
+	current: ContentScanResult | null,
+	next: ContentScanResult
+): ContentScanResult | null {
+	if (next.level === 'clean') return current;
+	if (!current) return next;
+	const rank = LEVEL_RANK[next.level] - LEVEL_RANK[current.level];
+	return rank > 0 || (rank === 0 && next.score > current.score) ? next : current;
+}
+
+/**
+ * The worst scan of what campaigns sending right now send from this template,
+ * or null when every one scans clean. A campaign's subject override replaces
+ * the subject of every language of its main template (`pageDecision.ts`
+ * `bucketContent`); a content test's variant B template sends its own subject.
+ */
+async function scanForSendingCampaigns(
 	ctx: MutationCtx,
-	templateId: Id<'emailTemplates'>
-): Promise<boolean> {
+	template: Doc<'emailTemplates'>,
+	htmlContent: string
+): Promise<ContentScanResult | null> {
 	const sending = await ctx.db
 		.query('campaigns')
 		.withIndex('by_deleted_at_and_status_and_updated_at', (q) =>
 			q.eq('deletedAt', undefined).eq('status', 'sending')
 		)
 		.take(SENDING_CAMPAIGN_SCAN);
-	return sending.some(
-		(campaign) =>
-			campaign.emailTemplateId === templateId ||
-			resolveVariantBSource(campaign).templateId === templateId
-	);
+	let worst: ContentScanResult | null = null;
+	for (const campaign of sending) {
+		const asMain = campaign.emailTemplateId === template._id;
+		const asVariantB = resolveVariantBSource(campaign).templateId === template._id;
+		if (asMain) {
+			worst = worse(
+				worst,
+				scanPublishableVariants(
+					template.subject,
+					htmlContent,
+					template.htmlTranslations,
+					campaign.subject
+				)
+			);
+		}
+		if (asVariantB) {
+			worst = worse(
+				worst,
+				scanPublishableVariants(template.subject, htmlContent, template.htmlTranslations)
+			);
+		}
+	}
+	return worst;
 }
 
 /** The template an email step sends, or undefined for any other step. */
@@ -98,12 +136,11 @@ async function scanForActiveAutomations(
 			.collect(); // bounded: one automation's steps
 		for (const step of steps) {
 			if (emailStepTemplateId(step) !== template._id) continue;
-			const scan = scanEmailStep(step, template);
-			if (scan.level !== 'clean' && (!worst || scan.score > worst.score)) worst = scan;
+			worst = worse(worst, scanEmailStep(step, template));
 		}
 	}
-	if (!worst && active.length === ACTIVE_AUTOMATION_SCAN) {
-		return scanContent(template.subject, template.htmlContent ?? '');
+	if (active.length === ACTIVE_AUTOMATION_SCAN) {
+		worst = worse(worst, scanContent(template.subject, template.htmlContent ?? ''));
 	}
 	return worst;
 }
@@ -138,30 +175,30 @@ export async function scanLiveTemplateWrite(
 ): Promise<void> {
 	const template = await ctx.db.get(templateId);
 	if (!template?.htmlContent) return;
-	const scan = scanPublishableVariants(
-		template.subject,
-		template.htmlContent,
-		template.htmlTranslations
-	);
-	if (scan.level === 'clean') return;
 	const tail =
 		write === 'rerender'
 			? 'The template keeps its previous HTML; review the saved block, then save the template again.'
 			: 'The template was not saved; edit the flagged content and save again.';
-	if (scan.level === 'blocked' && write === 'rerender') {
-		throwInvalidState(
-			`Content blocked by our content scanner (score: ${scan.score}/100). Issues: ${issuesOf(scan)}. ` +
-				'The template keeps its previous HTML.',
-			{ scanScore: scan.score }
+	if (write === 'rerender') {
+		const own = scanPublishableVariants(
+			template.subject,
+			template.htmlContent,
+			template.htmlTranslations
 		);
+		if (own.level === 'blocked') {
+			throwInvalidState(
+				`Content blocked by our content scanner (score: ${own.score}/100). Issues: ${issuesOf(own)}. ` +
+					'The template keeps its previous HTML.',
+				{ scanScore: own.score }
+			);
+		}
 	}
-	if (await isSendingCampaignTemplate(ctx, templateId)) {
-		refuse(scan, 'a sending campaign uses', tail);
-	}
+	// Each live use is scanned with the subject it sends, which can differ from
+	// the template's, so a clean verdict on the template alone settles nothing.
+	const campaignScan = await scanForSendingCampaigns(ctx, template, template.htmlContent);
+	if (campaignScan) refuse(campaignScan, 'a sending campaign uses', tail);
 	const automationScan = await scanForActiveAutomations(ctx, template);
-	if (automationScan && automationScan.level !== 'clean') {
-		refuse(automationScan, 'an active automation sends', tail);
-	}
+	if (automationScan) refuse(automationScan, 'an active automation sends', tail);
 }
 
 /**
@@ -180,7 +217,9 @@ export async function automationActivationScanRefusal(
 		if (!templateId) continue;
 		const normalized = ctx.db.normalizeId('emailTemplates', templateId);
 		const template = normalized ? await ctx.db.get(normalized) : null;
-		if (!template || template.deletedAt !== undefined || !template.htmlContent) continue;
+		// A template in Recently deleted is scanned too: restoring it brings its
+		// content back to this step without a write that would scan it.
+		if (!template?.htmlContent) continue;
 		const scan = scanEmailStep(step, template);
 		if (scan.level === 'clean') continue;
 		const verdict = scan.level === 'blocked' ? 'Content blocked' : 'Content flagged';
