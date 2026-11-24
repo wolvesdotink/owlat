@@ -12,7 +12,9 @@
  * before that field existed, so nobody's mail changes language until they
  * touch the picker.
  *
- * The account-deletion mail and the daily-brief digest are translated. The six
+ * The account-deletion mail and the daily-brief digest are translated, and so
+ * are the deliverability alert emails, whose copy sits beside their senders in
+ * `delivery/alertEmailCopy.ts`. The six
  * generators in `systemEmails.ts` still ship English because no recipient
  * locale reaches them when the mail is sent. The invitation hooks know only the
  * invitee's address, which may not belong to an account yet (and the inviter's

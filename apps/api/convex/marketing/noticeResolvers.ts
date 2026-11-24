@@ -44,6 +44,8 @@ export interface NoticeDraft {
 	automationId?: Doc<'marketingNotices'>['automationId'];
 	domainId?: Doc<'marketingNotices'>['domainId'];
 	alertId?: Doc<'marketingNotices'>['alertId'];
+	sendingHoldAlertId?: Doc<'marketingNotices'>['sendingHoldAlertId'];
+	holdStatus?: Doc<'marketingNotices'>['holdStatus'];
 	threadId?: Doc<'marketingNotices'>['threadId'];
 	name?: string;
 	percent?: number;
@@ -346,6 +348,12 @@ async function draftSendingStatus(
 		eventKey: `${event.kind}:${event.changedAt}`,
 		subjectKey: 'sending_status',
 		...(settings?.abuseStatusReason ? { detail: settings.abuseStatusReason } : {}),
+		...(event.kind === 'sending_suspended' && event.holdStatus
+			? { holdStatus: event.holdStatus }
+			: {}),
+		...(event.kind === 'sending_suspended' && event.sendingHoldAlertId
+			? { sendingHoldAlertId: event.sendingHoldAlertId }
+			: {}),
 		url: DELIVERY_HUB_URL,
 	};
 }

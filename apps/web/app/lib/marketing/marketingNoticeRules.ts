@@ -35,6 +35,8 @@ export interface MarketingNoticeView {
 	percent?: number;
 	count?: number;
 	detail?: string;
+	/** Sending stopped: the status it stopped on; absent on older notices, which read as suspended. */
+	holdStatus?: 'suspended' | 'banned';
 	scheduledAt?: number;
 	/**
 	 * The last instant the notice holds by the clock alone (a reminder until
@@ -173,8 +175,8 @@ export function presentMarketingNotice(
 		// The stored reason waits on the delivery hub; the toast says what changed.
 		case 'sending_suspended':
 			return {
-				title: { key: `${PREFIX}.sendingSuspended.title` },
-				body: { key: `${PREFIX}.sendingSuspended.body` },
+				title: { key: `${PREFIX}.${kindKey(notice)}.title` },
+				body: { key: `${PREFIX}.${kindKey(notice)}.body` },
 				toastType: 'warning',
 				href,
 			};
@@ -214,6 +216,13 @@ const KIND_KEY: Record<MarketingNoticeKind, string> = {
 	sending_resumed: 'sendingResumed',
 };
 
+/** The catalog group of one notice: a ban is a stop with copy of its own. */
+function kindKey(notice: MarketingNoticeView): string {
+	return notice.kind === 'sending_suspended' && notice.holdStatus === 'banned'
+		? 'sendingBanned'
+		: KIND_KEY[notice.kind];
+}
+
 /** What an OS notification says, and the page it opens when clicked. */
 export interface NativeMarketingNotice {
 	title: NoticeText;
@@ -237,7 +246,7 @@ export function presentNativeMarketingNotice(
 ): NativeMarketingNotice {
 	const { title, body, href } = presentMarketingNotice(notice, now);
 	if (!isPrivate || notice.kind === 'delivery_hold') return { title, body, href };
-	return { title, body: { key: `${PREFIX}.${KIND_KEY[notice.kind]}.private` }, href };
+	return { title, body: { key: `${PREFIX}.${kindKey(notice)}.private` }, href };
 }
 
 /**

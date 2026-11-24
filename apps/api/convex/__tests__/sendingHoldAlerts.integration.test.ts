@@ -13,6 +13,7 @@ import {
 	sendingHoldLiftSchema,
 } from '@owlat/public-contract/schemas';
 import { components, internal } from '../_generated/api';
+import { readStandingSendingHold } from '../delivery/sendingHoldAlerts';
 import { _resetSingletonOrgCacheForTests } from '../lib/sessionOrganization';
 import type * as SsrfGuard from '../lib/ssrfGuard';
 import { fetchWithGuardedDispatcher } from '../lib/ssrfGuard';
@@ -114,7 +115,10 @@ afterEach(() => {
 });
 
 /** One organization with an owner, an admin who turned deliverability alerts off, and an editor. */
-async function harness(settings: Record<string, unknown> = {}) {
+async function harness(
+	settings: Record<string, unknown> = {},
+	options: { adminLocale?: 'en' | 'de' } = {}
+) {
 	_resetSingletonOrgCacheForTests();
 	const t = newBetterAuthHarness(modules);
 	const org = (await t.mutation(components.betterAuth.adapter.create, {
@@ -154,6 +158,15 @@ async function harness(settings: Record<string, unknown> = {}) {
 			isDeliverabilityAlertsOn: false,
 			updatedAt: 1,
 		});
+		if (options.adminLocale) {
+			await ctx.db.insert('userProfiles', {
+				authUserId: ids['admin']!,
+				email: 'admin@example.com',
+				locale: options.adminLocale,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+		}
 		await ctx.db.insert('webhooks', {
 			name: 'On-call',
 			url: 'https://oncall.example.com/hook',
@@ -401,12 +414,28 @@ describe('sending suspended and resumed on the alert channels', () => {
 		expect(await alertPayloads(t)).toHaveLength(1);
 	});
 
-	it('a suspension turned into a ban stays one alert, resolved once when sending resumes', async () => {
+	it('a suspension turned into a ban raises the alert again, and one resolve closes it', async () => {
 		const t = await harness();
 		await suspend(t, NOW);
+		await settle(t);
+		transport.sent = [];
 		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
 			input: { to: 'banned', at: NOW + 1, reason: 'phishing', changedBy: 'admin-1' },
 		});
+		await settle(t);
+
+		// Everyone told "suspended" is told "banned".
+		expect(transport.sent.map((mail) => mail.to).sort()).toEqual([
+			'admin@example.com',
+			'owner@example.com',
+		]);
+		expect(transport.sent[0]!.subject).toBe('Owlat: sending is now banned');
+		expect(transport.sent[0]!.html).toContain(
+			'Sending on your Owlat instance was suspended and is now banned.'
+		);
+		const notices = await t.run((ctx) => ctx.db.query('marketingNotices').collect());
+		expect(notices.map((notice) => notice.holdStatus)).toEqual(['suspended', 'banned']);
+
 		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
 			input: { to: 'clean', at: NOW + 2, reason: 'appeal granted', changedBy: 'admin-1' },
 		});
@@ -415,10 +444,128 @@ describe('sending suspended and resumed on the alert channels', () => {
 		const payloads = (await alertPayloads(t)).map((log) => log.payload);
 		expect(payloads.map((payload) => payload.event)).toEqual([
 			'deliverability.alert_raised',
+			'deliverability.alert_raised',
 			'deliverability.alert_resolved',
 		]);
-		expect(payloads[1]!.data['alertId']).toBe(payloads[0]!.data['alertId']);
-		expect(payloads[1]!.data['resolution']).toBe('manual');
+		const banned = deliverabilityAlertRaisedWebhookSchema.parse(payloads[1]!).data;
+		expect(banned).toMatchObject({
+			alertId: payloads[0]!.data['alertId'],
+			check: 'Sending banned',
+			holdStatus: 'banned',
+			previousHoldStatus: 'suspended',
+			message: 'phishing',
+		});
+		expect(payloads[0]!.data['previousHoldStatus']).toBeUndefined();
+		expect(payloads[2]!.data['alertId']).toBe(payloads[0]!.data['alertId']);
+		expect(payloads[2]!.data['resolution']).toBe('manual');
+	});
+
+	it('a ban turned back into a suspension raises the alert again', async () => {
+		const t = await harness();
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'banned', at: NOW, reason: 'phishing', changedBy: 'admin-1' },
+		});
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'suspended', at: NOW + 1, reason: 'under review', changedBy: 'admin-1' },
+		});
+		await settle(t);
+
+		const payloads = (await alertPayloads(t)).map((log) => log.payload.data);
+		expect(payloads.map((data) => [data['holdStatus'], data['previousHoldStatus']])).toEqual([
+			['banned', undefined],
+			['suspended', 'banned'],
+		]);
+		// The "banned" email still waiting on a retry is no longer current.
+		expect(
+			await t.query(internal.delivery.sendingHoldAlerts.isAlertCurrent, {
+				alert: {
+					kind: 'raised',
+					alertId: payloads[0]!['alertId'] as string,
+					holdStatus: 'banned',
+					reason: 'phishing',
+					lift: JSON.stringify({ mode: 'admin', condition: null }),
+					nextAction: '',
+					at: NOW,
+					emailMayNotArrive: true,
+				},
+			})
+		).toBe(false);
+	});
+
+	it('a new reason under the same status announces nothing', async () => {
+		const t = await harness();
+		await suspend(t, NOW);
+		await settle(t);
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'suspended', at: NOW + 1, reason: 'kept by hand', changedBy: 'admin-1' },
+		});
+		await settle(t);
+
+		expect(await alertPayloads(t)).toHaveLength(1);
+		expect(transport.sent).toHaveLength(2);
+	});
+
+	it('records what each channel did with the hold, for the Deliverability Center', async () => {
+		const t = await harness();
+		await suspend(t, NOW);
+		await settle(t);
+
+		const standing = await t.run(async (ctx) =>
+			readStandingSendingHold(ctx, await ctx.db.query('instanceSettings').first())
+		);
+		expect(standing).toEqual({
+			alertId: `sending_hold:${NOW}`,
+			holdStatus: 'suspended',
+			previousHoldStatus: null,
+			reason: SUSPEND_REASON,
+			observedAt: NOW,
+			channels: {
+				email: { state: 'sent', isOnAffectedTransport: true },
+				// The admin switched deliverability alerts off; the owner has them on.
+				inAppCount: 1,
+				push: { delivered: 0, failed: 0, held: 0 },
+				webhook: { delivered: 1, failed: 0, pending: 0 },
+			},
+		});
+
+		await resumeByCheck(t, NOW + 1);
+		await settle(t);
+		const resumed = await t.run(async (ctx) =>
+			readStandingSendingHold(ctx, await ctx.db.query('instanceSettings').first())
+		);
+		expect(resumed).toBeNull();
+	});
+
+	it('records an email nobody accepted as not sent', async () => {
+		transport.isFailing = true;
+		const t = await harness();
+		await suspend(t, NOW);
+		await settle(t);
+
+		const standing = await t.run(async (ctx) =>
+			readStandingSendingHold(ctx, await ctx.db.query('instanceSettings').first())
+		);
+		expect(standing?.channels.email.state).toBe('unavailable');
+	});
+
+	it('mails an admin who chose German in German, and the others in English', async () => {
+		const t = await harness({}, { adminLocale: 'de' });
+		await suspend(t, NOW);
+		await settle(t);
+
+		const byRecipient = Object.fromEntries(transport.sent.map((mail) => [mail.to, mail]));
+		expect(byRecipient['admin@example.com']!.subject).toBe('Owlat: Versand ausgesetzt');
+		expect(byRecipient['admin@example.com']!.html).toContain(
+			'Der Versand startet von selbst wieder, sobald die Bounce-Rate der letzten 30 Tage unter 5 % liegt; aktuell sind es 12 %.'
+		);
+		expect(byRecipient['owner@example.com']!.subject).toBe('Owlat: sending is suspended');
+
+		transport.sent = [];
+		await resumeByCheck(t, NOW + 1);
+		await settle(t);
+		const resumed = Object.fromEntries(transport.sent.map((mail) => [mail.to, mail]));
+		expect(resumed['admin@example.com']!.subject).toBe('Owlat: Versand wieder aktiv');
+		expect(resumed['owner@example.com']!.subject).toBe('Owlat: sending resumed');
 	});
 
 	it('a failing webhook endpoint stops neither the transition nor the email', async () => {

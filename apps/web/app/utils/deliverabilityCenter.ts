@@ -91,6 +91,21 @@ export interface DeliverabilityAlertChannels {
 	webhook: { delivered: number; failed: number; pending: number } | null;
 }
 
+/**
+ * Sending on the instance stopped: not a regressed check, so it has no check to
+ * open and nothing to acknowledge, but its channels are counted the same way.
+ */
+export interface DeliverabilitySendingHold {
+	alertId: string;
+	holdStatus: 'suspended' | 'banned';
+	/** Set when the status changed while sending stayed stopped. */
+	previousHoldStatus: 'suspended' | 'banned' | null;
+	/** The reason recorded with the status, as stored. */
+	reason: string;
+	observedAt: number;
+	channels: DeliverabilityAlertChannels;
+}
+
 export interface DeliverabilityAlertOperation {
 	alertId: Id<'deliverabilityRegressionAlerts'>;
 	kind: 'acknowledge' | 'resolve';
@@ -121,6 +136,8 @@ export interface DeliverabilityCenter {
 	/** Read-model refresh time; never present this as a verification time. */
 	statusRefreshedAt: number;
 	alerts: DeliverabilityRegressionAlert[];
+	/** The hold that stands, while sending is stopped; absent from an older backend. */
+	sendingHold?: DeliverabilitySendingHold | null;
 	nextItem: DeliverabilityChecklistItem | null;
 	groups: DeliverabilityChecklistGroup[];
 	/**

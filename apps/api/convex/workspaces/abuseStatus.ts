@@ -17,8 +17,9 @@
  * it (`abuseStatusTrigger`), which is what lets the check lift its own
  * suspension (`analytics/reputationResume.ts`), and the hold a platform
  * admin's lift puts on the check (`reputationCheckHold`). Sending stopping or
- * resuming notifies owners and admins, and travels the deliverability alert
- * channels (`delivery/sendingHoldAlerts.ts`).
+ * resuming, and a stop moving between suspended and banned, notifies owners
+ * and admins, and travels the deliverability alert channels
+ * (`delivery/sendingHoldAlerts.ts`).
  */
 
 import { v } from 'convex/values';
@@ -229,18 +230,31 @@ async function dispatch(
 	if (Object.keys(result.patch).length > 0) {
 		await ctx.db.patch(settings._id, result.patch as Partial<Doc<'instanceSettings'>>);
 	}
-	if (result.applied === 'transitioned' && isSendingAllowed(from) !== isSendingAllowed(input.to)) {
-		await scheduleMarketingNotice(ctx, {
-			kind: isSendingAllowed(input.to) ? 'sending_resumed' : 'sending_suspended',
-			changedAt: input.at,
-		});
-		await scheduleSendingHoldAlert(ctx, {
+	// Announced: sending stopping or resuming, and a stop moving between
+	// suspended and banned, which changes what owners and admins were told
+	// (who lifts it, and whether it lifts at all).
+	if (
+		result.applied === 'transitioned' &&
+		!(isSendingAllowed(from) && isSendingAllowed(input.to))
+	) {
+		const sendingHoldAlertId = await scheduleSendingHoldAlert(ctx, {
 			before: settings,
 			after: { ...settings, ...result.patch } as Doc<'instanceSettings'>,
 			at: input.at,
 			reason: input.reason,
 			isPlatformAdmin: options.adminOverride,
 		});
+		await scheduleMarketingNotice(
+			ctx,
+			input.to === 'suspended' || input.to === 'banned'
+				? {
+						kind: 'sending_suspended',
+						changedAt: input.at,
+						holdStatus: input.to,
+						...(sendingHoldAlertId ? { sendingHoldAlertId } : {}),
+					}
+				: { kind: 'sending_resumed', changedAt: input.at }
+		);
 	}
 
 	// Audit log fires on every transition (including `recorded` no-ops) —
