@@ -1,6 +1,33 @@
-import type { IndexRange, IndexRangeBuilder, GenericDocument } from 'convex/server';
+import type {
+	IndexRange,
+	IndexRangeBuilder,
+	GenericDocument,
+	PaginationOptions,
+	PaginationResult,
+} from 'convex/server';
 import type { DatabaseReader } from '../_generated/server';
 import type { TableNames } from '../_generated/dataModel';
+import { throwInvalidInput } from '../_utils/errors';
+import { isInvalidCursorError } from './convexLimitErrors';
+
+/**
+ * `query.paginate(opts)` for a cursor a client sent. A cursor the paginator
+ * refuses becomes the caller's `invalid_input` naming `cursor`, not a 500.
+ * Any other throw is passed on as it came, so a backend fault stays a 5xx the
+ * SDKs retry.
+ */
+export async function paginateClientCursor<Doc>(
+	query: { paginate: (opts: PaginationOptions) => Promise<PaginationResult<Doc>> },
+	opts: PaginationOptions
+): Promise<PaginationResult<Doc>> {
+	if (opts.cursor === null) return await query.paginate(opts);
+	try {
+		return await query.paginate(opts);
+	} catch (error) {
+		if (!(error instanceof Error) || !isInvalidCursorError(error.message)) throw error;
+		throwInvalidInput('Invalid cursor', { field: 'cursor' });
+	}
+}
 
 /**
  * Count the rows of one index range by streaming them.

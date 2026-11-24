@@ -363,6 +363,6 @@ describe('readListQuery', () => {
 	});
 
 	it.each(['limit=0', 'limit=-3', 'limit=abc'])('%s is refused', (query) => {
-		expect(read(query)).toEqual({ ok: false, message: 'Invalid limit' });
+		expect(read(query)).toEqual({ ok: false, message: 'Invalid limit', field: 'limit' });
 	});
 });

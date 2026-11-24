@@ -6,6 +6,7 @@ const base: MailboxGuardInput = {
 	hasMailbox: false,
 	reservedAddress: null,
 	externalAllowed: false,
+	mailAvailable: true,
 };
 
 describe('deriveMailboxGuardState — reserved / external-allowed / dead-end', () => {
@@ -59,5 +60,21 @@ describe('deriveMailboxGuardState — reserved / external-allowed / dead-end', (
 
 	it('treats an empty reservation string as no reservation', () => {
 		expect(deriveMailboxGuardState({ ...base, reservedAddress: '' })).toBe('dead-end');
+	});
+
+	it('says mail is off when every mail feature is, instead of asking for a mailbox', () => {
+		expect(deriveMailboxGuardState({ ...base, mailAvailable: false })).toBe('mail-off');
+	});
+
+	it('mail being off wins over a reservation nobody could open', () => {
+		expect(
+			deriveMailboxGuardState({ ...base, mailAvailable: false, reservedAddress: 'me@acme.test' })
+		).toBe('mail-off');
+	});
+
+	it('a live mailbox still renders the page with mail off', () => {
+		expect(deriveMailboxGuardState({ ...base, mailAvailable: false, hasMailbox: true })).toBe(
+			'ready'
+		);
 	});
 });

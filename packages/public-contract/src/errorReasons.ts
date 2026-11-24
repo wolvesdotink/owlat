@@ -47,5 +47,15 @@ export const API_KEY_ERROR_REASONS = [
 /** Why a key-authenticated call was refused before it ran. */
 export type ApiKeyErrorReason = (typeof API_KEY_ERROR_REASONS)[number];
 
+/**
+ * Why a write was refused whatever it wrote: the workspace is being deleted,
+ * and nothing is accepted until the deletion has finished. Every route that
+ * writes can answer it.
+ */
+export const WRITE_REFUSAL_REASONS = ['workspace_deletion_in_progress'] as const;
+
+/** Why a write was refused whatever it wrote. */
+export type WriteRefusalReason = (typeof WRITE_REFUSAL_REASONS)[number];
+
 /** Every `error.data.reason` the contract declares. */
-export type ApiErrorReason = ApiKeyErrorReason | TransactionalRefusalReason;
+export type ApiErrorReason = ApiKeyErrorReason | TransactionalRefusalReason | WriteRefusalReason;

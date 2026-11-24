@@ -41,6 +41,7 @@ import {
 	createTestTransactionalEmail,
 	flushScheduled,
 } from './factories';
+import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
 
 vi.mock('../delivery/workpool', () => ({
 	transactionalEmailPool: { enqueueAction: vi.fn().mockResolvedValue(undefined) },
@@ -421,7 +422,9 @@ describe('Idempotency-Key on POST /api/v1/transactional', () => {
 		const res = await post(t, '/api/v1/transactional', { slug, email: 'to@example.com' }, key);
 
 		expect(res.status).toBe(400);
-		expect((await res.json()).error.message).toContain('Idempotency-Key');
+		const error = (await res.json()).error;
+		expect(error.message).toContain('Idempotency-Key');
+		expect(error.data).toEqual({ field: 'Idempotency-Key' });
 		expect(await sendRows(t)).toHaveLength(0);
 	});
 
@@ -457,6 +460,54 @@ describe('Idempotency-Key on POST /api/v1/transactional', () => {
 
 		expect(swept).toBe(1);
 		expect((await receiptRows(t)).map((r) => r.keyHash)).toEqual([await sha256Hex('new-key')]);
+	});
+});
+
+describe('POST /api/v1/transactional refusals that name their cause', () => {
+	it('answers a send during a workspace deletion with the fence refusal (422), not 500, and keeps no upload', async () => {
+		const t = setupTest();
+		const slug = await seedSendable(t);
+		await t.run((ctx) => openWorkspaceDeletionFence(ctx));
+
+		const res = await post(
+			t,
+			'/api/v1/transactional',
+			{
+				slug,
+				email: 'to@example.com',
+				attachments: [{ filename: 'a.txt', content: 'YQ==' }],
+			},
+			KEY
+		);
+
+		expect(res.status).toBe(422);
+		expect((await res.json()).error).toMatchObject({
+			category: 'invalid_state',
+			message:
+				'This workspace is being deleted. Changes are not accepted until the deletion has finished.',
+			data: { reason: 'workspace_deletion_in_progress' },
+		});
+		expect(await sendRows(t)).toHaveLength(0);
+		expect(await receiptRows(t)).toHaveLength(0);
+		expect(await storedBlobs(t)).toHaveLength(0);
+	});
+
+	it('names the field and the variable of an invalid_variables refusal in data', async () => {
+		const t = setupTest();
+		const slug = await seedSendable(t);
+
+		const res = await post(t, '/api/v1/transactional', {
+			slug,
+			email: 'to@example.com',
+			dataVariables: { orderNumber: 42 },
+		});
+
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toEqual({
+			category: 'invalid_input',
+			message: 'Variable "orderNumber" should be of type "string", got "number"',
+			data: { reason: 'invalid_variables', field: 'dataVariables', variables: ['orderNumber'] },
+		});
 	});
 });
 
