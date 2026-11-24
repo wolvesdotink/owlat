@@ -197,7 +197,10 @@ export const automationTables = {
 		.index('by_status', ['status'])
 		.index('by_status_and_delay_until', ['status', 'delayUntil'])
 		.index('by_status_and_lease_expires_at', ['status', 'leaseExpiresAt'])
-		.index('by_status_and_waiting_checked_at', ['status', 'waitingCheckedAt']),
+		.index('by_status_and_waiting_checked_at', ['status', 'waitingCheckedAt'])
+		// An automation's waiting runs, read from its email steps
+		// (automations/waitingRuns.ts).
+		.index('by_step_status_waiting_for', ['automationStepId', 'status', 'waitingFor']),
 
 	// Write-sharded automation run counters (inc-only: entered/completed/cancelled).
 	// fireTrigger / complete / cancel bump a RANDOM shard instead of the single

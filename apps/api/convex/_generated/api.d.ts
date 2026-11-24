@@ -406,6 +406,7 @@ import type * as automations_triggers_event_received_index from '../automations/
 import type * as automations_triggers_topic_subscribed_index from '../automations/triggers/topic_subscribed/index.js';
 import type * as automations_triggers_types from '../automations/triggers/types.js';
 import type * as automations_types from '../automations/types.js';
+import type * as automations_waitingRuns from '../automations/waitingRuns.js';
 import type * as autonomy_feedback from '../autonomy/feedback.js';
 import type * as autonomy_outcome from '../autonomy/outcome.js';
 import type * as autonomy_policy from '../autonomy/policy.js';
@@ -2409,6 +2410,7 @@ declare const fullApi: ApiFromModules<{
 	'automations/triggers/topic_subscribed/index': typeof automations_triggers_topic_subscribed_index;
 	'automations/triggers/types': typeof automations_triggers_types;
 	'automations/types': typeof automations_types;
+	'automations/waitingRuns': typeof automations_waitingRuns;
 	'automations/steps/catalog': typeof automations_steps_catalog;
 	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
 	'automations/triggers/catalog': typeof automations_triggers_catalog;

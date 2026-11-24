@@ -2,7 +2,8 @@
  * The automation detail page's runs panel reads its filter from the URL, so a
  * health count on the automations list can link to exactly the runs it
  * counted: `?runs=failed` asks for the runs a failed step ended and
- * `?runs=stalled` for the ones the stalled-run sweep ended. A status value
+ * `?runs=stalled` for the ones the stalled-run sweep ended, and `?runs=waiting`
+ * asks for the runs whose email waits for the sending setup. A status value
  * filters by status; anything else is "all". Picking a tab writes the URL.
  *
  * A run a failed step ended says why under its row: one sentence for the coded
@@ -25,7 +26,9 @@ import de from '~~/i18n/locales/de.json';
 import { allRunFailureMessageKeys } from '~/lib/automationRunFailure';
 import { formatDateTime } from '~/utils/formatters';
 
-const route = reactive<{ query: Record<string, string | undefined> }>({ query: {} });
+const route = reactive<{ query: Record<string, string | undefined>; hash?: string }>({
+	query: {},
+});
 const replace = vi.fn();
 let runArgs: () => Record<string, unknown> = () => ({});
 
@@ -74,6 +77,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	route.query = {};
+	route.hash = undefined;
 	runsData = RUNS;
 	isAdmin.value = true;
 	replace.mockClear();
@@ -115,6 +119,7 @@ describe('automation runs panel filter', () => {
 		['cancelled', { status: 'cancelled' }],
 		['failed', { endReason: 'step_failed' }],
 		['stalled', { endReason: 'stalled' }],
+		['waiting', { waiting: true }],
 		['nonsense', {}],
 	] as const)('?runs=%s reads the matching runs', async (runs, filter) => {
 		route.query = { runs };
@@ -128,6 +133,28 @@ describe('automation runs panel filter', () => {
 		expect(wrapper.text()).toContain('Runs a failed step ended in the last 7 days');
 		const selected = wrapper.get('[role="tab"][aria-selected="true"]');
 		expect(selected.text()).toBe('Failed');
+	});
+
+	it('says what the waiting filter lists and selects its tab', async () => {
+		route.query = { runs: 'waiting' };
+		const wrapper = await mountPanel();
+		expect(wrapper.text()).toContain('Runs whose email waits for the sending setup to be fixed');
+		expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('Waiting');
+	});
+
+	it('scrolls itself into view when a link names #runs', async () => {
+		const scrollIntoView = vi.fn();
+		Element.prototype.scrollIntoView = scrollIntoView;
+		await mountPanel();
+		expect(scrollIntoView).not.toHaveBeenCalled();
+		route.hash = '#runs';
+		const wrapper = await mountPanel();
+		expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+		// Picking another filter keeps the hash, so the page does not jump to the top.
+		const stalled = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Stalled')!;
+		await stalled.trigger('click');
+		expect(replace).toHaveBeenLastCalledWith({ query: { runs: 'stalled' }, hash: '#runs' });
 	});
 
 	it('names why a cancelled run ended', async () => {
