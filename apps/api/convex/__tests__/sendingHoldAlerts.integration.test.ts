@@ -536,6 +536,24 @@ describe('sending suspended and resumed on the alert channels', () => {
 		expect(notices.map((notice) => notice.holdStatus)).toEqual(['banned']);
 	});
 
+	it('a stop from before the stop time was recorded keeps one alert id across a ban', async () => {
+		const t = await harness({
+			abuseStatus: 'suspended',
+			abuseStatusReason: SUSPEND_REASON,
+			abuseStatusChangedAt: NOW - DAY_MS,
+		});
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'banned', at: NOW, reason: 'phishing', changedBy: 'admin-1' },
+		});
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'clean', at: NOW + 1, reason: 'appeal granted', changedBy: 'admin-1' },
+		});
+		await settle(t);
+
+		const ids = (await alertPayloads(t)).map((log) => log.payload.data['alertId']);
+		expect(ids).toEqual([`sending_hold:${NOW - DAY_MS}`, `sending_hold:${NOW - DAY_MS}`]);
+	});
+
 	it('a new reason under the same status announces nothing', async () => {
 		const t = await harness();
 		await suspend(t, NOW);

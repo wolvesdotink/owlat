@@ -171,7 +171,12 @@ function reduce(
 			abuseStatusTrigger: trigger,
 			...(isSendingAllowed(from) !== isSendingAllowed(input.to)
 				? { sendingStoppedAt: isSendingAllowed(input.to) ? undefined : input.at }
-				: {}),
+				: // A stop recorded before `sendingStoppedAt` existed keeps the time it
+					// started across a move between suspended and banned, or the
+					// stretch's alert id would follow the newer status change.
+					!isSendingAllowed(from) && settings.sendingStoppedAt === undefined
+					? { sendingStoppedAt: settings.abuseStatusChangedAt ?? input.at }
+					: {}),
 			// Every lift replaces the hold (`null` clears it); otherwise it ends at
 			// its deadline. A warning or a suspension on another metric leaves it,
 			// or the held evidence would suspend again once that one clears.
