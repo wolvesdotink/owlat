@@ -61,12 +61,9 @@ function fallbackText(
 }
 
 /** Does this string carry at least one `{{token}}`? */
-export function containsTemplateVariable(
-	value: string | undefined | null,
-	syntax: TemplateVariableSyntax = {}
-): boolean {
+export function containsTemplateVariable(value: string | undefined | null): boolean {
 	if (!value) return false;
-	return templateVariablePattern(syntax).test(value);
+	return new RegExp(TOKEN_SOURCE).test(value);
 }
 
 /** One token as written: its name and, when it declared one, its fallback as text. */
@@ -92,11 +89,13 @@ export function matchTemplateVariables(
  * callers that want a set say so, and the order matters to anything that
  * prompts for values in reading order.
  */
-export function extractTemplateVariableNames(
-	value: string | undefined | null,
-	syntax: TemplateVariableSyntax = {}
-): string[] {
-	return matchTemplateVariables(value, syntax).map((token) => token.name);
+export function extractTemplateVariableNames(value: string | undefined | null): string[] {
+	if (!value) return [];
+	const names: string[] = [];
+	const pattern = templateVariablePattern();
+	let match: RegExpExecArray | null;
+	while ((match = pattern.exec(value)) !== null) names.push(match[1]!);
+	return names;
 }
 
 /**

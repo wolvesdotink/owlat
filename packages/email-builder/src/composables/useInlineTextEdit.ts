@@ -127,7 +127,8 @@ export function useInlineTextEdit(options: UseInlineTextEditOptions): UseInlineT
 			let node: Node | null = selection.getRangeAt(0).commonAncestorContainer;
 			while (node && node !== (inlineEditorRef.value.el as Node)) {
 				if (node instanceof HTMLAnchorElement) {
-					existingUrl = node.href;
+					// The attribute as written: `href` resolves it against the page URL.
+					existingUrl = node.getAttribute('href') ?? '';
 					isEditing = true;
 					break;
 				}
