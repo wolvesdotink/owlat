@@ -2,9 +2,9 @@
 	"seo": {
 		"home": {
 			"title": "Owlat — E-Mail-Infrastruktur für Produktteams",
-			"description": "Kampagnen, Automatisierungen, transaktionale Sendungen und Zielgruppenpflege aus einer Plattform. Auf Convex gebaut, mit AWS SES betrieben.",
+			"description": "Kampagnen, Automationen, transaktionale Sendungen und Zielgruppenpflege aus einer Plattform. Auf Convex gebaut, mit AWS SES betrieben.",
 			"ogDescription": "Open-Source-E-Mail-Infrastruktur für Produktteams. Kampagnen versenden, Flows automatisieren, Zielgruppen verwalten — alles aus einer Plattform.",
-			"schemaDescription": "E-Mail-Infrastruktur für Produktteams. Kampagnen, Automatisierungen, transaktionale Sendungen und Zielgruppenpflege aus einer Plattform."
+			"schemaDescription": "E-Mail-Infrastruktur für Produktteams. Kampagnen, Automationen, transaktionale Sendungen und Zielgruppenpflege aus einer Plattform."
 		},
 		"waitlist": {
 			"title": "Warteliste für die Hosted Cloud — Owlat",
@@ -43,7 +43,7 @@
 		"badgeCta": "Auf die Warteliste",
 		"titleLead": "Bessere E-Mails versenden.",
 		"titleAccent": "Den ganzen Stack besitzen.",
-		"subtitle": "Owlat ist eine quelloffene, selbst gehostete E-Mail-Plattform. Kampagnen, Automatisierungen, transaktionale Sendungen und Zielgruppenpflege — mit eigenem MTA und integrierten Werkzeugen für die Zustellbarkeit.",
+		"subtitle": "Owlat ist eine quelloffene, selbst gehostete E-Mail-Plattform. Kampagnen, Automationen, transaktionale Sendungen und Zielgruppenpflege — mit eigenem MTA und integrierten Werkzeugen für die Zustellbarkeit.",
 		"selfHost": "Selbst hosten",
 		"desktopNote": "Desktop-App für macOS, Windows und Linux — in der Alpha, wie der Rest von Owlat.",
 		"standards": "Auf offenen Standards gebaut"
@@ -162,11 +162,11 @@
 		"title": "Wie E-Mail {accent}",
 		"titleAccent": "fließt",
 		"intro": "Von der Warteschlange in den Posteingang — und zurück. Zustellsignale fließen in den Ramp-Controller, damit deine Versandreputation wächst, statt geraten zu werden.",
-		"srDescription": "Diagramm des Mailflusses von Owlat: Kampagnen, Automatisierungen und API-Sendungen reihen sich am integrierten Owlat-MTA ein; die Nachrichten passieren ein Authentifizierungs-Gate mit DKIM, SPF und DMARC und erreichen dann die Posteingänge der Empfänger. Bounce-, Interaktions- und Platzierungssignale fließen zurück in einen Ramp-Controller, der Sendeanteil und Tempo des MTA anpasst — eine fortlaufende Rückkopplungsschleife für die Zustellbarkeit.",
+		"srDescription": "Diagramm des Mailflusses von Owlat: Kampagnen, Automationen und API-Sendungen reihen sich am integrierten Owlat-MTA ein; die Nachrichten passieren ein Authentifizierungs-Gate mit DKIM, SPF und DMARC und erreichen dann die Posteingänge der Empfänger. Bounce-, Interaktions- und Platzierungssignale fließen zurück in einen Ramp-Controller, der Sendeanteil und Tempo des MTA anpasst — eine fortlaufende Rückkopplungsschleife für die Zustellbarkeit.",
 		"stepsLabel": "Schritte im Mailfluss",
 		"nodes": {
 			"campaigns": { "label": "Kampagnen", "sub": "Geplante Sendungen" },
-			"automations": { "label": "Automatisierungen", "sub": "Trigger-Flows" },
+			"automations": { "label": "Automationen", "sub": "Trigger-Flows" },
 			"api": { "label": "API", "sub": "Transaktional" },
 			"mta": { "label": "Owlat MTA", "sub": "SMTP-Engine" },
 			"auth": { "label": "Authentifizierung", "sub": "DKIM · SPF · DMARC" },
@@ -177,7 +177,7 @@
 		"beats": {
 			"send": {
 				"label": "Senden",
-				"caption": "Kampagnen, Automatisierungen und API-Sendungen reihen sich am MTA ein"
+				"caption": "Kampagnen, Automationen und API-Sendungen reihen sich am MTA ein"
 			},
 			"authenticate": {
 				"label": "Authentifizieren",
@@ -215,7 +215,7 @@
 			"desc": "Plane Sendungen für den besten Zeitpunkt, teste Betreffzeilen und Inhaltsvarianten nebeneinander und verfolge Öffnungen, Klicks und Interaktionen, sobald die Ergebnisse eintreffen."
 		},
 		"automations": {
-			"title": "Automatisierungen",
+			"title": "Automationen",
 			"desc": "Baue triggerbasierte Flows für Onboarding, Reaktivierung und Lifecycle-Nachrichten. Mit Wartezeiten, Bedingungen und Verzweigungen — ganz ohne Code."
 		},
 		"transactional": {
@@ -224,14 +224,14 @@
 		},
 		"deliverability": {
 			"title": "Zustellbarkeit",
-			"desc": "Verifiziere deine Absenderdomain mit geführter DNS-Einrichtung für SPF, DKIM und DMARC. Verwalte Blocklisten, sende automatisch One-Click-Unsubscribe-Header mit und streame Zustellereignisse per Webhook — für volle Transparenz."
+			"desc": "Verifiziere deine Absenderdomain mit geführter DNS-Einrichtung für SPF, DKIM und DMARC. Verwalte deine Unterdrückungsliste, sende automatisch One-Click-Unsubscribe-Header mit und streame Zustellereignisse per Webhook — für volle Transparenz."
 		}
 	},
 	"developers": {
 		"eyebrow": "Entwickler",
 		"title": "Mit dem SDK bauen{break} oder im {accent} bleiben",
 		"titleAccent": "Dashboard",
-		"intro": "Versende transaktionale E-Mails, verwalte Kontakte, löse Automatisierungen aus und verfolge die Zustellung — mit einem einzigen API-Aufruf. Nutze das TypeScript-SDK für typsichere Integrationen oder sprich die REST-API direkt aus jeder Sprache an.",
+		"intro": "Versende transaktionale E-Mails, verwalte Kontakte, löse Automationen aus und verfolge die Zustellung — mit einem einzigen API-Aufruf. Nutze das TypeScript-SDK für typsichere Integrationen oder sprich die REST-API direkt aus jeder Sprache an.",
 		"sdkReference": "SDK-Referenz",
 		"apiDocs": "API-Doku",
 		"tabSdk": "TypeScript SDK",
@@ -318,7 +318,7 @@
 		}
 	},
 	"footer": {
-		"tagline": "E-Mail-Infrastruktur für Produktteams. Kampagnen, Automatisierungen und transaktionale Sendungen aus einer Plattform.",
+		"tagline": "E-Mail-Infrastruktur für Produktteams. Kampagnen, Automationen und transaktionale Sendungen aus einer Plattform.",
 		"product": "Produkt",
 		"developers": "Entwickler",
 		"company": "Unternehmen",
