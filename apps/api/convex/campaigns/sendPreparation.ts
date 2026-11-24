@@ -1,18 +1,25 @@
 /**
  * The reads the campaign send orchestrator's PREP step (`send.ts:
- * startCampaignSend`) makes besides the content scan: the Safe Browsing
- * verdict cache handed to the URL reputation check, and the public archive
- * snapshot the preparation commit stores.
+ * startCampaignSend`) makes: the content scan with its Safe Browsing verdict
+ * cache, and the public archive snapshot the preparation commit stores.
  */
 
 import { nanoid } from 'nanoid';
-import type { UrlReputationCache } from '@owlat/email-scanner';
+import {
+	checkUrlReputation,
+	urlReputationToFlags,
+	type ContentFlag,
+	type UrlReputationCache,
+} from '@owlat/email-scanner';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { composeForSend } from '../delivery/sendComposition';
 import type { ArchiveSnapshot } from './archiveQueries';
+import { combineContentScan, type ContentScanVerdict } from './sendPlanning';
+import { scanPublishableVariants } from '../transactional/lifecycleReducer';
+import { htmlTranslationEntries } from '../lib/emailJson';
 
 // Convex-backed implementation of the email-scanner's `UrlReputationCache`,
 // persisting Safe Browsing verdicts in the `urlReputationCache` table so
@@ -73,4 +80,44 @@ export async function composeArchiveSnapshot(
 		template: { subject, htmlContent },
 	});
 	return { archiveToken: nanoid(24), archiveHtmlContent: composed.html, archiveSubject: subject };
+}
+
+/**
+ * The content verdict for what a campaign sends: the scanner's score plus the
+ * URL reputation flags. The walker sends each recipient the translation for
+ * their language (`sendQueries.getEmailTemplateForLanguage`), so every stored
+ * translation is scanned, and its links checked, with the default; the
+ * campaign's subject override replaces the subject of each.
+ */
+export async function scanCampaignContent(
+	ctx: ActionCtx,
+	campaign: Pick<Doc<'campaigns'>, 'subject'>,
+	template: Pick<Doc<'emailTemplates'>, 'subject' | 'htmlTranslations'>,
+	htmlContent: string
+): Promise<ContentScanVerdict> {
+	const base = scanPublishableVariants(
+		template.subject,
+		htmlContent,
+		template.htmlTranslations,
+		campaign.subject
+	);
+
+	const safeBrowsingApiKey = getOptional('GOOGLE_SAFE_BROWSING_API_KEY');
+	let urlFlags: ContentFlag[] = [];
+	if (safeBrowsingApiKey) {
+		try {
+			const sentHtml = [
+				htmlContent,
+				...htmlTranslationEntries(template.htmlTranslations).map((entry) => entry.htmlContent),
+			].join('\n');
+			const urlResults = await checkUrlReputation(sentHtml, {
+				apiKey: safeBrowsingApiKey,
+				cache: makeUrlReputationCache(ctx),
+			});
+			urlFlags = urlReputationToFlags(urlResults);
+		} catch {
+			// URL reputation check failure should not block campaign sending
+		}
+	}
+	return combineContentScan(base, urlFlags);
 }

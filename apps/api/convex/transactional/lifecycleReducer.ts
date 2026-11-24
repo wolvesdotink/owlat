@@ -125,16 +125,18 @@ const SCAN_LEVEL_RANK: Record<ContentScanLevel, number> = { clean: 0, suspicious
  * The scan verdict for everything a published template can send: the default
  * subject and HTML and every rendered translation. A send picks one variant by
  * language, so the template is only as clean as its worst variant; that
- * variant's result decides.
+ * variant's result decides. A campaign's subject override replaces the subject
+ * of every language, so `subjectOverride` is scanned with each variant's HTML.
  */
 export function scanPublishableVariants(
 	subject: string,
 	htmlContent: string,
-	htmlTranslations: string | undefined
+	htmlTranslations: string | undefined,
+	subjectOverride?: string
 ): ContentScanResult {
-	let worst = scanContent(subject, htmlContent);
+	let worst = scanContent(subjectOverride ?? subject, htmlContent);
 	for (const variant of htmlTranslationEntries(htmlTranslations)) {
-		const result = scanContent(variant.subject, variant.htmlContent);
+		const result = scanContent(subjectOverride ?? variant.subject, variant.htmlContent);
 		if (
 			SCAN_LEVEL_RANK[result.level] > SCAN_LEVEL_RANK[worst.level] ||
 			(result.level === worst.level && result.score > worst.score)

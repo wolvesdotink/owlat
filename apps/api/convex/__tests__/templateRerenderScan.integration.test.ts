@@ -9,6 +9,7 @@
  *     the HTML it had, and the job fails (its `onComplete` records why);
  *   - suspicious content does not land on a template a sending campaign uses,
  *     where the prepare scan would have held it for review;
+ *   - the same holds for a template an active automation sends;
  *   - suspicious content on a template no campaign is sending lands: that
  *     campaign's own start scans it.
  */
@@ -18,7 +19,12 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { createTestCampaign, createTestEmailTemplate } from './factories';
+import {
+	createTestAutomation,
+	createTestAutomationStep,
+	createTestCampaign,
+	createTestEmailTemplate,
+} from './factories';
 import type * as EmailScannerModule from '@owlat/email-scanner';
 
 const modules = import.meta.glob('../**/*.*s');
@@ -124,6 +130,31 @@ describe('saved-block re-render of a marketing template is scanned', () => {
 			/sending campaign/
 		);
 		expect(await htmlOf(t, variantB)).toBe('<p>Scanned at prepare</p>');
+	});
+
+	it('holds suspicious content back from a template an active automation sends', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await t.run(async (ctx) => {
+			const automationId = await ctx.db.insert(
+				'automations',
+				createTestAutomation({ status: 'active', activatedAt: Date.now() })
+			);
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({
+					automationId,
+					stepIndex: 0,
+					stepType: 'email',
+					config: { emailTemplateId: templateId },
+				})
+			);
+		});
+
+		await expect(patch(t, templateId, '<p>SUSPICIOUS-MARKER</p>')).rejects.toThrow(
+			/active automation/
+		);
+		expect(await htmlOf(t, templateId)).toBe('<p>Scanned at prepare</p>');
 	});
 
 	it('lets suspicious content land where no campaign is sending, for that start to scan', async () => {
