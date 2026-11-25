@@ -408,6 +408,38 @@ describe('composeForSend — transactional', () => {
 		expect(composed.transformConfig).toBeNull();
 	});
 
+	it('derives a text part without the hidden preheader, or from the preheader alone for an image-only email', () => {
+		const html = (body: string) =>
+			renderEmailHtml(body ? [{ id: 't', type: 'text', content: { html: body } } as never] : [], {
+				variableType: 'data',
+				preheaderText: 'Order {{orderId}} is on its way',
+			});
+		const textOf = (htmlContent: string) =>
+			composeForSend({
+				kind: 'transactional',
+				template: { subject: 's', htmlContent },
+				dataVariables: { orderId: 'A-7' },
+			}).text;
+
+		expect(textOf(html('<p>Thanks for your order</p>'))).toBe('Thanks for your order');
+		expect(textOf(html(''))).toBe('Order A-7 is on its way');
+	});
+
+	it('drops a preheader whose tokens all resolve empty from an image-only email', () => {
+		const htmlContent = renderEmailHtml(
+			[{ id: 'i', type: 'image', content: { src: 'https://example.com/a.png', alt: '' } } as never],
+			{ variableType: 'data', preheaderText: "{{name|''}}" }
+		);
+		expect(htmlContent).toContain('&zwnj;');
+		const composed = composeForSend({
+			kind: 'transactional',
+			template: { subject: 's', htmlContent },
+		});
+		expect(composed.html).not.toContain('&zwnj;');
+		expect(composed.html).toContain('https://example.com/a.png');
+		expect(composed.text).toBe('');
+	});
+
 	it('returns merged attachment refs', () => {
 		const composed = composeForSend({
 			kind: 'transactional',
@@ -991,6 +1023,62 @@ describe('composeForSend — the postal address appears once', () => {
 		const composed = composeForSend(campaign(template));
 		expect(composed.transformConfig).not.toHaveProperty('senderAddress');
 		expect(occurrences(composed.text)).toBe(1);
+	});
+
+	it.each([
+		{ name: 'Northwind', address: '1 Example Street\n12345 Example City' },
+		{ name: "Smith & O'Brien", address: '1 Example Street\n12345 Example City' },
+		{ name: '', address: '1 Example Street\n12345 Example City' },
+	])(
+		'leaves the address out once for a footer block saved without the mark ($name)',
+		({ name, address }) => {
+			const oldKit = { ...kit, footerCompanyName: name, footerAddress: address };
+			// The block as the builder inserted it before it carried the flag.
+			const legacy = brandFooterBlocks(oldKit, () => 'old').map((block) => {
+				const { postalAddress: _flag, ...content } = block.content as { postalAddress?: true };
+				return { ...block, content } as typeof block;
+			});
+			const template = {
+				subject: 'News',
+				htmlContent: renderEmailHtml(legacy),
+				plainTextContent: renderPlainText(legacy),
+			};
+			expect(template.htmlContent).not.toContain('data-owlat-postal-address');
+			const composed = composeForSend({
+				...campaign(template),
+				senderAddress: senderPostalAddress(oldKit),
+			});
+			const html = transformHtml(composed.html, composed.transformConfig!);
+			expect(occurrences(html)).toBe(1);
+			expect(occurrences(composed.text)).toBe(1);
+			expect(html).toContain('href="https://app.example/unsubscribe?token=u"');
+		}
+	);
+
+	it('recognises the footer block html an older renderer stored', () => {
+		const stored =
+			'<div style="font-size:12px;color:#374151;line-height:1.6;mso-line-height-rule:exactly;text-align:center"><strong>Northwind</strong><br />1 Example Street<br />12345 Example City</div>';
+		const composed = composeForSend(
+			campaign({ subject: 'News', htmlContent: stored, plainTextContent: '' })
+		);
+		expect(composed.transformConfig).not.toHaveProperty('senderAddress');
+	});
+
+	it('keeps the address when an unmarked block shows a different one', () => {
+		const oldKit = { ...kit, footerAddress: '9 Former Road\n12345 Example City' };
+		const legacy = brandFooterBlocks(oldKit, () => 'old').map((block) => {
+			const { postalAddress: _flag, ...content } = block.content as { postalAddress?: true };
+			return { ...block, content } as typeof block;
+		});
+		const composed = composeForSend(
+			campaign({
+				subject: 'News',
+				htmlContent: renderEmailHtml(legacy),
+				plainTextContent: renderPlainText(legacy),
+			})
+		);
+		const html = transformHtml(composed.html, composed.transformConfig!);
+		expect(occurrences(html)).toBe(1);
 	});
 
 	it('still prints the address when the body has no footer block', () => {

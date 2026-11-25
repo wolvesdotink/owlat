@@ -142,8 +142,13 @@ export function renderStoredFixture(fixture: StoredBlockFixture): RenderedFixtur
 		return { ...bodies, html: stableHtml(bodies.html) };
 	}
 	const blocks = decodeStoredBlocks(fixture);
+	// A transactional email leaves its conditions and repeats to the send, as
+	// its server render does (lib/publishableEmailRender.ts).
+	const sendTimeBlockLogic = fixture.field === 'transactionalEmails.content';
 	return {
-		html: stableHtml(renderEmailHtml(blocks, { variableType: STORED_FIELDS[fixture.field] })),
-		text: renderPlainText(blocks),
+		html: stableHtml(
+			renderEmailHtml(blocks, { variableType: STORED_FIELDS[fixture.field], sendTimeBlockLogic })
+		),
+		text: renderPlainText(blocks, { sendTimeBlockLogic }),
 	};
 }

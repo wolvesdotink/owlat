@@ -89,13 +89,19 @@ async function mountModal(topics: Array<{ _id: string; name: string }> = []) {
 	});
 	// Opening resets the form, the way the contacts page opens it.
 	await wrapper.setProps({ open: true });
+	// The configure step starts loading on open; settle it, as a page would
+	// have by the time someone picks a provider.
+	await vi.dynamicImportSettled();
 	return wrapper;
 }
 
-function clickButton(wrapper: ReturnType<typeof mount>, label: string) {
+/** Clicks a button by its label and settles what the click starts (a provider pick waits for the configure step's chunk). */
+async function clickButton(wrapper: ReturnType<typeof mount>, label: string) {
 	const button = wrapper.findAll('button').find((b) => b.text().includes(label));
 	if (!button) throw new Error(`No button labelled "${label}" in: ${wrapper.text()}`);
-	return button.trigger('click');
+	await button.trigger('click');
+	await vi.dynamicImportSettled();
+	await flushPromises();
 }
 
 const running = (over: Record<string, unknown>) => ({
@@ -130,6 +136,27 @@ describe('IntegrationImportModal — choosing a provider', () => {
 		expect(wrapper.emitted('update:open')).toEqual([[false]]);
 	});
 
+	it('shows the form once the pick settles, with no second fetch of the step', async () => {
+		const wrapper = await mountModal();
+		// Any fetch of the step after the one on open fails, so only the load
+		// the modal already holds can render the form.
+		vi.doMock('../integrationImport/ConfigureStep.vue', () => {
+			throw new Error('Failed to fetch dynamically imported module');
+		});
+		try {
+			await wrapper
+				.findAll('button')
+				.find((b) => b.text().includes('Stripe'))!
+				.trigger('click');
+			await vi.dynamicImportSettled();
+			await flushPromises();
+		} finally {
+			vi.doUnmock('../integrationImport/ConfigureStep.vue');
+		}
+
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+	});
+
 	it('opens the provider form and checks it before starting', async () => {
 		const wrapper = await mountModal();
 
@@ -142,6 +169,52 @@ describe('IntegrationImportModal — choosing a provider', () => {
 
 		await clickButton(wrapper, 'Back');
 		expect(wrapper.text()).not.toContain('Mailchimp API key is required');
+	});
+
+	it('drops a pick still loading when the modal is closed and opened again', async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		vi.doMock('../integrationImport/ConfigureStep.vue', async (importOriginal) => {
+			await gate;
+			return importOriginal();
+		});
+		try {
+			const wrapper = await mountModal();
+			await wrapper
+				.findAll('button')
+				.find((b) => b.text().includes('Mailchimp'))!
+				.trigger('click');
+			await wrapper.setProps({ open: false });
+			await wrapper.setProps({ open: true });
+			release();
+			await vi.dynamicImportSettled();
+			await flushPromises();
+
+			expect(wrapper.text()).not.toContain('Configure Mailchimp');
+			expect(wrapper.text()).toContain('Stripe');
+		} finally {
+			release();
+			vi.doUnmock('../integrationImport/ConfigureStep.vue');
+		}
+	});
+
+	it('stays on the provider list with an error when the form cannot be fetched', async () => {
+		// Offline from the start: the fetch on open fails as well as the pick's.
+		vi.doMock('../integrationImport/ConfigureStep.vue', () => {
+			throw new Error('Failed to fetch dynamically imported module');
+		});
+		let wrapper: Awaited<ReturnType<typeof mountModal>>;
+		try {
+			wrapper = await mountModal();
+			await vi.dynamicImportSettled();
+			await clickButton(wrapper, 'Mailchimp');
+		} finally {
+			vi.doUnmock('../integrationImport/ConfigureStep.vue');
+		}
+
+		expect(wrapper.text()).toContain('Connection problem. Check your network and try again.');
+		expect(wrapper.text()).not.toContain('Configure Mailchimp');
+		expect(wrapper.text()).toContain('Stripe');
 	});
 });
 

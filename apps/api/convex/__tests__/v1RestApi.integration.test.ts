@@ -21,6 +21,7 @@ import {
 	type SendingDomainStatusValue,
 } from '@owlat/public-contract/schemas';
 import { buildOpenApiDocument } from '@owlat/public-contract/openapi';
+import blockSchema from '@owlat/public-contract/schemas/blocks.json';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
@@ -37,6 +38,8 @@ import { getStatus } from '../publicApi/statusHttp';
 import { listDomains } from '../publicApi/domainsHttp';
 import { verifyDomain } from '../publicApi/domainCheckHttp';
 import { getLimits } from '../publicApi/limitsHttp';
+import * as transactionalEmailsApi from '../publicApi/transactionalEmailsHttp';
+import * as savedBlocksApi from '../publicApi/savedBlocksHttp';
 import { rateLimiter } from '../lib/rateLimiter';
 import {
 	chargeTransactionalSendCaps,
@@ -123,6 +126,8 @@ const ALL_SCOPES = [
 	'topics:write',
 	'topics:read',
 	'status:read',
+	'templates:read',
+	'templates:write',
 	'domains:verify',
 ];
 
@@ -226,6 +231,10 @@ afterEach(() => {
 });
 
 // ─── Auth gate (shared across every route) ──────────────────────────────────
+
+/** The contract's answer to a `dataVariables` value of the wrong shape. */
+const DATA_VARIABLES_SHAPE_MESSAGE =
+	'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them';
 
 describe('v1 auth gate', () => {
 	it('GET /api/v1/contacts → 401 with no Authorization header', async () => {
@@ -1030,26 +1039,30 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error.category).toBe('invalid_input');
 	});
 
-	it('400 invalid_input for a nested dataVariables value (not 500)', async () => {
-		const t = setupTest();
-		const key = await seedKey(t, ['transactional:send']);
-		const res = await t.fetch('/api/v1/transactional', {
-			method: 'POST',
-			headers: authHeaders(key),
-			body: JSON.stringify({
-				email: 'to@example.com',
-				slug: 'welcome',
-				dataVariables: { order: { id: 1 } },
-			}),
-		});
-		expect(res.status).toBe(400);
-		const body = await res.json();
-		expect(body.error).toEqual({
-			category: 'invalid_input',
-			message: 'dataVariables must be an object of string, number, boolean or null values',
-			data: { field: 'dataVariables.order' },
-		});
-	});
+	// A list of flat entries feeds a repeated Block; any other nesting is refused.
+	it.each([
+		['an object as a value', { order: { id: 1 } }, 'dataVariables.order'],
+		['a list of lists', { lines: [['a']] }, 'dataVariables.lines'],
+		['an object inside a list entry', { lines: [{ product: { id: 1 } }] }, 'dataVariables.lines'],
+	])(
+		'400 invalid_input for a nested dataVariables value: %s (not 500)',
+		async (_label, dataVariables, field) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['transactional:send']);
+			const res = await t.fetch('/api/v1/transactional', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: JSON.stringify({ email: 'to@example.com', slug: 'welcome', dataVariables }),
+			});
+			expect(res.status).toBe(400);
+			const body = await res.json();
+			expect(body.error).toEqual({
+				category: 'invalid_input',
+				message: DATA_VARIABLES_SHAPE_MESSAGE,
+				data: { field },
+			});
+		}
+	);
 
 	it.each([
 		[{ email: 'not-an-email', slug: 'welcome' }, 'Invalid email format', 'email'],
@@ -1122,7 +1135,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		const body = await res.json();
 		expect(body.error).toMatchObject({
 			category: 'invalid_input',
-			message: 'dataVariables must be an object of string, number, boolean or null values',
+			message: DATA_VARIABLES_SHAPE_MESSAGE,
 			data: { field: 'dataVariables.__proto__' },
 		});
 	});
@@ -3664,6 +3677,34 @@ describe('GET /api/v1/openapi.json (the instance describes its own API)', () => 
 	});
 });
 
+// ─── GET /api/v1/schemas/blocks.json ─────────────────────────────────────────
+
+describe('GET /api/v1/schemas/blocks.json (the JSON Schema of block content)', () => {
+	it('serves the generated block schema without a key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/schemas/blocks.json', { method: 'GET' });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toBe('application/schema+json');
+		expect(res.headers.get('Cache-Control')).toBe('public, max-age=300');
+		expect(await res.json()).toEqual(blockSchema);
+	});
+
+	it('lets a browser on another origin read it', async () => {
+		const t = setupTest();
+		const preflight = await t.fetch('/api/v1/schemas/blocks.json', {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		const res = await t.fetch('/api/v1/schemas/blocks.json', {
+			method: 'GET',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+	});
+});
+
 // ─── A single all-scope key works across every route ─────────────────────────
 
 describe('an all-scope key satisfies every route', () => {
@@ -3719,6 +3760,16 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	listDomains,
 	verifyDomain,
 	getLimits,
+	listTransactionalEmails: transactionalEmailsApi.listTransactionalEmails,
+	createTransactionalEmail: transactionalEmailsApi.createTransactionalEmail,
+	getTransactionalEmail: transactionalEmailsApi.getTransactionalEmail,
+	putTransactionalEmail: transactionalEmailsApi.putTransactionalEmail,
+	publishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	unpublishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	listSavedBlocks: savedBlocksApi.listSavedBlocks,
+	createSavedBlock: savedBlocksApi.createSavedBlock,
+	getSavedBlock: savedBlocksApi.getSavedBlock,
+	updateSavedBlock: savedBlocksApi.updateSavedBlock,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */
@@ -3735,12 +3786,13 @@ describe('the public contract (@owlat/public-contract)', () => {
 		}
 	});
 
-	it('documents every route other than the CORS preflights and the document itself', () => {
+	it('documents every route other than the CORS preflights and the served documents', () => {
 		for (const [path, method] of router.getRoutes()) {
 			if (method === 'OPTIONS') continue;
-			// The document is served as is, not in the `{ data }` envelope every
-			// operation answers with, so it cannot describe itself as one.
-			if (path === '/api/v1/openapi.json') continue;
+			// The OpenAPI document and the block schema are served as they are,
+			// not in the `{ data }` envelope every operation answers with, so the
+			// document cannot describe them as operations.
+			if (path === '/api/v1/openapi.json' || path === '/api/v1/schemas/blocks.json') continue;
 			const documented = PUBLIC_OPERATIONS.some(
 				(operation) =>
 					operation.method === method &&
@@ -3806,16 +3858,17 @@ describe('the public contract (@owlat/public-contract)', () => {
 		const res = await t.fetch('/api/v1/transactional', {
 			method: 'POST',
 			headers: authHeaders(key),
-			body: JSON.stringify({ email: 'ada@example.com', slug: 'welcome', dataVariables: { a: [] } }),
+			body: JSON.stringify({
+				email: 'ada@example.com',
+				slug: 'welcome',
+				dataVariables: { a: [[]] },
+			}),
 		});
 		expect(res.status).toBe(400);
 		const body: unknown = await res.json();
 		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
 		expect(body).toMatchObject({
-			error: {
-				category: 'invalid_input',
-				message: 'dataVariables must be an object of string, number, boolean or null values',
-			},
+			error: { category: 'invalid_input', message: DATA_VARIABLES_SHAPE_MESSAGE },
 		});
 	});
 });

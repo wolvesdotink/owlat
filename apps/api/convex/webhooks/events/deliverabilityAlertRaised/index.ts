@@ -7,7 +7,8 @@
  *
  * Also sent when sending on the instance stops (`checkId`
  * `deployment.sending_hold`, `delivery/sendingHoldAlerts.ts`), with the hold's
- * status and how it lifts, and with `isTest: true` by the Deliverability
+ * status and how it lifts (raised again, with `previousHoldStatus`, when the
+ * status changes while sending stays stopped), and with `isTest: true` by the Deliverability
  * Center's "Send test alert", so a receiver can tell a drill from an incident.
  *
  * Customer-facing contract: see docs/webhook-payloads.md.
@@ -29,6 +30,7 @@ const schema = v.object({
 	emailMayNotArrive: v.boolean(),
 	isTest: v.boolean(),
 	holdStatus: v.optional(v.union(v.literal('suspended'), v.literal('banned'))),
+	previousHoldStatus: v.optional(v.union(v.literal('suspended'), v.literal('banned'))),
 	lift: v.optional(v.string()),
 });
 
@@ -49,6 +51,8 @@ export interface DeliverabilityAlertRaisedInput {
 	isTest: boolean;
 	/** A sending hold only: the status that stopped sending. */
 	holdStatus?: 'suspended' | 'banned';
+	/** A sending hold only: set when this raise changed the status of a hold that already stood. */
+	previousHoldStatus?: 'suspended' | 'banned';
 	/** A sending hold only: the `SendingHoldLift` as JSON text (event data is flat). */
 	lift?: string;
 }
@@ -76,6 +80,7 @@ export const deliverabilityAlertRaised: WebhookEventModule<
 			emailMayNotArrive: input.emailMayNotArrive,
 			isTest: input.isTest,
 			...(input.holdStatus ? { holdStatus: input.holdStatus } : {}),
+			...(input.previousHoldStatus ? { previousHoldStatus: input.previousHoldStatus } : {}),
 			...(input.lift !== undefined ? { lift: input.lift } : {}),
 		};
 	},

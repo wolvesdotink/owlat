@@ -38,6 +38,18 @@ export class TransactionalResource extends BaseResource {
 	 *   },
 	 * });
 	 *
+	 * // A list feeds a repeated block, which reads `{{item.name}}`
+	 * const result = await owlat.transactional.send({
+	 *   email: 'user@example.com',
+	 *   slug: 'order-confirmation',
+	 *   dataVariables: {
+	 *     items: [
+	 *       { name: 'Tent', quantity: 1 },
+	 *       { name: 'Stove', quantity: 2 },
+	 *     ],
+	 *   },
+	 * });
+	 *
 	 * // Send by ID
 	 * const result = await owlat.transactional.send({
 	 *   email: 'user@example.com',

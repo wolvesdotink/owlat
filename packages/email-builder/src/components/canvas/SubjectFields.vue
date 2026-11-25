@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId } from 'vue';
-import { BracesIcon, PlusIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { computed, useId } from 'vue';
+import { PlusIcon, TriangleWarningIcon } from '@coolicons/vue';
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import type { Variable } from '../../types';
 import VariablePlaceholderTag from '../ui/VariablePlaceholderTag.vue';
-import VariablePickerMenu from './VariablePickerMenu.vue';
-import {
-	findSubjectVariableTrigger,
-	insertSubjectVariable,
-	unknownSubjectVariables,
-	type SubjectRange,
-} from '../../utils/subjectVariables';
+import VariableLineInput from './VariableLineInput.vue';
+import UnknownVariablesHint from './UnknownVariablesHint.vue';
+import { unknownSubjectVariables } from '../../utils/subjectVariables';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
+
+/** The length an inbox shows of the preview text, as on the marketing settings page. */
+const PREVIEW_TEXT_MAX_LENGTH = 150;
 
 const props = defineProps<{
 	name: string;
@@ -28,129 +27,42 @@ const props = defineProps<{
 	// variables come from contact fields and are not user-defined here.
 	showDataVariables?: boolean;
 	dataVariables?: Variable[];
+	// The inbox preview line. Its row shows only when the host edits it here;
+	// the send personalizes its tokens like the subject's.
+	previewText?: string;
 }>();
 
 const emit = defineEmits<{
 	(e: 'update:name', value: string): void;
 	(e: 'update:subject', value: string): void;
+	(e: 'update:previewText', value: string): void;
 	/** Open the define-variable dialog, optionally prefilled with a key. */
 	(e: 'add-variable', key?: string): void;
 }>();
 
 const nameId = useId();
 const subjectId = useId();
-const pickerId = useId();
 const hintId = useId();
+const previewTextId = useId();
+const previewTextHintId = useId();
 
-const subjectInput = ref<HTMLInputElement | null>(null);
-const subjectFrame = ref<HTMLElement | null>(null);
-
-const subjectVariables = computed(() => props.variables ?? []);
-const canInsertVariables = computed(() => subjectVariables.value.length > 0);
-
-// Picker state. `range` is the text a pick replaces: the typed `{{query` when
-// opened by typing, the current selection when opened by the button.
-const pickerOpen = ref(false);
-const pickerQuery = ref('');
-const pickerIndex = ref(0);
-const pickerTop = ref(0);
-let pickerRange: SubjectRange = { start: 0, end: 0 };
-let pickerFromButton = false;
-
-const filteredVariables = computed(() => {
-	const q = pickerQuery.value.toLowerCase();
-	return subjectVariables.value.filter(
-		(v) => v.key.toLowerCase().includes(q) || v.label.toLowerCase().includes(q)
-	);
-});
-const pickerVisible = computed(() => pickerOpen.value && filteredVariables.value.length > 0);
-
-function openPicker(range: SubjectRange, query: string, fromButton: boolean) {
-	pickerRange = range;
-	pickerFromButton = fromButton;
-	if (!pickerOpen.value || pickerQuery.value !== query) pickerIndex.value = 0;
-	pickerQuery.value = query;
-	pickerTop.value = (subjectFrame.value?.offsetHeight ?? 30) + 4;
-	pickerOpen.value = true;
-}
-
-function closePicker() {
-	pickerOpen.value = false;
-	pickerQuery.value = '';
-	pickerIndex.value = 0;
-}
-
-function syncTrigger(input: HTMLInputElement) {
-	const caret = input.selectionStart ?? input.value.length;
-	const trigger = findSubjectVariableTrigger(input.value, caret);
-	if (trigger) openPicker(trigger.range, trigger.query, false);
-	else closePicker();
-}
-
-function handleSubjectInput(event: Event) {
-	const input = event.target as HTMLInputElement;
-	emit('update:subject', input.value);
-	if (canInsertVariables.value) syncTrigger(input);
-}
-
-function handleInsertButton() {
-	const input = subjectInput.value;
-	if (!input) return;
-	const end = props.subject.length;
-	// A field that was never focused reports a caret at 0; append instead.
-	const focused = document.activeElement === input;
-	const range = focused
-		? { start: input.selectionStart ?? end, end: input.selectionEnd ?? end }
-		: { start: end, end };
-	input.focus();
-	input.setSelectionRange(range.start, range.end);
-	openPicker(range, '', true);
-}
-
-async function pickVariable(variable: Variable) {
-	const next = insertSubjectVariable(props.subject, variable.key, pickerRange, {
-		padBefore: pickerFromButton,
-	});
-	closePicker();
-	emit('update:subject', next.value);
-	await nextTick();
-	subjectInput.value?.focus();
-	subjectInput.value?.setSelectionRange(next.caret, next.caret);
-}
-
-function handleSubjectKeydown(event: KeyboardEvent) {
-	if (!pickerVisible.value) return;
-	if (event.key === 'ArrowDown') {
-		event.preventDefault();
-		pickerIndex.value = Math.min(pickerIndex.value + 1, filteredVariables.value.length - 1);
-	} else if (event.key === 'ArrowUp') {
-		event.preventDefault();
-		pickerIndex.value = Math.max(pickerIndex.value - 1, 0);
-	} else if (event.key === 'Enter' || event.key === 'Tab') {
-		event.preventDefault();
-		const selected = filteredVariables.value[pickerIndex.value];
-		if (selected) void pickVariable(selected);
-	} else if (event.key === 'Escape') {
-		// Keep the editor's global Escape (clear selection / exit focus mode)
-		// from also firing while the picker is what the user is dismissing.
-		event.preventDefault();
-		event.stopPropagation();
-		closePicker();
-	}
-}
+const lineVariables = computed(() => props.variables ?? []);
+const canInsertVariables = computed(() => lineVariables.value.length > 0);
 
 // Only a data-variable email declares its full key set; for any other editor
 // a key missing from `variables` is not evidence of a typo.
-const unknownKeys = computed(() =>
-	props.showDataVariables
+function unknownKeysIn(text: string): string[] {
+	return props.showDataVariables
 		? unknownSubjectVariables(
-				props.subject,
-				subjectVariables.value.map((v) => v.key)
+				text,
+				lineVariables.value.map((v) => v.key)
 			)
-		: []
-);
-const token = (key: string) => `{{${key}}}`;
+		: [];
+}
+const unknownKeys = computed(() => unknownKeysIn(props.subject));
+const unknownPreviewKeys = computed(() => unknownKeysIn(props.previewText ?? ''));
 const isSubjectEmpty = computed(() => props.subject.trim() === '');
+const showPreviewText = computed(() => !props.hideSubject && props.previewText !== undefined);
 
 const nameLabel = computed(() =>
 	props.mode === 'block' ? t('builder.header.blockName') : t('builder.header.templateName')
@@ -160,6 +72,11 @@ const subjectPlaceholder = computed(() =>
 	canInsertVariables.value
 		? t('builder.subject.placeholderWithVariables')
 		: t('builder.header.subject')
+);
+const previewTextPlaceholder = computed(() =>
+	canInsertVariables.value
+		? t('builder.subject.previewTextPlaceholderWithVariables')
+		: t('builder.subject.previewTextPlaceholder')
 );
 </script>
 
@@ -190,62 +107,19 @@ const subjectPlaceholder = computed(() =>
 				{{ t('builder.subject.subject') }}
 			</label>
 			<div class="flex-1 min-w-0">
-				<div class="relative">
-					<div
-						ref="subjectFrame"
-						class="flex items-center rounded-md border bg-transparent transition-colors focus-within:border-brand focus-within:ring-1 focus-within:ring-brand/30"
-						:class="
-							isSubjectEmpty || unknownKeys.length
-								? 'border-warning/60 hover:border-warning'
-								: 'border-border-default hover:border-border-strong'
-						"
-					>
-						<input
-							:id="subjectId"
-							ref="subjectInput"
-							:value="subject"
-							type="text"
-							role="combobox"
-							:aria-label="t('builder.header.subject')"
-							aria-autocomplete="list"
-							:aria-expanded="pickerVisible"
-							:aria-controls="pickerVisible ? pickerId : undefined"
-							:aria-activedescendant="
-								pickerVisible ? `${pickerId}-option-${pickerIndex}` : undefined
-							"
-							:aria-describedby="isSubjectEmpty || unknownKeys.length ? hintId : undefined"
-							autocomplete="off"
-							class="flex-1 min-w-0 bg-transparent px-2 py-1 text-text-primary text-sm focus:outline-none"
-							:placeholder="subjectPlaceholder"
-							@input="handleSubjectInput"
-							@keydown="handleSubjectKeydown"
-							@click="canInsertVariables && syncTrigger($event.target as HTMLInputElement)"
-							@blur="closePicker"
-						/>
-						<UiTooltip v-if="canInsertVariables" :text="t('builder.subject.insertVariableTitle')">
-							<button
-								type="button"
-								data-testid="subject-insert-variable"
-								class="mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors"
-								:aria-label="t('builder.subject.insertVariable')"
-								@mousedown.prevent
-								@click="handleInsertButton"
-							>
-								<BracesIcon :size="12" />
-								{{ t('builder.subject.variable') }}
-							</button>
-						</UiTooltip>
-					</div>
-					<VariablePickerMenu
-						v-if="pickerVisible"
-						:id="pickerId"
-						:variables="filteredVariables"
-						:query="pickerQuery"
-						:selected-index="pickerIndex"
-						:position="{ top: pickerTop, left: 0 }"
-						@select="pickVariable"
-					/>
-				</div>
+				<VariableLineInput
+					:id="subjectId"
+					:value="subject"
+					:variables="lineVariables"
+					:field-label="t('builder.header.subject')"
+					:placeholder="subjectPlaceholder"
+					:insert-title="t('builder.subject.insertVariableTitle')"
+					:insert-label="t('builder.subject.insertVariable')"
+					test-id="subject-insert-variable"
+					:warn="isSubjectEmpty || unknownKeys.length > 0"
+					:described-by="isSubjectEmpty || unknownKeys.length ? hintId : undefined"
+					@update:value="emit('update:subject', $event)"
+				/>
 
 				<p
 					v-if="isSubjectEmpty"
@@ -255,29 +129,42 @@ const subjectPlaceholder = computed(() =>
 					<TriangleWarningIcon :size="12" class="shrink-0" />
 					{{ t('builder.subject.empty') }}
 				</p>
-				<div
+				<UnknownVariablesHint
 					v-else-if="unknownKeys.length"
 					:id="hintId"
-					class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-warning"
-				>
-					<TriangleWarningIcon :size="12" class="shrink-0" />
-					<span>
-						<template v-for="(key, index) in unknownKeys" :key="key">
-							<span v-if="index > 0">, </span>
-							<code class="font-mono">{{ token(key) }}</code>
-						</template>
-						{{ t('builder.subject.unknownVariables', { count: unknownKeys.length }) }}
-					</span>
-					<button
-						v-for="key in unknownKeys"
-						:key="`define-${key}`"
-						type="button"
-						class="rounded px-1 font-medium text-text-secondary underline underline-offset-2 hover:text-text-primary"
-						@click="emit('add-variable', key)"
-					>
-						{{ t('builder.subject.define', { key }) }}
-					</button>
-				</div>
+					:keys="unknownKeys"
+					@add-variable="emit('add-variable', $event)"
+				/>
+			</div>
+		</div>
+		<div v-if="showPreviewText" class="flex items-start gap-3">
+			<label
+				:for="previewTextId"
+				class="text-xs font-medium text-text-secondary w-16 shrink-0 text-right pt-[7px]"
+			>
+				{{ t('builder.subject.previewText') }}
+			</label>
+			<div class="flex-1 min-w-0">
+				<VariableLineInput
+					:id="previewTextId"
+					:value="previewText ?? ''"
+					:variables="lineVariables"
+					:field-label="t('builder.subject.previewTextLabel')"
+					:placeholder="previewTextPlaceholder"
+					:insert-title="t('builder.subject.previewTextInsertVariableTitle')"
+					:insert-label="t('builder.subject.previewTextInsertVariable')"
+					test-id="preview-text-insert-variable"
+					:warn="unknownPreviewKeys.length > 0"
+					:described-by="unknownPreviewKeys.length ? previewTextHintId : undefined"
+					:max-length="PREVIEW_TEXT_MAX_LENGTH"
+					@update:value="emit('update:previewText', $event)"
+				/>
+				<UnknownVariablesHint
+					v-if="unknownPreviewKeys.length"
+					:id="previewTextHintId"
+					:keys="unknownPreviewKeys"
+					@add-variable="emit('add-variable', $event)"
+				/>
 			</div>
 		</div>
 

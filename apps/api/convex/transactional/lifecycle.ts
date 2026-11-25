@@ -206,6 +206,7 @@ export interface TransactionalEmailInsert {
 	name: string;
 	slug: string;
 	subject?: string;
+	previewText?: string;
 	content?: string;
 	dataVariablesSchema?: Doc<'transactionalEmails'>['dataVariablesSchema'];
 	/** Variables a caller may leave out (`transactional/dispatchContent.ts`). */
@@ -247,11 +248,12 @@ export async function insertTransactionalEmail(
 	const now = Date.now();
 	const defaultLanguage = args.defaultLanguage ?? 'en';
 	const subject = args.subject ?? '';
+	const previewText = args.previewText?.trim() || undefined;
 	const searchableText = buildSearchableText(args.name, subject, args.slug);
 	const content = sanitizeStoredBlocksJson(args.content ?? '[]');
 	const rendered = args.render
 		? renderForWrite(
-				{ content, subject, defaultLanguage, supportedLanguages: [defaultLanguage] },
+				{ content, subject, previewText, defaultLanguage, supportedLanguages: [defaultLanguage] },
 				'data',
 				await loadEmailTheme(ctx)
 			)
@@ -261,6 +263,7 @@ export async function insertTransactionalEmail(
 		name: args.name,
 		slug: args.slug,
 		subject,
+		...(previewText !== undefined ? { previewText } : {}),
 		content,
 		...(rendered
 			? { htmlContent: rendered.html, plainTextContent: rendered.plainTextContent }

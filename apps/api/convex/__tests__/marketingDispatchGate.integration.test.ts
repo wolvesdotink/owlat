@@ -22,7 +22,9 @@ import {
 	createTestCampaign,
 	createTestContact,
 	createTestEmailSend,
+	createTestAutomation,
 	createTestInstanceSettings,
+	createTestTopic,
 } from './factories';
 import { SENDING_HOLD_RECHECK_MS } from '../workspaces/abuseGate';
 
@@ -127,6 +129,34 @@ describe('worker — marketing dispatch gate', () => {
 			expect(fetchSpy).not.toHaveBeenCalled();
 		}
 	);
+
+	it("an automation Send whose contact left the automation's topic after enqueue is never dispatched", async () => {
+		const t = convexTest(schema, modules);
+		const { sendId, contactId } = await seedQueuedAutomationSend(t, { doiStatus: 'confirmed' });
+		const membershipId = await t.run(async (ctx) => {
+			const topicId = await ctx.db.insert('topics', createTestTopic());
+			const automationId = await ctx.db.insert(
+				'automations',
+				createTestAutomation({
+					status: 'active',
+					triggerType: 'topic_subscribed',
+					triggerConfig: { topicId },
+				})
+			);
+			await ctx.db.patch(sendId, { automationId });
+			return await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
+		});
+		await t.run(async (ctx) => ctx.db.delete(membershipId));
+		const fetchSpy = vi.fn();
+		global.fetch = fetchSpy as unknown as typeof fetch;
+
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+			envelopeInput: automationEnvelope(sendId, contactId),
+		});
+
+		expect(result).toEqual({ kind: 'suppressed', reason: 'topic_unsubscribed' });
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
 
 	it('a Send whose contact row was erased is never dispatched', async () => {
 		const t = convexTest(schema, modules);

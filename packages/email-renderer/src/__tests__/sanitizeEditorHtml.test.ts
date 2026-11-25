@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeEditorHtml, sanitizeRawHtml } from '../sanitize';
+import {
+	RAW_HTML_POLICY,
+	TEXT_HTML_POLICY,
+	sanitizeEditorHtml,
+	sanitizeRawHtml,
+} from '../sanitize';
 
 // Markup the builder's editors produce for ordinary formatting, written the
 // way sanitize-html serializes it, so a round trip must return it unchanged.
@@ -52,5 +57,38 @@ describe('sanitizeEditorHtml — unsafe content', () => {
 		const input =
 			'<a href="https://x.test" onclick="x()">a</a><form><input></form><style>p{}</style>';
 		expect(sanitizeEditorHtml(input)).toBe(sanitizeRawHtml(input));
+	});
+});
+
+describe('the policy summaries the docs are generated from', () => {
+	it('lists the tags the text policy keeps, and only those', () => {
+		for (const tag of TEXT_HTML_POLICY.tags) {
+			const html =
+				tag === 'br' || tag === 'hr' || tag === 'img' || tag === 'source'
+					? `<${tag}>`
+					: `<${tag}>x</${tag}>`;
+			expect(sanitizeEditorHtml(html), tag).toContain(`<${tag}`);
+		}
+		expect(TEXT_HTML_POLICY.tags).not.toContain('script');
+		expect(sanitizeEditorHtml('<marquee>x</marquee>')).toBe('x');
+	});
+
+	it('lists a style property with the pattern its value must match', () => {
+		expect(TEXT_HTML_POLICY.styles['font-weight']).toEqual([
+			'/^(normal|bold|bolder|lighter|[1-9]00)$/i',
+		]);
+		expect(sanitizeEditorHtml('<p style="font-weight: bold; position: fixed">x</p>')).toBe(
+			'<p style="font-weight:bold">x</p>'
+		);
+	});
+
+	it('differs between text and raw HTML only by strikethrough and the variable chip', () => {
+		expect(TEXT_HTML_POLICY.tags.filter((tag) => !RAW_HTML_POLICY.tags.includes(tag))).toEqual([
+			's',
+			'strike',
+		]);
+		expect(TEXT_HTML_POLICY.attributes['span']).toEqual(['data-variable', 'contenteditable']);
+		expect(RAW_HTML_POLICY.attributes['span']).toBeUndefined();
+		expect(TEXT_HTML_POLICY.styles).toEqual(RAW_HTML_POLICY.styles);
 	});
 });

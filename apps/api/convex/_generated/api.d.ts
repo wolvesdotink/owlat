@@ -156,6 +156,7 @@ import type * as migrations_0073_backfill_label_membership from '../migrations/0
 import type * as migrations_0074_backfill_review_queue_counts from '../migrations/0074_backfill_review_queue_counts.js';
 import type * as migrations_0075_register_system_sender_domain from '../migrations/0075_register_system_sender_domain.js';
 import type * as migrations_0076_backfill_member_profiles from '../migrations/0076_backfill_member_profiles.js';
+import type * as migrations_0077_backfill_template_name_sort_key from '../migrations/0077_backfill_template_name_sort_key.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
@@ -406,6 +407,7 @@ import type * as automations_triggers_event_received_index from '../automations/
 import type * as automations_triggers_topic_subscribed_index from '../automations/triggers/topic_subscribed/index.js';
 import type * as automations_triggers_types from '../automations/triggers/types.js';
 import type * as automations_types from '../automations/types.js';
+import type * as automations_waitingRuns from '../automations/waitingRuns.js';
 import type * as autonomy_feedback from '../autonomy/feedback.js';
 import type * as autonomy_outcome from '../autonomy/outcome.js';
 import type * as autonomy_policy from '../autonomy/policy.js';
@@ -592,6 +594,7 @@ import type * as delivery_attachmentFetch from '../delivery/attachmentFetch.js';
 import type * as delivery_automatedClicks from '../delivery/automatedClicks.js';
 import type * as delivery_automatedOpens from '../delivery/automatedOpens.js';
 import type * as delivery_cronRegistration from '../delivery/cronRegistration.js';
+import type * as delivery_alertEmailCopy from '../delivery/alertEmailCopy.js';
 import type * as delivery_checklist from '../delivery/checklist.js';
 import type * as delivery_checklistAlertAudience from '../delivery/checklistAlertAudience.js';
 import type * as delivery_checklistAlertChannelLedger from '../delivery/checklistAlertChannelLedger.js';
@@ -1814,6 +1817,7 @@ import type * as providers_composition from '../providers/composition.js';
 import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
+import type * as publicApi_blockSchemaHttp from '../publicApi/blockSchemaHttp.js';
 import type * as publicApi_domainCheck from '../publicApi/domainCheck.js';
 import type * as publicApi_domainCheckHttp from '../publicApi/domainCheckHttp.js';
 import type * as publicApi_domains from '../publicApi/domains.js';
@@ -1821,9 +1825,14 @@ import type * as publicApi_domainsHttp from '../publicApi/domainsHttp.js';
 import type * as publicApi_events from '../publicApi/events.js';
 import type * as publicApi_limitsHttp from '../publicApi/limitsHttp.js';
 import type * as publicApi_openApiHttp from '../publicApi/openApiHttp.js';
+import type * as publicApi_savedBlocks from '../publicApi/savedBlocks.js';
+import type * as publicApi_savedBlocksHttp from '../publicApi/savedBlocksHttp.js';
 import type * as publicApi_status from '../publicApi/status.js';
 import type * as publicApi_statusHttp from '../publicApi/statusHttp.js';
+import type * as publicApi_templateContent from '../publicApi/templateContent.js';
 import type * as publicApi_topics from '../publicApi/topics.js';
+import type * as publicApi_transactionalEmails from '../publicApi/transactionalEmails.js';
+import type * as publicApi_transactionalEmailsHttp from '../publicApi/transactionalEmailsHttp.js';
 import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
@@ -1905,6 +1914,7 @@ import type * as schema_seedPlacement from '../schema/seedPlacement.js';
 import type * as schema_semanticFiles from '../schema/semanticFiles.js';
 import type * as schema_sendAssignments from '../schema/sendAssignments.js';
 import type * as schema_sendCompletionFailures from '../schema/sendCompletionFailures.js';
+import type * as schema_sendingHoldAlerts from '../schema/sendingHoldAlerts.js';
 import type * as schema_smtpResponseCategories from '../schema/smtpResponseCategories.js';
 import type * as schema_snds from '../schema/snds.js';
 import type * as schema_templates from '../schema/templates.js';
@@ -1923,8 +1933,10 @@ import type * as schema_workerServers from '../schema/workerServers.js';
 import type * as seedDemo_index from '../seedDemo/index.js';
 import type * as seedDemo_indexHttp from '../seedDemo/indexHttp.js';
 import type * as seedDemo_loaders_accounts from '../seedDemo/loaders/accounts.js';
+import type * as seedDemo_loaders_automationRuns from '../seedDemo/loaders/automationRuns.js';
 import type * as seedDemo_loaders_automations from '../seedDemo/loaders/automations.js';
 import type * as seedDemo_loaders_complianceTelemetry from '../seedDemo/loaders/complianceTelemetry.js';
+import type * as seedDemo_loaders_connectedMailboxes from '../seedDemo/loaders/connectedMailboxes.js';
 import type * as seedDemo_loaders_campaigns from '../seedDemo/loaders/campaigns.js';
 import type * as seedDemo_loaders_contactTopics from '../seedDemo/loaders/contactTopics.js';
 import type * as seedDemo_loaders_contacts from '../seedDemo/loaders/contacts.js';
@@ -1938,6 +1950,7 @@ import type * as seedDemo_loaders_types from '../seedDemo/loaders/types.js';
 import type * as seedDemo_loaders_webhooks from '../seedDemo/loaders/webhooks.js';
 import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
+import type * as seedDemo_sendingState from '../seedDemo/sendingState.js';
 import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as search_global from '../search/global.js';
 import type * as segments_listing from '../segments/listing.js';
@@ -1967,6 +1980,7 @@ import type * as transactional_attachmentIntake from '../transactional/attachmen
 import type * as transactional_dispatch from '../transactional/dispatch.js';
 import type * as transactional_dispatchContent from '../transactional/dispatchContent.js';
 import type * as transactional_dispatchDecision from '../transactional/dispatchDecision.js';
+import type * as transactional_editing from '../transactional/editing.js';
 import type * as transactional_emails from '../transactional/emails.js';
 import type * as transactional_lifecycle from '../transactional/lifecycle.js';
 import type * as transactional_lifecycleReducer from '../transactional/lifecycleReducer.js';
@@ -2051,6 +2065,7 @@ import type * as webhooks_sendingScopeQueries from '../webhooks/sendingScopeQuer
 import type * as webhooks_types from '../webhooks/types.js';
 import type * as webhooks_unresolvedBounce from '../webhooks/unresolvedBounce.js';
 import type * as webhooks_unresolvedFeedback from '../webhooks/unresolvedFeedback.js';
+import type * as webhooks_urlPolicy from '../webhooks/urlPolicy.js';
 import type * as webhooks_workspaceDeletionAck from '../webhooks/workspaceDeletionAck.js';
 import type * as webhooks_yahooCflObservation from '../webhooks/yahooCflObservation.js';
 import type * as workspaces_abuseGate from '../workspaces/abuseGate.js';
@@ -2413,6 +2428,7 @@ declare const fullApi: ApiFromModules<{
 	'automations/triggers/topic_subscribed/index': typeof automations_triggers_topic_subscribed_index;
 	'automations/triggers/types': typeof automations_triggers_types;
 	'automations/types': typeof automations_types;
+	'automations/waitingRuns': typeof automations_waitingRuns;
 	'automations/steps/catalog': typeof automations_steps_catalog;
 	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
 	'automations/triggers/catalog': typeof automations_triggers_catalog;
@@ -2611,6 +2627,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendLifecycle/sourceFinalization': typeof delivery_sendLifecycle_sourceFinalization;
 	'delivery/sendLifecycle/sendTimeEffects': typeof delivery_sendLifecycle_sendTimeEffects;
 	'delivery/contactToken': typeof delivery_contactToken;
+	'delivery/alertEmailCopy': typeof delivery_alertEmailCopy;
 	'delivery/checklist': typeof delivery_checklist;
 	'delivery/checklistAlertAudience': typeof delivery_checklistAlertAudience;
 	'delivery/checklistAlertChannelLedger': typeof delivery_checklistAlertChannelLedger;
@@ -3994,6 +4011,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0074_backfill_review_queue_counts': typeof migrations_0074_backfill_review_queue_counts;
 	'migrations/0075_register_system_sender_domain': typeof migrations_0075_register_system_sender_domain;
 	'migrations/0076_backfill_member_profiles': typeof migrations_0076_backfill_member_profiles;
+	'migrations/0077_backfill_template_name_sort_key': typeof migrations_0077_backfill_template_name_sort_key;
 	'migrations/admin': typeof migrations_admin;
 	'migrations/cronRegistration': typeof migrations_cronRegistration;
 	'migrations/manifest': typeof migrations_manifest;
@@ -4085,6 +4103,7 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedback': typeof providers_feedback;
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
+	'publicApi/blockSchemaHttp': typeof publicApi_blockSchemaHttp;
 	'publicApi/domainCheck': typeof publicApi_domainCheck;
 	'publicApi/domainCheckHttp': typeof publicApi_domainCheckHttp;
 	'publicApi/domains': typeof publicApi_domains;
@@ -4092,9 +4111,14 @@ declare const fullApi: ApiFromModules<{
 	'publicApi/events': typeof publicApi_events;
 	'publicApi/limitsHttp': typeof publicApi_limitsHttp;
 	'publicApi/openApiHttp': typeof publicApi_openApiHttp;
+	'publicApi/savedBlocks': typeof publicApi_savedBlocks;
+	'publicApi/savedBlocksHttp': typeof publicApi_savedBlocksHttp;
 	'publicApi/status': typeof publicApi_status;
 	'publicApi/statusHttp': typeof publicApi_statusHttp;
+	'publicApi/templateContent': typeof publicApi_templateContent;
 	'publicApi/topics': typeof publicApi_topics;
+	'publicApi/transactionalEmails': typeof publicApi_transactionalEmails;
+	'publicApi/transactionalEmailsHttp': typeof publicApi_transactionalEmailsHttp;
 	'publicApi/v1Http': typeof publicApi_v1Http;
 }> & ApiFromModules<{
 	'push/config': typeof push_config;
@@ -4184,6 +4208,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/semanticFiles': typeof schema_semanticFiles;
 	'schema/sendAssignments': typeof schema_sendAssignments;
 	'schema/sendCompletionFailures': typeof schema_sendCompletionFailures;
+	'schema/sendingHoldAlerts': typeof schema_sendingHoldAlerts;
 	'schema/smtpResponseCategories': typeof schema_smtpResponseCategories;
 	'schema/snds': typeof schema_snds;
 	'schema/templates': typeof schema_templates;
@@ -4208,8 +4233,10 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/index': typeof seedDemo_index;
 	'seedDemo/indexHttp': typeof seedDemo_indexHttp;
 	'seedDemo/loaders/accounts': typeof seedDemo_loaders_accounts;
+	'seedDemo/loaders/automationRuns': typeof seedDemo_loaders_automationRuns;
 	'seedDemo/loaders/automations': typeof seedDemo_loaders_automations;
 	'seedDemo/loaders/complianceTelemetry': typeof seedDemo_loaders_complianceTelemetry;
+	'seedDemo/loaders/connectedMailboxes': typeof seedDemo_loaders_connectedMailboxes;
 	'seedDemo/loaders/campaigns': typeof seedDemo_loaders_campaigns;
 	'seedDemo/loaders/contactTopics': typeof seedDemo_loaders_contactTopics;
 	'seedDemo/loaders/contacts': typeof seedDemo_loaders_contacts;
@@ -4223,6 +4250,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/loaders/webhooks': typeof seedDemo_loaders_webhooks;
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
+	'seedDemo/sendingState': typeof seedDemo_sendingState;
 }> & ApiFromModules<{
 	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
@@ -4260,6 +4288,7 @@ declare const fullApi: ApiFromModules<{
 	'transactional/dispatch': typeof transactional_dispatch;
 	'transactional/dispatchContent': typeof transactional_dispatchContent;
 	'transactional/dispatchDecision': typeof transactional_dispatchDecision;
+	'transactional/editing': typeof transactional_editing;
 	'transactional/emails': typeof transactional_emails;
 	'transactional/lifecycle': typeof transactional_lifecycle;
 	'transactional/lifecycleReducer': typeof transactional_lifecycleReducer;
@@ -4345,6 +4374,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/types': typeof webhooks_types;
 	'webhooks/unresolvedBounce': typeof webhooks_unresolvedBounce;
 	'webhooks/unresolvedFeedback': typeof webhooks_unresolvedFeedback;
+	'webhooks/urlPolicy': typeof webhooks_urlPolicy;
 	'webhooks/workspaceDeletionAck': typeof webhooks_workspaceDeletionAck;
 	'webhooks/yahooCflObservation': typeof webhooks_yahooCflObservation;
 }> & ApiFromModules<{

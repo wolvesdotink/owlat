@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { HandleDuplicates } from '~/composables/useCsvImport';
 import IntegrationImportCompleteStep from './integrationImport/CompleteStep.vue';
-import IntegrationImportConfigureStep from './integrationImport/ConfigureStep.vue';
 import IntegrationImportImportingStep from './integrationImport/ImportingStep.vue';
 import IntegrationImportSelectStep from './integrationImport/SelectStep.vue';
 import { CircleWarningIcon, LinkHorizontalIcon, UploadIcon } from '@coolicons/vue';
@@ -18,6 +18,24 @@ const convex = useConvex();
 const { showToast } = useToast();
 
 const isOpen = defineModel<boolean>('open', { default: false });
+
+// The configure form is the largest step and shows only after a provider is
+// picked, so it loads when the modal opens rather than with the contacts page
+// that mounts the modal. Picking a provider waits for it: the step never renders
+// empty, and a chunk that cannot be fetched shows the modal's error line. The
+// step renders from the same load the pick awaited: a second import() would
+// leave the step blank until it settles. A failed load is forgotten, so the
+// next pick fetches again.
+const importConfigureStep = () => import('./integrationImport/ConfigureStep.vue');
+let configureStepLoad: ReturnType<typeof importConfigureStep> | undefined;
+const loadConfigureStep = () =>
+	(configureStepLoad ??= importConfigureStep().catch((error: unknown) => {
+		configureStepLoad = undefined;
+		throw error;
+	}));
+const IntegrationImportConfigureStep = defineAsyncComponent(loadConfigureStep);
+/** Counts openings, so a pick still loading when the modal closes cannot touch the next one. */
+let opening = 0;
 
 type IntegrationImportStep = 'select' | 'configure' | 'importing' | 'complete';
 type IntegrationType = 'mailchimp' | 'stripe' | 'mandrill' | null;
@@ -95,8 +113,11 @@ watch(importProgress, (p) => {
 });
 
 watch(isOpen, (newValue) => {
+	opening += 1;
 	if (!newValue) return;
 	reset();
+	// A failed early fetch is retried, and reported, by the provider pick.
+	loadConfigureStep().catch(() => {});
 	// A run keeps going after the modal closes; reopening returns to its
 	// progress instead of offering a second import next to it.
 	const p = importProgress.value;
@@ -123,10 +144,20 @@ const close = () => {
 	isOpen.value = false;
 };
 
-const selectIntegration = (id: IntegrationType) => {
+const selectIntegration = async (id: IntegrationType) => {
+	error.value = '';
+	const pickedIn = opening;
+	const loaded = await loadConfigureStep().then(
+		() => true,
+		() => false
+	);
+	if (pickedIn !== opening) return;
+	if (!loaded) {
+		error.value = t('shared.operationError.network');
+		return;
+	}
 	selectedIntegration.value = id;
 	step.value = 'configure';
-	error.value = '';
 };
 
 const goBackToSelect = () => {

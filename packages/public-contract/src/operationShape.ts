@@ -22,6 +22,8 @@ export type PublicApiScope =
 	| 'topics:write'
 	| 'topics:read'
 	| 'status:read'
+	| 'templates:read'
+	| 'templates:write'
 	| 'domains:verify';
 
 /** The `scope` of an operation every authenticated key may call, whatever its scopes. */
@@ -43,7 +45,15 @@ export interface PublicOperation {
 	method: HttpMethod;
 	/** The path with `{name}` placeholders for its path parameters. */
 	path: string;
-	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Domains' | 'Health';
+	tag:
+		| 'Contacts'
+		| 'Events'
+		| 'Transactional'
+		| 'Templates'
+		| 'Topics'
+		| 'Status'
+		| 'Domains'
+		| 'Health';
 	summary: string;
 	/**
 	 * The key scope the operation needs: {@link ANY_KEY} when any key may call
@@ -54,6 +64,11 @@ export interface PublicOperation {
 	queryParameters: readonly QueryParameter[];
 	/** Whether an `Idempotency-Key` header makes a repeat answer with the first response. */
 	idempotent: boolean;
+	/**
+	 * Whether the operation takes an `If-Match` header with the revision the
+	 * caller read, and answers with the revision as an `ETag`.
+	 */
+	conditional?: boolean;
 	/** Name of the request body in the document's components, and its schema. */
 	request: { name: string; schema: z.ZodType } | null;
 	/**
@@ -95,9 +110,22 @@ export const PAGE_CURSOR: QueryParameter = {
 	schema: { type: 'string' },
 };
 
+export const TRANSACTIONAL_EMAIL_SLUG: PathParameter = {
+	name: 'slug',
+	description: "The transactional email's slug.",
+};
+export const SAVED_BLOCK_ID: PathParameter = { name: 'id', description: "The saved block's ID." };
+
 export const SEND_ID: PathParameter = {
 	name: 'sendId',
 	description: 'The `transactionalEmailId` the send call answered with.',
+};
+
+export const WHILE_PUBLISHED: QueryParameter = {
+	name: 'whilePublished',
+	description:
+		'`true` to change a published email in place. The change goes live at once, after the content scan; without it a published email is refused with `email_published`.',
+	schema: { type: 'boolean', default: false },
 };
 
 export const SEND_LIST_FILTERS: readonly QueryParameter[] = [

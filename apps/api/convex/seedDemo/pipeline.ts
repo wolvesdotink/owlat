@@ -17,7 +17,7 @@
  */
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import type { TableNames } from '../_generated/dataModel';
+import type { Id, TableNames } from '../_generated/dataModel';
 
 import accountsFixture from './fixtures/accounts.json';
 import topicsFixture from './fixtures/topics.json';
@@ -32,6 +32,8 @@ import webhooksFixture from './fixtures/webhooks.json';
 import domainsFixture from './fixtures/domains.json';
 import mailboxesFixture from './fixtures/mailboxes.json';
 import complianceTelemetryFixture from './fixtures/complianceTelemetry.json';
+import automationRunsFixture from './fixtures/automationRuns.json';
+import connectedMailboxesFixture from './fixtures/connectedMailboxes.json';
 
 import { accountsLoader } from './loaders/accounts';
 import { topicsLoader } from './loaders/topics';
@@ -46,6 +48,8 @@ import { webhooksLoader } from './loaders/webhooks';
 import { domainsLoader } from './loaders/domains';
 import { mailboxesLoader } from './loaders/mailboxes';
 import { complianceTelemetryLoader } from './loaders/complianceTelemetry';
+import { automationRunsLoader } from './loaders/automationRuns';
+import { connectedMailboxesLoader } from './loaders/connectedMailboxes';
 import type { Loader, LoaderOptions, SeedRefs } from './loaders/types';
 
 // Order matters: each entry's `dependencies` reference earlier modules in the
@@ -60,9 +64,11 @@ export const LOADERS: Array<{ loader: Loader; records: unknown[] }> = [
 	{ loader: transactionalEmailsLoader, records: transactionalEmailsFixture },
 	{ loader: campaignsLoader, records: campaignsFixture },
 	{ loader: automationsLoader, records: automationsFixture },
+	{ loader: automationRunsLoader, records: automationRunsFixture },
 	{ loader: webhooksLoader, records: webhooksFixture },
 	{ loader: domainsLoader, records: domainsFixture },
 	{ loader: mailboxesLoader, records: mailboxesFixture },
+	{ loader: connectedMailboxesLoader, records: connectedMailboxesFixture },
 	{ loader: complianceTelemetryLoader, records: complianceTelemetryFixture },
 ];
 
@@ -75,7 +81,10 @@ export const LOADERS: Array<{ loader: Loader; records: unknown[] }> = [
  *   - `mailboxes` — hosted mailboxes are provisioned FOR those accounts (and
  *     `seedDemo/messages.ts` delivers into them). Without the accounts they
  *     have no owner, and they are BetterAuth/tenant rows the tagged sweep
- *     cannot take back.
+ *     cannot take back. `connectedMailboxes` likewise.
+ *   - `automationRuns` — a step waiting for the sending setup is live: on a
+ *     real install it would send a demo email to a sample contact as soon as
+ *     the operator's sending works.
  *   - `complianceTelemetry` — Gmail bulk-sender volume rollups for
  *     `demo.example`, thousands of delivered messages a day. Harmless as dev
  *     scenery; on a real install it reads as a genuine domain sitting just
@@ -131,6 +140,22 @@ export interface SeedSummary {
 	inserted: Record<string, number>;
 	skipped: Record<string, number>;
 	deleted?: Record<string, number>;
+}
+
+/**
+ * Delete a seeded campaign's stat shards. Shard rows carry no `seedTag`, so
+ * every sweep that deletes a seeded campaign calls this first; a shard left
+ * behind would point at a campaign that no longer exists.
+ */
+export async function deleteCampaignStatShards(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>
+): Promise<void> {
+	const shards = await ctx.db
+		.query('campaignStatShards')
+		.withIndex('by_campaign_and_shard', (q) => q.eq('campaignId', campaignId))
+		.collect(); // bounded: at most one row per shard
+	for (const shard of shards) await ctx.db.delete(shard._id);
 }
 
 export function isRemovableSeedRow(row: unknown): boolean {

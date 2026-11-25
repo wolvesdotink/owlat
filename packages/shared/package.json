@@ -66,6 +66,10 @@
 			"types": "./src/threadBriefRules.ts",
 			"import": "./src/threadBriefRules.ts"
 		},
+		"./sendRegions": {
+			"types": "./src/sendRegions.ts",
+			"import": "./src/sendRegions.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"
@@ -581,6 +585,10 @@
 		"./aiModelCatalog": {
 			"types": "./src/aiModelCatalog.ts",
 			"import": "./src/aiModelCatalog.ts"
+		},
+		"./aiBudget": {
+			"types": "./src/aiBudget.ts",
+			"import": "./src/aiBudget.ts"
 		},
 		"./aiRouting": {
 			"types": "./src/aiRouting.ts",

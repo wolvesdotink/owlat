@@ -371,6 +371,39 @@ describe('Transactional email lifecycle — translations are scanned', () => {
 	});
 });
 
+describe('Transactional email lifecycle — the preview text is scanned', () => {
+	it('rolls back a forced preview text edit whose content is blocked', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					slug: 'preview-blocked',
+					status: 'published',
+					publishedAt: Date.now(),
+					content: JSON.stringify([{ id: 'b1', type: 'text', content: { html: '<p>Hello</p>' } }]),
+				})
+			)
+		);
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await expect(
+				t.mutation(api.transactional.emails.update, {
+					id: emailId,
+					previewText: 'BLOCKED-MARKER',
+					forceWhilePublished: true,
+				})
+			).rejects.toThrow(/Content blocked/);
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.previewText).toBeUndefined();
+		expect(email?.htmlContent).not.toContain('BLOCKED-MARKER');
+	});
+});
+
 describe('Transactional email lifecycle — a saved-block edit is scanned', () => {
 	async function seedPublishedStale(t: ReturnType<typeof convexTest>, slug: string) {
 		return await t.run(async (ctx) =>

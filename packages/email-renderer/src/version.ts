@@ -22,5 +22,9 @@
  *      draws its own padding (unless it is an editor default), margin,
  *      background, border and corner radius. `mobileFontSize` reaches root
  *      headings and nested text.
+ *   5  A transactional email's conditional and repeated root Blocks stay in
+ *      its HTML and text once each, between region markers the send resolves
+ *      against the request's data (`sendTimeBlockLogic`), instead of being
+ *      decided without data.
  */
-export const EMAIL_RENDERER_VERSION = 4;
+export const EMAIL_RENDERER_VERSION = 5;

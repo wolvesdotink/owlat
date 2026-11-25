@@ -26,6 +26,17 @@ import com.owlat.sdk.model.event.SendEventResponse;
 import com.owlat.sdk.model.limits.GetLimitsParams;
 import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
+import com.owlat.sdk.model.template.EmailTranslation;
+import com.owlat.sdk.model.template.SavedBlock;
+import com.owlat.sdk.model.template.SavedBlockInput;
+import com.owlat.sdk.model.template.SavedBlockSummary;
+import com.owlat.sdk.model.template.SavedBlockWriteResult;
+import com.owlat.sdk.model.template.TransactionalEmail;
+import com.owlat.sdk.model.template.TransactionalEmailInput;
+import com.owlat.sdk.model.template.TransactionalEmailSummary;
+import com.owlat.sdk.model.template.TransactionalEmailWriteOptions;
+import com.owlat.sdk.model.template.TransactionalEmailWriteResult;
+import com.owlat.sdk.model.template.TranslatedBlockText;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.AddToTopicResponse;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
@@ -90,6 +101,7 @@ class OpenApiContractTest {
 
     private static final String CONTACT_ID = "k57c0ntact00000000000000000000";
     private static final String TOPIC_ID = "k57t0pic0000000000000000000000";
+    private static final String BLOCK_ID = "k57bl0ck000000000000000000000";
 
     private static Function<ObjectMapper, JavaType> type(Class<?> model) {
         return mapper -> mapper.constructType(model);
@@ -156,6 +168,41 @@ class OpenApiContractTest {
         calls.put("removeContactFromTopic", new Call(
                 owlat -> owlat.topics().removeContact(new RemoveFromTopicParams(TOPIC_ID, "ada@example.com")),
                 type(RemoveFromTopicResponse.class), false));
+        calls.put("listTransactionalEmails", new Call(
+                owlat -> owlat.transactionalEmails().list(PaginationParams.builder().limit(25).cursor("c1").build()),
+                mapper -> mapper.getTypeFactory().constructParametricType(
+                        CursorPaginatedResponse.class, TransactionalEmailSummary.class),
+                true));
+        calls.put("createTransactionalEmail", new Call(
+                owlat -> owlat.transactionalEmails().create(emailInput("order-confirmation")),
+                type(TransactionalEmailWriteResult.class), false));
+        calls.put("getTransactionalEmail", new Call(
+                owlat -> owlat.transactionalEmails().get("order-confirmation"),
+                type(TransactionalEmail.class), false));
+        calls.put("putTransactionalEmail", new Call(
+                owlat -> owlat.transactionalEmails().upsert("order-confirmation", emailInput(null),
+                        TransactionalEmailWriteOptions.ifRevision(4).whilePublished()),
+                type(TransactionalEmailWriteResult.class), false));
+        calls.put("publishTransactionalEmail", new Call(
+                owlat -> owlat.transactionalEmails().publish("order-confirmation",
+                        TransactionalEmailWriteOptions.ifRevision(4)),
+                type(TransactionalEmail.class), false));
+        calls.put("unpublishTransactionalEmail", new Call(
+                owlat -> owlat.transactionalEmails().unpublish("order-confirmation"),
+                type(TransactionalEmail.class), false));
+        calls.put("listSavedBlocks", new Call(
+                owlat -> owlat.savedBlocks().list(PaginationParams.builder().limit(25).cursor("c1").build()),
+                mapper -> mapper.getTypeFactory().constructParametricType(
+                        CursorPaginatedResponse.class, SavedBlockSummary.class),
+                true));
+        calls.put("createSavedBlock", new Call(
+                owlat -> owlat.savedBlocks().create(blockInput()),
+                type(SavedBlockWriteResult.class), false));
+        calls.put("getSavedBlock", new Call(
+                owlat -> owlat.savedBlocks().get(BLOCK_ID), type(SavedBlock.class), false));
+        calls.put("updateSavedBlock", new Call(
+                owlat -> owlat.savedBlocks().update(BLOCK_ID, blockInput()),
+                type(SavedBlockWriteResult.class), false));
         calls.put("getLimits", new Call(
                 owlat -> owlat.limits().get(GetLimitsParams.bySlug("ada@example.com", "password-reset")),
                 type(SendLimits.class), false));
@@ -167,6 +214,34 @@ class OpenApiContractTest {
                 mapper -> mapper.getTypeFactory().constructCollectionType(List.class, SendingDomainSetup.class),
                 false));
         return calls;
+    }
+
+    private static List<Map<String, Object>> textBlocks(String id) {
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("html", "<p>Thanks for your order</p>");
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("id", id);
+        block.put("type", "text");
+        block.put("content", content);
+        return List.of(block);
+    }
+
+    /** An email input with every field the SDK can send. */
+    private static TransactionalEmailInput emailInput(String slug) {
+        return TransactionalEmailInput.builder("Order confirmation")
+                .slug(slug)
+                .subject("Your order {{orderNumber}}")
+                .blocks(textBlocks("b-heading"))
+                .translations(Map.of("de", new EmailTranslation("Deine Bestellung",
+                        Map.of("b-heading", new TranslatedBlockText("<p>Danke</p>", "Los", "Bild")))))
+                .dataVariablesSchema(Map.of("orderNumber", "string"))
+                .defaultLanguage("en")
+                .showUnsubscribe(false)
+                .build();
+    }
+
+    private static SavedBlockInput blockInput() {
+        return new SavedBlockInput("Footer", "Address and support link", textBlocks("b-footer"));
     }
 
     private static Map<String, Object> primitiveRecord() {

@@ -659,6 +659,85 @@ describe('contacts.import.importBatch — global opt-outs', () => {
 	});
 });
 
+describe('contacts.import.importBatch — an existing contact per duplicate mode', () => {
+	/** An existing, subscribed contact with a known first name and no topic. */
+	async function seedExisting(t: TestConvex<typeof schema>) {
+		await createProperty(t, 'company');
+		await t.mutation(internal.contacts.import.importBatch, {
+			rows: [{ email: 'known@example.com', firstName: 'Old' }],
+			source: 'csv',
+			handleDuplicates: 'skip',
+		});
+		return await t.run(async (ctx) => {
+			const contact = await ctx.db
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', 'known@example.com'))
+				.first();
+			return contact!;
+		});
+	}
+
+	const snapshot = (t: TestConvex<typeof schema>, contactId: Id<'contacts'>) =>
+		t.run(async (ctx) => ({
+			contact: await ctx.db.get(contactId),
+			memberships: await ctx.db
+				.query('contactTopics')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+				.collect(),
+			propertyValues: (await ctx.db.query('contactPropertyValues').collect()).filter(
+				(row) => row.contactId === contactId
+			),
+			activities: (await ctx.db.query('contactActivities').collect()).filter(
+				(row) => row.contactId === contactId
+			),
+		}));
+
+	it.each([{ withTopic: false }, { withTopic: true }])(
+		'skip (topic: $withTopic) leaves the existing contact exactly as it was',
+		async ({ withTopic }) => {
+			const t = convexTest(schema, modules);
+			const topicId = await createTopic(t, false);
+			const existing = await seedExisting(t);
+			const before = await snapshot(t, existing._id);
+
+			const result = await t.mutation(internal.contacts.import.importBatch, {
+				rows: [{ email: 'known@example.com', firstName: 'New', properties: { company: 'Acme' } }],
+				source: 'csv',
+				handleDuplicates: 'skip',
+				doiAttest: { attestSource: 'paper form' },
+				...(withTopic ? { topicAssignments: { kind: 'single' as const, topicId } } : {}),
+			});
+
+			expect(result).toMatchObject({
+				skipped: 1,
+				addedToTopics: 0,
+				propertiesSet: 0,
+				activitiesRecorded: 0,
+			});
+			expect(await snapshot(t, existing._id)).toEqual(before);
+		}
+	);
+
+	it('update with an email-only row adds the existing contact to the topic and changes nothing else', async () => {
+		const t = convexTest(schema, modules);
+		const topicId = await createTopic(t, false);
+		const existing = await seedExisting(t);
+		const before = await snapshot(t, existing._id);
+
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows: [{ email: 'known@example.com' }],
+			source: 'csv',
+			handleDuplicates: 'update',
+			topicAssignments: { kind: 'single', topicId },
+		});
+
+		expect(result).toMatchObject({ skipped: 1, addedToTopics: 1, propertiesSet: 0 });
+		const after = await snapshot(t, existing._id);
+		expect(after.contact).toEqual(before.contact);
+		expect(after.memberships.map((row) => row.topicId)).toEqual([topicId]);
+	});
+});
+
 describe('contacts.import.importBatch — contact activity', () => {
 	it('newly-created contact gets one created activity', async () => {
 		const t = convexTest(schema, modules);
