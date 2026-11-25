@@ -53,6 +53,19 @@ describe('writeSection', () => {
 		expect(changelogSection(written, '0.6.16')).toBe(changelogSection(CHANGELOG, '0.6.16'));
 	});
 
+	it('keeps a dollar sign in a curated entry as written', () => {
+		// "$`", "$&" and "$'" are replacement patterns when the section is written
+		// with a replacement string; an entry that names a `$` key carries the first.
+		const entry = "- **Keys.** A key starting with `$`, costing $& or $', is refused.";
+		const curated = CHANGELOG.split('## [Unreleased]\n').join(
+			`## [Unreleased]\n\n### Fixed\n\n${entry}\n`
+		);
+		const written = writeSection(curated, '0.7.0', '2026-10-24', bucketSubjects(['fix: two']));
+		expect(changelogSection(written, '0.7.0')).toBe(`### Fixed\n\n${entry}\n- two`);
+		expect(written.match(/^# Changelog$/gm)).toHaveLength(1);
+		expect(written.match(/^## \[Unreleased\]$/gm)).toHaveLength(1);
+	});
+
 	it("extends a later candidate's curated section in place instead of writing a second one", () => {
 		const first = writeSection(CHANGELOG, '0.7.0', '2026-10-24', bucketSubjects(['fix: two']));
 		const curatedByHand = first.replace('- two', '- **Two.** Curated by hand.');

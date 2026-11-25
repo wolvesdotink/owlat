@@ -114,9 +114,11 @@ export function writeSection(
 	const span = sectionSpan(emptied, version);
 	if (!span) {
 		const body = extendBody('', curated, buckets);
+		// A replacer function, because a curated entry may hold "$`" or "$&", which
+		// a replacement string would expand.
 		return emptied.replace(
 			RELEASE_MARKER,
-			`${RELEASE_MARKER}\n\n${heading}${body ? `\n\n${body}` : ''}`
+			() => `${RELEASE_MARKER}\n\n${heading}${body ? `\n\n${body}` : ''}`
 		);
 	}
 	const body = extendBody(emptied.slice(span.bodyStart, span.end), curated, buckets);
