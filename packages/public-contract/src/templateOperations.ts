@@ -9,6 +9,7 @@ import {
 	putTransactionalEmailRequestSchema,
 	savedBlockRequestSchema,
 	savedBlockSchema,
+	savedBlockUpdateRequestSchema,
 	savedBlockSummarySchema,
 	savedBlockWriteResultSchema,
 	transactionalEmailSchema,
@@ -265,7 +266,7 @@ export const TEMPLATE_OPERATIONS = [
 		pathParameters: [SAVED_BLOCK_ID],
 		queryParameters: [],
 		idempotent: false,
-		request: { name: 'SavedBlockRequest', schema: savedBlockRequestSchema },
+		request: { name: 'SavedBlockUpdateRequest', schema: savedBlockUpdateRequestSchema },
 		success: {
 			status: 200,
 			description: 'The stored saved block and what the content check found.',

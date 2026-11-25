@@ -5281,7 +5281,7 @@
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/SavedBlockRequest"
+								"$ref": "#/components/schemas/SavedBlockUpdateRequest"
 							},
 							"example": {
 								"name": "Footer",
@@ -7707,6 +7707,53 @@
 				},
 				"required": ["id", "name", "description", "createdAt", "updatedAt"],
 				"additionalProperties": false
+			},
+			"SavedBlockUpdateRequest": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string",
+								"maxLength": 1000
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"blocks": {
+						"minItems": 1,
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "string"
+								},
+								"type": {
+									"type": "string"
+								},
+								"content": {
+									"type": "object",
+									"propertyNames": {
+										"type": "string"
+									},
+									"additionalProperties": {}
+								}
+							},
+							"required": ["type", "content"],
+							"additionalProperties": {},
+							"description": "One block as the editor stores it: an id, a type and the content of that type. Blocks such as columns and container hold further blocks inside their content."
+						}
+					}
+				},
+				"required": ["name", "blocks"]
 			},
 			"SavedBlockWriteResult": {
 				"type": "object",

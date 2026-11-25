@@ -213,7 +213,7 @@ export const savedBlockSchema = z.strictObject({
 	blocks: z.array(emailBlockSchema),
 });
 
-export const savedBlockRequestSchema = requestBody({
+const savedBlockShape = {
 	name: requiredString('name is required', 'name must be a string').max(TEMPLATE_NAME_MAX_LENGTH, {
 		error: `name must be at most ${TEMPLATE_NAME_MAX_LENGTH} characters`,
 	}),
@@ -224,6 +224,17 @@ export const savedBlockRequestSchema = requestBody({
 		})
 		.nullish(),
 	blocks: blocksInputSchema,
+};
+
+export const savedBlockRequestSchema = requestBody(savedBlockShape);
+
+/**
+ * A replace cannot empty a saved block, as the editor cannot: the emails that
+ * link it would lose their copy and nothing would be left to replace later.
+ */
+export const savedBlockUpdateRequestSchema = requestBody({
+	...savedBlockShape,
+	blocks: blocksInputSchema.min(1, { error: 'A saved block needs at least one block' }),
 });
 
 export const savedBlockWriteResultSchema = z.strictObject({

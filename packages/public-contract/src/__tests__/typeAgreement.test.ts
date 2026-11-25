@@ -42,6 +42,7 @@ import type {
 	savedBlockRequestSchema,
 	savedBlockSchema,
 	savedBlockSummarySchema,
+	savedBlockUpdateRequestSchema,
 	savedBlockWriteResultSchema,
 	transactionalEmailSchema,
 	transactionalEmailSummarySchema,
@@ -138,6 +139,9 @@ describe('schema and type agreement', () => {
 		>().toEqualTypeOf<true>();
 		expectTypeOf<
 			RequestAgrees<T.SavedBlockInput, typeof savedBlockRequestSchema>
+		>().toEqualTypeOf<true>();
+		expectTypeOf<
+			RequestAgrees<T.SavedBlockInput, typeof savedBlockUpdateRequestSchema>
 		>().toEqualTypeOf<true>();
 	});
 

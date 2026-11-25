@@ -8,6 +8,7 @@ import {
 	decodeRequest,
 	readListQuery,
 	savedBlockRequestSchema,
+	savedBlockUpdateRequestSchema,
 } from '@owlat/public-contract/schemas';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -90,7 +91,8 @@ function prepareWrite(body: SavedBlockInput):
 }
 
 async function decodeBody(
-	request: Request
+	request: Request,
+	schema: typeof savedBlockRequestSchema | typeof savedBlockUpdateRequestSchema
 ): Promise<{ ok: true; body: SavedBlockInput } | { ok: false; response: Response }> {
 	let raw: unknown;
 	try {
@@ -98,7 +100,7 @@ async function decodeBody(
 	} catch {
 		return { ok: false, response: errorResponse('invalid_input', 'Invalid JSON in request body') };
 	}
-	const decoded = decodeRequest(savedBlockRequestSchema, raw);
+	const decoded = decodeRequest(schema, raw);
 	if (!decoded.ok) {
 		return { ok: false, response: invalidInputResponse(decoded.message, decoded.field) };
 	}
@@ -148,7 +150,7 @@ export const createSavedBlock = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'templates:write', request.headers.get('Origin'));
 		if (denied) return denied;
-		const decoded = await decodeBody(request);
+		const decoded = await decodeBody(request, savedBlockRequestSchema);
 		if (!decoded.ok) return decoded.response;
 		const prepared = prepareWrite(decoded.body);
 		if (!prepared.ok) return prepared.response;
@@ -196,13 +198,8 @@ export const updateSavedBlock = createAuthenticatedHandler(
 		if (denied) return denied;
 		const blockId = blockIdFromPath(request);
 		if (blockId instanceof Response) return blockId;
-		const decoded = await decodeBody(request);
+		const decoded = await decodeBody(request, savedBlockUpdateRequestSchema);
 		if (!decoded.ok) return decoded.response;
-		// The editor refuses to save a block empty: the emails that link it would
-		// lose their copy, and nothing would be left for a later change to replace.
-		if (decoded.body.blocks.length === 0) {
-			return invalidInputResponse('A saved block needs at least one block', 'blocks');
-		}
 		const prepared = prepareWrite(decoded.body);
 		if (!prepared.ok) return prepared.response;
 		try {
