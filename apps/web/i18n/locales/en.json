@@ -5374,6 +5374,8 @@
 				"listLabel": "Emoji"
 			},
 			"postboxFilterRuleBuilder": {
+				"actionNeverRuns": "This action never runs in a synced mailbox. Run on existing mail does not forward, move to trash or discard.",
+				"connectedNotice": "This mailbox is synced from your provider, so this filter does not run on new mail. It applies only when you use Run on existing mail, which never forwards, moves to trash or discards.",
 				"actions": {
 					"addLabel": "Add label",
 					"delete": "Move to trash",
@@ -13708,7 +13710,11 @@
 				"ruleSummaryAny": "Any of {conditions} condition(s) · {actions} action(s)",
 				"moveUp": "Move {name} earlier",
 				"moveDown": "Move {name} later",
-				"fromSenderName": "Mail from {sender}"
+				"fromSenderName": "Mail from {sender}",
+				"connectedNotice": "{address} is synced from your provider, so filters built here do not run on its new mail. Set up filters for new mail at your provider. Run on existing mail applies a filter to the mail already in this mailbox. Rules in your words still run on new mail.",
+				"connectedTeamNotice": "{address} is synced from your provider, so no filter or rule runs on its new mail. Set up filters for new mail at your provider. Run on existing mail applies a filter to the mail already in this mailbox.",
+				"appliedFilters": "Filters you apply yourself",
+				"runsOnApply": "Runs only when you apply it"
 			},
 			"forwarding": {
 				"connectedNotice": "{address} is synced from your provider, so Owlat cannot forward its mail. Set forwarding up at your provider.",

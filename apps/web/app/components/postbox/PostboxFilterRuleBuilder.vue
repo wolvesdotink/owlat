@@ -15,10 +15,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { ARRIVAL_FILTER_ACTION_TYPES, type ArrivalFilterActionType } from '@owlat/shared/arrival';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { postboxFolderLabel } from '~/composables/postbox/usePostboxFolderName';
-import type {
-	FilterMatchType,
-	MailFilterCondition,
-	FilterAction,
+import {
+	filtersOnNewMail,
+	isFilterActionAvailable,
+	type FilterActionType,
+	type FilterMailbox,
+	type FilterMatchType,
+	type MailFilterCondition,
+	type FilterAction,
 } from '~/composables/postbox/usePostboxFilters';
 import { CloseIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
@@ -33,6 +37,8 @@ interface FilterDraft {
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
+	/** The mailbox the filter belongs to; its kind decides which actions can run. */
+	mailbox?: FilterMailbox;
 	modelValue: FilterDraft;
 }>();
 
@@ -68,6 +74,21 @@ const arrivalActionLabels = computed<Record<ArrivalFilterActionType, string>>(()
 	archiveAfter: t('components.postbox.postboxFilterRuleBuilder.actions.archiveAfter'),
 	notify: t('components.postbox.postboxFilterRuleBuilder.actions.notify'),
 }));
+
+const onNewMail = computed(() => filtersOnNewMail(props.mailbox ?? {}));
+
+/**
+ * Whether the action list offers `type` on a row now showing `current`. An
+ * action that can never run on this mailbox is left out, except on the row
+ * that already holds it: a saved filter stays editable and says why.
+ */
+function offersAction(type: FilterActionType, current: FilterActionType): boolean {
+	return type === current || isFilterActionAvailable(type, props.mailbox ?? {});
+}
+
+function isActionInert(type: FilterActionType): boolean {
+	return !isArrivalActionType(type) && !isFilterActionAvailable(type, props.mailbox ?? {});
+}
 
 const local = reactive<FilterDraft>(JSON.parse(JSON.stringify(props.modelValue)));
 
@@ -193,6 +214,13 @@ function removeAction(idx: number) {
 
 <template>
 	<div class="space-y-4">
+		<p
+			v-if="!onNewMail.editorFilters"
+			class="text-sm text-text-secondary"
+			data-testid="connected-mailbox-notice"
+		>
+			{{ t('components.postbox.postboxFilterRuleBuilder.connectedNotice') }}
+		</p>
 		<div>
 			<label for="local-name" class="label">{{ t('common.name') }}</label>
 			<input
@@ -330,10 +358,10 @@ function removeAction(idx: number) {
 						<option value="markFlagged">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.markFlagged') }}
 						</option>
-						<option value="forward">
+						<option v-if="offersAction('forward', action.type)" value="forward">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.forward') }}
 						</option>
-						<option value="delete">
+						<option v-if="offersAction('delete', action.type)" value="delete">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.delete') }}
 						</option>
 						<!-- Split inbox (idea 24): the one action that REARRANGES the
@@ -342,7 +370,7 @@ function removeAction(idx: number) {
 						<option value="pinToSection">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.pinToSection') }}
 						</option>
-						<option value="discard">
+						<option v-if="offersAction('discard', action.type)" value="discard">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.discard') }}
 						</option>
 						<option v-if="isArrivalActionType(action.type)" :value="action.type">
@@ -398,6 +426,13 @@ function removeAction(idx: number) {
 					>
 						<CloseIcon class="w-4 h-4" />
 					</button>
+					<p
+						v-if="isActionInert(action.type)"
+						class="basis-full text-xs text-text-tertiary"
+						data-testid="filter-action-unavailable"
+					>
+						{{ t('components.postbox.postboxFilterRuleBuilder.actionNeverRuns') }}
+					</p>
 				</div>
 				<p v-if="local.actions.length === 0" class="text-xs text-text-tertiary">
 					{{ t('components.postbox.postboxFilterRuleBuilder.noActions') }}
