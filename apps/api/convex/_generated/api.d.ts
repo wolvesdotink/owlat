@@ -1923,8 +1923,10 @@ import type * as schema_workerServers from '../schema/workerServers.js';
 import type * as seedDemo_index from '../seedDemo/index.js';
 import type * as seedDemo_indexHttp from '../seedDemo/indexHttp.js';
 import type * as seedDemo_loaders_accounts from '../seedDemo/loaders/accounts.js';
+import type * as seedDemo_loaders_automationRuns from '../seedDemo/loaders/automationRuns.js';
 import type * as seedDemo_loaders_automations from '../seedDemo/loaders/automations.js';
 import type * as seedDemo_loaders_complianceTelemetry from '../seedDemo/loaders/complianceTelemetry.js';
+import type * as seedDemo_loaders_connectedMailboxes from '../seedDemo/loaders/connectedMailboxes.js';
 import type * as seedDemo_loaders_campaigns from '../seedDemo/loaders/campaigns.js';
 import type * as seedDemo_loaders_contactTopics from '../seedDemo/loaders/contactTopics.js';
 import type * as seedDemo_loaders_contacts from '../seedDemo/loaders/contacts.js';
@@ -1938,6 +1940,7 @@ import type * as seedDemo_loaders_types from '../seedDemo/loaders/types.js';
 import type * as seedDemo_loaders_webhooks from '../seedDemo/loaders/webhooks.js';
 import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
+import type * as seedDemo_sendingState from '../seedDemo/sendingState.js';
 import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as search_global from '../search/global.js';
 import type * as segments_listing from '../segments/listing.js';
@@ -4208,8 +4211,10 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/index': typeof seedDemo_index;
 	'seedDemo/indexHttp': typeof seedDemo_indexHttp;
 	'seedDemo/loaders/accounts': typeof seedDemo_loaders_accounts;
+	'seedDemo/loaders/automationRuns': typeof seedDemo_loaders_automationRuns;
 	'seedDemo/loaders/automations': typeof seedDemo_loaders_automations;
 	'seedDemo/loaders/complianceTelemetry': typeof seedDemo_loaders_complianceTelemetry;
+	'seedDemo/loaders/connectedMailboxes': typeof seedDemo_loaders_connectedMailboxes;
 	'seedDemo/loaders/campaigns': typeof seedDemo_loaders_campaigns;
 	'seedDemo/loaders/contactTopics': typeof seedDemo_loaders_contactTopics;
 	'seedDemo/loaders/contacts': typeof seedDemo_loaders_contacts;
@@ -4223,6 +4228,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/loaders/webhooks': typeof seedDemo_loaders_webhooks;
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
+	'seedDemo/sendingState': typeof seedDemo_sendingState;
 }> & ApiFromModules<{
 	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
