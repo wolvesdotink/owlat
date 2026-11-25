@@ -286,9 +286,14 @@ const loadPrevRuns = () => {
 							</UiTooltip>
 						</div>
 					</div>
-					<!-- Why this run skipped an email, aligned with the contact's name -->
+					<!-- Why this run skipped an email, aligned with the contact's name. A
+					withdrawn email is shown beside a failure note: the run can fail on a
+					later step while that email is still queued. -->
 					<p
-						v-if="run.emailSkip && !(run.failure ?? run.waiting)"
+						v-if="
+							run.emailSkip &&
+							(run.emailSkip.reason === 'automation_paused' || !(run.failure ?? run.waiting))
+						"
 						class="mt-2 sm:pl-13 text-sm text-text-secondary"
 						data-testid="run-email-skip"
 					>
