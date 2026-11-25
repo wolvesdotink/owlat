@@ -68,6 +68,20 @@ describe('syncVersionRecord, at startup', () => {
 		}
 	);
 
+	it('removes a VERSION that names a release when .env pins none', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\n');
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
+		expect(await syncVersionRecord()).toMatchObject({ step: 'version-record', ok: true });
+		expect(() => record()).toThrow();
+	});
+
+	it('keeps VERSION while .env is missing', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\n');
+		rmSync(join(OWLAT_DIR, '.env'));
+		expect(await syncVersionRecord()).toBeNull();
+		expect(record()).toBe('version=0.6.24\n');
+	});
+
 	it('writes nothing for a dev stack or without .env', async () => {
 		writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=dev\n');
 		expect(await syncVersionRecord()).toBeNull();

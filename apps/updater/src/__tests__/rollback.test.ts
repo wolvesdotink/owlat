@@ -640,6 +640,33 @@ describe('owlat rollback (GET /snapshot, POST /rollback)', () => {
 		expect(record).toMatch(/^applied_by=rollback$/m);
 	});
 
+	it('removes VERSION when the restored .env pins no release', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n', { mode: 0o600 });
+		await update();
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.17$/m);
+		const snapshot = journal()['id'];
+
+		expect((await post('/rollback', { snapshot })).status).toBe(200);
+
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe('FOO=bar\n');
+		expect(existsSync(join(OWLAT_DIR, 'VERSION'))).toBe(false);
+	});
+
+	it('names the restored release in VERSION when a file added since cannot be removed', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		// A directory where the override would be: removing it as a file fails.
+		mkdirSync(OVERRIDE);
+
+		try {
+			expect((await post('/rollback', { snapshot })).status).toBe(500);
+			expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe(OLD_ENV);
+			expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.16$/m);
+		} finally {
+			rmSync(OVERRIDE, { recursive: true, force: true });
+		}
+	});
+
 	it('names the restored pin in VERSION, read as compose reads .env', async () => {
 		// The snapshot's own version comes from a stricter parser that misses a
 		// pin with a comment after it.

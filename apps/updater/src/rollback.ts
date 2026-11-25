@@ -265,6 +265,8 @@ async function restoreAndStart(
 		// since) would otherwise keep configuring the restored release.
 		for (const file of current.absent) await rm(join(OWLAT_DIR, file), { force: true });
 	} catch (err) {
+		// `.env` may be back already; VERSION follows whichever one is there.
+		await recordRestoredVersion();
 		const reason = `restoring the configuration failed: ${errorMessage(err)}`;
 		fail('rollback-restore', reason);
 		return result('partial', `${reason}. The data is restored; convex and redis are stopped.`);
