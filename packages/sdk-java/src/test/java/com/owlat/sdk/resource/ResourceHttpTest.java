@@ -159,7 +159,7 @@ class ResourceHttpTest {
             + "\"revision\":4,\"publishedAt\":null,\"createdAt\":\"2026-01-01T00:00:00.000Z\","
             + "\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"blocks\":[{\"id\":\"b1\",\"type\":\"text\","
             + "\"content\":{\"html\":\"<p>Hi</p>\",\"fontSize\":14}}],\"translations\":{},"
-            + "\"dataVariablesSchema\":{\"orderNumber\":\"string\"},"
+            + "\"dataVariablesSchema\":{\"orderNumber\":\"string\",\"items\":\"array\"},"
             + "\"dataVariableExamples\":{\"orderNumber\":\"A-1001\","
             + "\"items\":[{\"name\":\"Tent\",\"note\":null}]},\"showUnsubscribe\":false}";
 
