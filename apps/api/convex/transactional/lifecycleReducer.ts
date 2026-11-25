@@ -200,7 +200,7 @@ export function reduce(
 				`Content blocked by our content scanner (score: ${scanResult.score}/100). ` +
 					`Issues: ${scanResult.flags.map((f) => f.description).join('; ')}. ` +
 					'Please review and update your content before publishing.',
-				{ scanScore: scanResult.score }
+				{ reason: 'content_blocked', scanScore: scanResult.score }
 			);
 		}
 

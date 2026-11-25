@@ -7,7 +7,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { useCsvImport } from '~/composables/useCsvImport';
-import { buildImportErrorsCsv, downloadCsv } from '~/utils/contactsCsv';
 
 /** How many failures the panel shows before deferring to the download. */
 const ERROR_PREVIEW_LIMIT = 5;
@@ -76,11 +75,20 @@ export function useCsvImportCompletion(
 	 * 200 red lines is not readable — but nothing that only exists in this modal is
 	 * allowed to die with it.
 	 */
-	const downloadErrorRows = () => {
+	const downloadErrorRows = async (): Promise<void> => {
 		if (downloadableErrorRows.value.length === 0) return;
 		const stem = csvImport.selectedFile.value?.name.replace(/\.csv$/i, '').trim();
-		downloadCsv(
-			buildImportErrorsCsv(downloadableErrorRows.value),
+		// The CSV writer is the chunk the file intake loaded to parse the upload,
+		// so it is normally in memory already. Importing it here keeps papaparse
+		// out of the modal that the contacts page mounts on load; a chunk that
+		// cannot be fetched says so instead of dropping the click.
+		const csv = await import('~/utils/contactsCsv').catch(() => null);
+		if (!csv) {
+			showToast(t('shared.operationError.network'), 'error');
+			return;
+		}
+		csv.downloadCsv(
+			csv.buildImportErrorsCsv(downloadableErrorRows.value),
 			`${stem || 'contacts-import'}-errors.csv`
 		);
 	};
@@ -145,9 +153,10 @@ export function useCsvImportCompletion(
 	});
 
 	/**
-	 * Reuses the import's own topic-assignment path (`importBatch` with a topicId,
-	 * `skip` so no contact field is rewritten): the rows resolve to the contacts
-	 * that were just created and are subscribed to the topic. The bulk
+	 * Reuses the import's own topic-assignment path (`importBatch` with a topicId):
+	 * the rows resolve to the contacts that were just imported and are subscribed
+	 * to the topic. `update`, because `skip` leaves an existing contact out of the
+	 * topic; the rows carry addresses only, so there is no field to rewrite. The bulk
 	 * `topics.addContacts` mutation is not usable here — it takes contact ids, and
 	 * an import returns counts, not ids.
 	 */
@@ -165,7 +174,7 @@ export function useCsvImportCompletion(
 		for (let i = 0; i < emails.length; i += ADD_TO_TOPIC_BATCH_SIZE) {
 			const outcome = await runAddToTopic({
 				contacts: emails.slice(i, i + ADD_TO_TOPIC_BATCH_SIZE).map((email) => ({ email })),
-				handleDuplicates: 'skip',
+				handleDuplicates: 'update',
 				topicId: topicId as Id<'topics'>,
 			});
 			// A failure has already been surfaced by the operation module.

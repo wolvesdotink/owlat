@@ -72,7 +72,7 @@ export async function readActiveWorkspaceDeletion(
 /** The `data.reason` a fence refusal carries. */
 export const WORKSPACE_DELETION_REFUSAL = 'workspace_deletion_in_progress';
 
-function refuseWrite(job: WorkspaceDeletionJob): never {
+export function refuseWrite(job: WorkspaceDeletionJob): never {
 	throwInvalidState(
 		'This workspace is being deleted. Changes are not accepted until the deletion has finished.',
 		{ reason: WORKSPACE_DELETION_REFUSAL, generation: job.generation }

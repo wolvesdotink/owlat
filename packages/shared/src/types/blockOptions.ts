@@ -101,7 +101,7 @@ export interface ResponsiveVisibility {
  * Common properties for full-width sections
  */
 export interface FullWidthOption {
-	/** When true, section spans full viewport width with inner content at baseWidth */
+	/** Stretch the block's background across the whole window; the content keeps the email's width. */
 	fullWidth?: boolean;
 }
 
@@ -114,24 +114,26 @@ export interface CssClassOption {
 }
 
 /**
- * Condition for showing/hiding blocks based on variable values
+ * Show the block only when a variable matches.
  */
 export interface BlockCondition {
+	/** The variable's name, without braces. */
 	variable: string;
+	/** `exists` is true for a variable that is set and not empty. */
 	operator: 'equals' | 'notEquals' | 'contains' | 'exists' | 'notExists';
+	/** What `equals`, `notEquals` and `contains` compare with. */
 	value?: string;
 }
 
 /**
- * Repeat configuration for iterating over array variables.
- * Used for e-commerce emails (order items, product lists, recommendations).
+ * Render the block once per item of an array variable, such as the lines of an order.
  */
 export interface BlockRepeat {
-	/** Array variable name in variableValues (expects JSON-encoded array) */
+	/** The variable holding the items, as a JSON array. */
 	variable: string;
-	/** Alias used to reference each item in variable interpolation (e.g. "item") */
+	/** The name each item's fields go by: with `item`, `{{item.name}}` is the item's `name`. */
 	itemAlias: string;
-	/** Maximum number of iterations (default: unlimited) */
+	/** Render at most this many items; 500 at most in any case. */
 	maxItems?: number;
 }
 
@@ -139,8 +141,8 @@ export interface BlockRepeat {
  * Common properties for conditional content
  */
 export interface ConditionalOption {
-	/** Condition to evaluate for showing/hiding this block */
+	/** Show the block only when a variable matches. Only top-level blocks honour it. */
 	condition?: BlockCondition;
-	/** Repeat this block for each item in an array variable */
+	/** Render the block once per item of an array variable. Only top-level blocks honour it. */
 	repeat?: BlockRepeat;
 }

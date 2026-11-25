@@ -10,6 +10,7 @@ import {
 	OFFSET_STRIDE,
 	describePorts,
 	deploymentUrlEnv,
+	webEnv,
 	type DevService,
 	type DevStackConfig,
 } from './config';
@@ -19,6 +20,11 @@ import type { SyncResult } from './stage';
 export interface UpOptions {
 	/** Run `dev:seed` after the first push (default on; it is idempotent). */
 	readonly seed: boolean;
+	/**
+	 * Run Nuxt (default on). Off, the deployment still trusts the web port, so
+	 * a Nuxt started by hand there (the desktop app's `tauri dev`) signs in.
+	 */
+	readonly web: boolean;
 }
 
 export interface StackOps {
@@ -34,8 +40,8 @@ export interface StackOps {
 	/** One `convex dev --once` push; rejects when the push fails. */
 	pushOnce(): Promise<void>;
 	seed(): Promise<void>;
-	/** Starts the watchers and Nuxt; resolves with the exit code once they stop. */
-	runForeground(): Promise<number>;
+	/** Starts the watchers and Nuxt (when `web`); resolves with the exit code once they stop. */
+	runForeground(web: boolean): Promise<number>;
 }
 
 export interface CodegenOps extends Omit<
@@ -69,10 +75,10 @@ function nextOffsetHint(config: DevStackConfig): number {
 export async function findPortConflicts(
 	config: DevStackConfig,
 	ops: Pick<StackOps, 'runningServices' | 'portInUse'>,
-	{ web = true }: { readonly web?: boolean } = {}
+	options: Pick<UpOptions, 'web'> = { web: true }
 ): Promise<string[]> {
 	const running = await ops.runningServices();
-	const toCheck: DevService[] = web ? ['web'] : [];
+	const toCheck: DevService[] = options.web ? ['web'] : [];
 	for (const [service, ports] of Object.entries(CONTAINER_PORTS)) {
 		if (!running.has(service)) toCheck.push(...ports);
 	}
@@ -95,9 +101,9 @@ async function prepareBackend(
 	secrets: DevStackSecrets,
 	ops: Omit<StackOps, 'pushOnce' | 'seed' | 'runForeground' | 'writeStageEnv'> &
 		Partial<Pick<StackOps, 'writeStageEnv'>>,
-	{ web }: { readonly web: boolean }
+	options: Pick<UpOptions, 'web'>
 ): Promise<void> {
-	const conflicts = await findPortConflicts(config, ops, { web });
+	const conflicts = await findPortConflicts(config, ops, options);
 	if (conflicts.length > 0) {
 		throw new DevStackConfigError(
 			[
@@ -131,7 +137,7 @@ export async function runUp(
 	ops: StackOps
 ): Promise<number> {
 	ops.log(describePorts(config));
-	await prepareBackend(config, secrets, ops, { web: true });
+	await prepareBackend(config, secrets, ops, options);
 
 	ops.log('Pushing Convex functions (the first push takes a minute or two)...');
 	await ops.pushOnce();
@@ -139,8 +145,20 @@ export async function runUp(
 		ops.log('Seeding demo accounts and data (bun run dev:seed)...');
 		await ops.seed();
 	}
-	ops.log(`Starting the Convex watcher and Nuxt; the app will be at ${config.urls.web}`);
-	return ops.runForeground();
+	if (options.web) {
+		ops.log(`Starting the Convex watcher and Nuxt; the app will be at ${config.urls.web}`);
+	} else {
+		const nuxtEnv = webEnv(config);
+		ops.log(
+			[
+				'Starting the Convex watcher without Nuxt (--no-web). Start your own Nuxt with:',
+				`  NUXT_PORT=${nuxtEnv['NUXT_PORT']} NUXT_PUBLIC_SITE_URL=${nuxtEnv['NUXT_PUBLIC_SITE_URL']} ` +
+					`NUXT_PUBLIC_CONVEX_URL=${nuxtEnv['NUXT_PUBLIC_CONVEX_URL']} ` +
+					`NUXT_PUBLIC_CONVEX_SITE_URL=${nuxtEnv['NUXT_PUBLIC_CONVEX_SITE_URL']}`,
+			].join('\n')
+		);
+	}
+	return ops.runForeground(options.web);
 }
 
 /**

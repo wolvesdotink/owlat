@@ -10,7 +10,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { destinationProviderValidator } from './deliverability';
+import { destinationProviderValidator, sendingHoldStatusValidator } from './deliverability';
 
 /** What a stored notice is about. */
 export const marketingNoticeKindValidator = v.union(
@@ -119,8 +119,15 @@ export const marketingNoticeEventValidator = v.union(
 	}),
 	// Sending on the instance was suspended (or banned), or resumed after
 	// one, automatically or by a platform admin. `changedAt` is the status
-	// change it is about: a later change makes it stale.
-	v.object({ kind: v.literal('sending_suspended'), changedAt: v.number() }),
+	// change it is about: a later change makes it stale. A stop names the
+	// status it stopped on and the alert record that counts this notice's
+	// channels; jobs a previous release queued carry neither.
+	v.object({
+		kind: v.literal('sending_suspended'),
+		changedAt: v.number(),
+		holdStatus: v.optional(sendingHoldStatusValidator),
+		sendingHoldAlertId: v.optional(v.id('sendingHoldAlerts')),
+	}),
 	v.object({ kind: v.literal('sending_resumed'), changedAt: v.number() })
 );
 export type MarketingNoticeEvent = Infer<typeof marketingNoticeEventValidator>;

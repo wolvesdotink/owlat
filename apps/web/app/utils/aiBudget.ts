@@ -10,7 +10,7 @@ import {
 	BUDGET_HOLD_REASONS,
 	type BudgetHoldReason,
 	type MissingJudgment,
-} from '@owlat/shared/aiRouting';
+} from '@owlat/shared/aiBudget';
 import type { OperationError } from '@owlat/shared/operationError';
 
 const K = 'shared.aiBudget';

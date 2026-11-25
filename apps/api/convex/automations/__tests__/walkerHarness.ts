@@ -71,12 +71,13 @@ export async function seedSettings(t: T): Promise<void> {
  */
 export async function seedAutomation(
 	t: T,
-	specs: StepSpec[]
+	specs: StepSpec[],
+	automationOverrides: Record<string, unknown> = {}
 ): Promise<{ automationId: Id<'automations'>; stepIds: Id<'automationSteps'>[] }> {
 	return await t.run(async (ctx) => {
 		const automationId = await ctx.db.insert(
 			'automations',
-			createTestAutomation({ status: 'active' })
+			createTestAutomation({ status: 'active', ...automationOverrides })
 		);
 		const stepIds: Id<'automationSteps'>[] = [];
 		for (const [stepIndex, spec] of specs.entries()) {

@@ -14,6 +14,11 @@ describe('parseDevStackArgs', () => {
 			command: 'up',
 			flags: new Set(['--no-seed']),
 		});
+		expect(parseDevStackArgs(['up', '--no-web'])).toMatchObject({
+			kind: 'run',
+			command: 'up',
+			flags: new Set(['--no-web']),
+		});
 	});
 
 	it('reads the logs service wherever the flag sits', () => {
@@ -38,6 +43,7 @@ describe('parseDevStackArgs', () => {
 		[['down', '--no-seed']],
 		[['codegen', 'extra']],
 		[['codegen', '--no-seed']],
+		[['down', '--no-web']],
 		[['deploy']],
 	])('rejects %j with usage and exit 2', (argv) => {
 		expect(parseDevStackArgs(argv)).toEqual({ kind: 'usage', exitCode: 2 });

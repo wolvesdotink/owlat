@@ -64,8 +64,8 @@ const fieldName = computed(() =>
 // Strip HTML for display (preserve simple HTML in value)
 const displayText = computed(() => {
 	if (!props.value) return '';
-	// Remove HTML tags for display preview
-	return props.value.replace(/<[^>]*>/g, '').trim();
+	// Remove HTML tags for display preview; plain text shows as written.
+	return props.isHtml ? props.value.replace(/<[^>]*>/g, '').trim() : props.value.trim();
 });
 
 const isEmpty = computed(() => !props.value || props.value.trim() === '');

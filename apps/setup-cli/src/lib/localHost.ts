@@ -2,8 +2,8 @@
  * Where the wizard reaches the just-started backend's published ports.
  *
  * The installer runs ON the box, so it talks to the backend over the host's
- * published ports (3210 cloud / 3211 site). HOW it addresses those ports
- * depends on the container network:
+ * published ports (3210 cloud / 3211 site unless `.env` moves them). HOW it
+ * addresses those ports depends on the container network:
  *
  *   - Linux host networking (the blessed VPS path): the wizard container shares
  *     the host loopback, so `localhost` reaches the published ports directly.
@@ -20,14 +20,32 @@ export function resolveLocalHost(env: NodeJS.ProcessEnv = process.env): string {
 	return env['OWLAT_LOCAL_HOST'] ?? 'localhost';
 }
 
+/**
+ * The host ports docker-compose.yml publishes as `${NAME:-default}`, with
+ * those defaults. An operator moves one by setting it in the install's `.env`,
+ * which is where compose reads it; keep the defaults equal to the compose file.
+ */
+const PUBLISHED_PORT_DEFAULTS = {
+	CONVEX_PORT: '3210',
+	CONVEX_SITE_PORT: '3211',
+	WEB_PORT: '3000',
+} as const;
+
+/** The host port compose publishes for `name`: its `.env` value, else the default (compose's `:-` also treats empty as unset). */
+export function publishedPort(
+	env: Record<string, string | undefined>,
+	name: keyof typeof PUBLISHED_PORT_DEFAULTS
+): string {
+	return env[name]?.trim() || PUBLISHED_PORT_DEFAULTS[name];
+}
+
 interface LocalUrls {
 	localCloud: string;
 	localSite: string;
 }
 
 /**
- * Derive the on-box cloud (3210) and site (3211) URLs the wizard probes and
- * POSTs to.
+ * Derive the on-box cloud and site URLs the wizard probes and POSTs to.
  *
  * For a domain install (`network` present) the NUXT_PUBLIC_* / CONVEX_* values
  * hold PUBLIC URLs (for clients + the function runtime) that aren't reachable
@@ -45,13 +63,17 @@ export function resolveLocalUrls(opts: {
 	localHost?: string;
 }): LocalUrls {
 	const localHost = opts.localHost ?? resolveLocalHost();
-	const localCloud = opts.network
-		? `http://${localHost}:3210`
-		: opts.env['NUXT_PUBLIC_CONVEX_URL'] || `http://${localHost}:3210`;
-	const localSite = opts.network
-		? `http://${localHost}:3211`
-		: opts.env['CONVEX_SITE_URL'] ||
-			opts.env['NUXT_PUBLIC_CONVEX_SITE_URL'] ||
-			`http://${localHost}:3211`;
+	const publishedCloud = `http://${localHost}:${publishedPort(opts.env, 'CONVEX_PORT')}`;
+	const publishedSite = `http://${localHost}:${publishedPort(opts.env, 'CONVEX_SITE_PORT')}`;
+	// A port set in `.env` is what compose publishes now, so it wins over the
+	// URLs, which a copied .env.selfhost.example holds at the default ports.
+	const localCloud =
+		opts.network || opts.env['CONVEX_PORT']?.trim()
+			? publishedCloud
+			: opts.env['NUXT_PUBLIC_CONVEX_URL'] || publishedCloud;
+	const localSite =
+		opts.network || opts.env['CONVEX_SITE_PORT']?.trim()
+			? publishedSite
+			: opts.env['CONVEX_SITE_URL'] || opts.env['NUXT_PUBLIC_CONVEX_SITE_URL'] || publishedSite;
 	return { localCloud, localSite };
 }

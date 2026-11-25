@@ -19,8 +19,28 @@ export interface DailySendLimit {
 }
 
 /**
- * The cap on sends of one template to one address. What is left depends on
- * the template and the address, so no count is given: a send over it answers
+ * What one template sent to one address under the per-recipient cap. Given
+ * only when the request names both.
+ */
+export interface RecipientSendUsage {
+	/** The address, trimmed and lowercased as the send route stores it. */
+	email: string;
+	/** ID of the template. */
+	templateId: string;
+	/** Slug of the template. */
+	slug: string;
+	/** Whether the template is exempt from the cap; then nothing is counted. */
+	isExempt: boolean;
+	/** Sends counted against the pair now, rounded up; `null` while the cap is off or the template is exempt. */
+	used: number | null;
+	/** Sends of the template to the address that fit now, never below 0; `null` while the cap is off or the template is exempt. */
+	remaining: number | null;
+	/** ISO 8601 time the count is back to zero; `null` when nothing is counted. */
+	resetsAt: string | null;
+}
+
+/**
+ * The cap on sends of one template to one address. A send over it answers
  * `429` with `Retry-After`. The allowance refills continuously, `limit` per
  * window. A template can be exempt from it.
  */
@@ -31,6 +51,8 @@ export interface RecipientSendLimit {
 	limit: number;
 	/** Length of the window, in seconds. */
 	windowSeconds: number;
+	/** The count for the template and address the request named, when it named both. */
+	usage?: RecipientSendUsage;
 }
 
 /** Body of `GET /api/v1/limits`. */

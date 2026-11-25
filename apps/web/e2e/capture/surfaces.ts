@@ -11,12 +11,13 @@
 
 import type { Locator, Page } from '@playwright/test';
 import { appRouteUrl } from './options';
+import { SHARED_INBOX, SHARED_INBOX_RAIL_ENTRY } from './sharedInbox';
 
 export class CaptureFailure extends Error {}
 
 /** A cold `nuxt dev` compiles each route on first visit; the first load can take minutes. */
 export const BOOT_TIMEOUT_MS = 180_000;
-const READY_TIMEOUT_MS = 60_000;
+export const READY_TIMEOUT_MS = 60_000;
 
 const SEED_HINT = 'Is the stack seeded? `bun run dev:seed` adds the demo data.';
 const POSTBOX_HINT =
@@ -66,7 +67,6 @@ const SENT_CAMPAIGN = 'Summer Sale 2026';
 const DRAFT_CAMPAIGN = 'June Announcements (draft)';
 /** The topic the draft is addressed to (fixtures/campaigns.json, topics.json). */
 const DRAFT_TOPIC = 'Announcements';
-const SHARED_INBOX = 'Team';
 const SHARED_MESSAGE = {
 	subject: 'Invoice #2041 shows our old billing address',
 	bodyLine: '42 Harbor Way, Suite 300',
@@ -100,7 +100,9 @@ async function openSharedInbox(
 	view: 'Priority' | 'All mail'
 ): Promise<void> {
 	await openRoute(page, appUrl, '/dashboard/postbox/inbox');
-	const rail = page.locator(`a[title="${SHARED_INBOX}"]`);
+	const rail = page
+		.getByRole('link', { name: SHARED_INBOX_RAIL_ENTRY.name })
+		.and(page.locator(`a[href^="${SHARED_INBOX_RAIL_ENTRY.hrefPrefix}"]`));
 	await needs(rail, `The shared "${SHARED_INBOX}" inbox in the mailbox rail`, POSTBOX_HINT);
 	const href = await rail.first().getAttribute('href');
 	if (!href?.includes('mailbox=')) {

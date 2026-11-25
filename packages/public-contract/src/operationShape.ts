@@ -21,7 +21,10 @@ export type PublicApiScope =
 	| 'transactional:send'
 	| 'topics:write'
 	| 'topics:read'
-	| 'status:read';
+	| 'status:read'
+	| 'templates:read'
+	| 'templates:write'
+	| 'domains:verify';
 
 /** The `scope` of an operation every authenticated key may call, whatever its scopes. */
 export const ANY_KEY = 'any_key';
@@ -42,7 +45,15 @@ export interface PublicOperation {
 	method: HttpMethod;
 	/** The path with `{name}` placeholders for its path parameters. */
 	path: string;
-	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Domains' | 'Health';
+	tag:
+		| 'Contacts'
+		| 'Events'
+		| 'Transactional'
+		| 'Templates'
+		| 'Topics'
+		| 'Status'
+		| 'Domains'
+		| 'Health';
 	summary: string;
 	/**
 	 * The key scope the operation needs: {@link ANY_KEY} when any key may call
@@ -53,6 +64,11 @@ export interface PublicOperation {
 	queryParameters: readonly QueryParameter[];
 	/** Whether an `Idempotency-Key` header makes a repeat answer with the first response. */
 	idempotent: boolean;
+	/**
+	 * Whether the operation takes an `If-Match` header with the revision the
+	 * caller read, and answers with the revision as an `ETag`.
+	 */
+	conditional?: boolean;
 	/** Name of the request body in the document's components, and its schema. */
 	request: { name: string; schema: z.ZodType } | null;
 	/**
@@ -94,21 +110,34 @@ export const PAGE_CURSOR: QueryParameter = {
 	schema: { type: 'string' },
 };
 
+export const TRANSACTIONAL_EMAIL_SLUG: PathParameter = {
+	name: 'slug',
+	description: "The transactional email's slug.",
+};
+export const SAVED_BLOCK_ID: PathParameter = { name: 'id', description: "The saved block's ID." };
+
 export const SEND_ID: PathParameter = {
 	name: 'sendId',
 	description: 'The `transactionalEmailId` the send call answered with.',
+};
+
+export const WHILE_PUBLISHED: QueryParameter = {
+	name: 'whilePublished',
+	description:
+		'`true` to change a published email in place. The change goes live at once, after the content scan; without it a published email is refused with `email_published`.',
+	schema: { type: 'boolean', default: false },
 };
 
 export const SEND_LIST_FILTERS: readonly QueryParameter[] = [
 	{
 		name: 'email',
 		description:
-			'Only sends to this recipient address, matched exactly after trimming and lowercasing. Cannot be combined with `status`.',
+			'Only sends to this recipient address, matched exactly after trimming and lowercasing. Can be combined with `status`.',
 		schema: { type: 'string', format: 'email' },
 	},
 	{
 		name: 'status',
-		description: 'Only sends in this delivery state. Cannot be combined with `email`.',
+		description: 'Only sends in this delivery state. Can be combined with `email`.',
 		schema: { type: 'string', enum: [...TRANSACTIONAL_SEND_STATUSES] },
 	},
 	{
@@ -120,5 +149,28 @@ export const SEND_LIST_FILTERS: readonly QueryParameter[] = [
 		name: 'until',
 		description: 'ISO 8601 timestamp: only sends queued before it. Defaults to now.',
 		schema: { type: 'string', format: 'date-time' },
+	},
+];
+
+/**
+ * `GET /api/v1/limits` names one template and one address with these, the way
+ * the send body names them, to read their per-recipient count.
+ */
+export const LIMITS_RECIPIENT_QUERY: readonly QueryParameter[] = [
+	{
+		name: 'email',
+		description:
+			'With `slug` or `transactionalId`: the address whose count to read, matched after trimming and lowercasing. Needs the `transactional:send` scope.',
+		schema: { type: 'string', format: 'email' },
+	},
+	{
+		name: 'slug',
+		description: 'With `email`: the slug of the template whose count to read.',
+		schema: { type: 'string' },
+	},
+	{
+		name: 'transactionalId',
+		description: 'With `email`: the ID of the template whose count to read. Wins over `slug`.',
+		schema: { type: 'string' },
 	},
 ];

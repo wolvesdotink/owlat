@@ -65,7 +65,10 @@ function fakeOps(
 		},
 		pushOnce: record('pushOnce', undefined),
 		seed: record('seed', undefined),
-		runForeground: record('runForeground', 0),
+		runForeground: async (web) => {
+			calls.push(web ? 'runForeground' : 'runForeground without web');
+			return 0;
+		},
 		...overrides,
 	};
 	return fake;
@@ -74,7 +77,7 @@ function fakeOps(
 describe('runUp', () => {
 	it('pushes before seeding and starts the watchers last', async () => {
 		const fake = fakeOps();
-		await expect(runUp(config, secrets, { seed: true }, fake.ops)).resolves.toBe(0);
+		await expect(runUp(config, secrets, { seed: true, web: true }, fake.ops)).resolves.toBe(0);
 		expect(fake.calls).toEqual([
 			'composeUp',
 			'adminKey',
@@ -89,7 +92,7 @@ describe('runUp', () => {
 
 	it('skips the seed with --no-seed', async () => {
 		const fake = fakeOps();
-		await runUp(config, secrets, { seed: false }, fake.ops);
+		await runUp(config, secrets, { seed: false, web: true }, fake.ops);
 		expect(fake.calls).not.toContain('seed');
 		expect(fake.calls.at(-1)).toBe('runForeground');
 	});
@@ -100,7 +103,9 @@ describe('runUp', () => {
 				throw new Error('push failed');
 			},
 		});
-		await expect(runUp(config, secrets, { seed: true }, fake.ops)).rejects.toThrow('push failed');
+		await expect(runUp(config, secrets, { seed: true, web: true }, fake.ops)).rejects.toThrow(
+			'push failed'
+		);
 		expect(fake.calls).not.toContain('seed');
 		expect(fake.calls).not.toContain('runForeground');
 	});
@@ -111,13 +116,15 @@ describe('runUp', () => {
 				throw new Error('docker compose up failed');
 			},
 		});
-		await expect(runUp(config, secrets, { seed: true }, fake.ops)).rejects.toThrow(/compose/);
+		await expect(runUp(config, secrets, { seed: true, web: true }, fake.ops)).rejects.toThrow(
+			/compose/
+		);
 		expect(fake.calls).toEqual([]);
 	});
 
 	it('points the CLI, the HTTP routes and the deployment at the same ports', async () => {
 		const fake = fakeOps();
-		await runUp(config, secrets, { seed: true }, fake.ops);
+		await runUp(config, secrets, { seed: true, web: true }, fake.ops);
 		expect(fake.stageEnv).toEqual({
 			CONVEX_SELF_HOSTED_URL: 'http://127.0.0.1:23210',
 			CONVEX_SELF_HOSTED_ADMIN_KEY: 'convex-self-hosted|key',
@@ -133,9 +140,21 @@ describe('runUp', () => {
 		});
 	});
 
+	it('leaves the web port and Nuxt to the caller with --no-web', async () => {
+		const lines: string[] = [];
+		const fake = fakeOps({ busy: [23000], log: (line) => lines.push(line) });
+		await expect(runUp(config, secrets, { seed: true, web: false }, fake.ops)).resolves.toBe(0);
+		expect(fake.calls.at(-1)).toBe('runForeground without web');
+		expect(fake.deploymentEnv['SITE_URL']).toBe('http://localhost:23000');
+		expect(lines.join('\n')).toContain(
+			'NUXT_PORT=23000 NUXT_PUBLIC_SITE_URL=http://localhost:23000 ' +
+				'NUXT_PUBLIC_CONVEX_URL=http://127.0.0.1:23210 NUXT_PUBLIC_CONVEX_SITE_URL=http://127.0.0.1:23211'
+		);
+	});
+
 	it('refuses to start on a taken port and names an offset to try', async () => {
 		const fake = fakeOps({ busy: [23000] });
-		const failure = runUp(config, secrets, { seed: true }, fake.ops);
+		const failure = runUp(config, secrets, { seed: true, web: true }, fake.ops);
 		await expect(failure).rejects.toThrow(DevStackConfigError);
 		await expect(failure).rejects.toThrow(/web port 23000.*\n.*\n.*OWLAT_PORT_OFFSET=20013/s);
 		expect(fake.calls).toEqual([]);

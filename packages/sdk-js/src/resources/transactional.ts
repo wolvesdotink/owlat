@@ -38,6 +38,18 @@ export class TransactionalResource extends BaseResource {
 	 *   },
 	 * });
 	 *
+	 * // A list feeds a repeated block, which reads `{{item.name}}`
+	 * const result = await owlat.transactional.send({
+	 *   email: 'user@example.com',
+	 *   slug: 'order-confirmation',
+	 *   dataVariables: {
+	 *     items: [
+	 *       { name: 'Tent', quantity: 1 },
+	 *       { name: 'Stove', quantity: 2 },
+	 *     ],
+	 *   },
+	 * });
+	 *
 	 * // Send by ID
 	 * const result = await owlat.transactional.send({
 	 *   email: 'user@example.com',
@@ -184,7 +196,7 @@ export class TransactionalResource extends BaseResource {
 
 	/**
 	 * List the sends this API created, newest first, each as {@link get}
-	 * answers it: the sends to one address, or the sends in one state, within
+	 * answers it: the sends to one address, in one state, or both, within
 	 * a window of at most 30 days (by default the last 30). Needs the
 	 * `transactional:send` scope.
 	 *
@@ -194,9 +206,8 @@ export class TransactionalResource extends BaseResource {
 	 *
 	 * @param params - Filters, page size and cursor
 	 * @returns One page of sends plus cursor metadata
-	 * @throws {ValidationError} If a filter is malformed, `email` and `status`
-	 *   are combined, the window is over 30 days, or the cursor belongs to
-	 *   other filters
+	 * @throws {ValidationError} If a filter is malformed, the window is over 30
+	 *   days, or the cursor belongs to other filters
 	 *
 	 * @example
 	 * ```typescript
@@ -209,6 +220,9 @@ export class TransactionalResource extends BaseResource {
 	 * // Which sends failed in the last hour?
 	 * const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 	 * const failed = await owlat.transactional.list({ status: 'failed', since });
+	 *
+	 * // Did anything sent to this address bounce?
+	 * const bounced = await owlat.transactional.list({ email: 'user@example.com', status: 'bounced' });
 	 * ```
 	 */
 	async list(

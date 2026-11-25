@@ -38,6 +38,12 @@ export interface DeliverabilityAlertRaisedData extends DeliverabilityAlertSubjec
 	/** Set only on a `deployment.sending_hold` alert: sending on the instance stopped. */
 	holdStatus?: 'suspended' | 'banned';
 	/**
+	 * Set only on a `deployment.sending_hold` alert raised again because the
+	 * hold's status changed while sending stayed stopped (suspended to banned,
+	 * or back): the status it had. The `alertId` is the first raise's.
+	 */
+	previousHoldStatus?: 'suspended' | 'banned';
+	/**
 	 * Set only on a `deployment.sending_hold` alert: how sending comes back, as
 	 * the JSON text of a `SendingHoldLift` (the `sendingHold.lift` of
 	 * `GET /api/v1/status`), because event data holds flat values only.

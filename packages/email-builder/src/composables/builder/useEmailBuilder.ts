@@ -50,6 +50,12 @@ export interface EmailBuilderProps {
 	/** Whether this host persists a plain-text override. */
 	allowPlainTextOverride?: boolean;
 	/**
+	 * The inbox preview line. Pass it and handle `update:previewText` to edit it
+	 * under the subject; the preview and the test send render it as the
+	 * hidden preheader.
+	 */
+	previewText?: string;
+	/**
 	 * Other people on root blocks, keyed by root block id (co-editing). A
 	 * locked block cannot be selected or edited here.
 	 */
@@ -67,6 +73,7 @@ export interface EmailBuilderEmits {
 	(e: 'send-test', html: string): void;
 	(e: 'create-variable', variable: { key: string; type?: string }): void;
 	(e: 'update:plainTextOverride', value: string): void;
+	(e: 'update:previewText', value: string): void;
 	(e: 'collab-focus', value: BuilderCollabFocus): void;
 }
 
@@ -324,6 +331,7 @@ export function useEmailBuilder(props: EmailBuilderProps, emit: EmailBuilderEmit
 		variableType,
 		showMandatoryUnsubscribeFooter,
 		variables: computed(() => props.variables),
+		previewText: computed(() => props.previewText),
 	});
 
 	// Sidebar, insert points, placeholder, inline editor and paste insertions
