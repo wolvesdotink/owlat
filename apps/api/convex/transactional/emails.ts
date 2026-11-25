@@ -1,5 +1,4 @@
 import { v } from 'convex/values';
-import { isValidSlug } from '@owlat/shared';
 import { transactionalMutation, transactionalQuery } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -13,21 +12,18 @@ import {
 	throwNotFound,
 } from '../_utils/errors';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
-import {
-	assertEditableForPublishableChange,
-	buildEditablePatch,
-	publishedHtml,
-} from '../lib/publishableEmail';
-import { loadEmailTheme } from '../lib/publishableEmailRender';
+import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import { brandedNewEmailContent } from '../workspaces/brandKit';
-import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
-import { recordAuditLog } from '../lib/auditLog';
 import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
-import { scanPublishedEdit } from './lifecycle';
+import {
+	applyTransactionalEmailEdit,
+	publishTransactionalEmail,
+	unpublishTransactionalEmail,
+} from './editing';
 
 // Data variable type for schema definition
-export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
+export type DataVariableType = 'string' | 'number' | 'boolean' | 'date' | 'array';
 
 /**
  * List all transactional emails for an organization with optional filtering
@@ -192,6 +188,7 @@ export const update = transactionalMutation({
 		name: v.optional(v.string()),
 		slug: v.optional(v.string()),
 		subject: v.optional(v.string()),
+		previewText: v.optional(v.string()),
 		content: v.optional(v.string()),
 		// Accepted for older clients and ignored: the server renders the HTML
 		// from the stored blocks (lib/publishableEmail.ts buildEditablePatch).
@@ -237,56 +234,8 @@ export const update = transactionalMutation({
 		);
 		const args = coedit ? { ...rawArgs, ...coedit.overrides } : rawArgs;
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
-
-		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
-		assertContentRevision(email, args.expectedContentRevision);
-
-		// If updating slug, check for uniqueness
-		if (args.slug && args.slug !== email.slug) {
-			const existing = await ctx.db
-				.query('transactionalEmails')
-				.withIndex('by_slug', (q) => q.eq('slug', args.slug!))
-				.first();
-
-			if (existing) {
-				throwAlreadyExists(`A transactional email with slug "${args.slug}" already exists`);
-			}
-
-			if (!isValidSlug(args.slug)) {
-				throwInvalidInput(
-					"Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email', 'order-confirmation')"
-				);
-			}
-		}
-
-		const updates = {
-			...(await buildEditablePatch(ctx, email, args, {
-				noun: 'Transactional email',
-				variableType: 'data',
-				searchableFields: ['name', 'subject', 'slug'],
-			})),
-			...(args.slug !== undefined && { slug: args.slug }),
-			...(args.dataVariablesSchema !== undefined && {
-				dataVariablesSchema: args.dataVariablesSchema,
-			}),
-			...(args.showUnsubscribe !== undefined && { showUnsubscribe: args.showUnsubscribe }),
-			...(args.attachments !== undefined && { attachments: args.attachments }),
-		};
-
-		await ctx.db.patch(args.id, updates);
+		const updates = await applyTransactionalEmailEdit(ctx, email, args, session.userId);
 		if (coedit) await markCoeditSaved(ctx, coedit, updates.contentRevision);
-		await scanPublishedEdit(ctx, args.id, session.userId);
-
-		const changedFields = Object.keys(updates).filter(
-			(k) => k !== 'updatedAt' && k !== 'contentRevision'
-		);
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'transactional_email.updated',
-			resource: 'transactional_email',
-			resourceId: args.id,
-			details: { changedFields: changedFields.join(', ') },
-		});
 
 		// The revision this write stored; the editor builds its next save on it.
 		return { id: args.id, contentRevision: updates.contentRevision };
@@ -319,28 +268,7 @@ export const publish = transactionalMutation({
 			'Only owners and admins can publish transactional emails'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
-
-		if (email.status === 'published') {
-			throwInvalidState('Transactional email is already published');
-		}
-		assertContentRevision(email, args.expectedContentRevision, 'publish');
-		const html = publishedHtml(email, {
-			variableType: 'data',
-			theme: await loadEmailTheme(ctx),
-		});
-
-		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
-			emailId: args.id,
-			input: { to: 'published', at: Date.now(), ...html },
-			userId: session.userId,
-		});
-
-		if (!outcome.ok) {
-			if (outcome.reason === 'email_not_found') {
-				throwNotFound('Transactional email');
-			}
-			throwInvalidState(`Cannot publish transactional email: ${outcome.reason}`);
-		}
+		await publishTransactionalEmail(ctx, email, session.userId, args.expectedContentRevision);
 
 		return args.id;
 	},
@@ -361,19 +289,7 @@ export const unpublish = transactionalMutation({
 		if (email.status === 'draft') {
 			throwInvalidState('Transactional email is already a draft');
 		}
-
-		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
-			emailId: args.id,
-			input: { to: 'draft', at: Date.now() },
-			userId: session.userId,
-		});
-
-		if (!outcome.ok) {
-			if (outcome.reason === 'email_not_found') {
-				throwNotFound('Transactional email');
-			}
-			throwInvalidState(`Cannot unpublish transactional email: ${outcome.reason}`);
-		}
+		await unpublishTransactionalEmail(ctx, args.id, session.userId);
 
 		return args.id;
 	},
@@ -443,7 +359,7 @@ export const updateSchema = transactionalMutation({
 
 		// Validate schema format
 		const schema = args.dataVariablesSchema;
-		const validTypes: DataVariableType[] = ['string', 'number', 'boolean', 'date'];
+		const validTypes: DataVariableType[] = ['string', 'number', 'boolean', 'date', 'array'];
 
 		for (const [key, type] of Object.entries(schema)) {
 			// Validate key format

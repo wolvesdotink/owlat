@@ -10,6 +10,7 @@ export type {
 	ApiResponse,
 	CursorPaginatedResponse,
 	CursorPaginationMeta,
+	DataVariableValue,
 	JsonPrimitive,
 	ListQuery as PaginationParams,
 	PaginatedResponse,

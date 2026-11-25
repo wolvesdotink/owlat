@@ -2,6 +2,7 @@ import { type Ref } from 'vue';
 import type {
 	EditorBlock,
 	BlockType,
+	ColumnCount,
 	ColumnsBlockContent,
 	ColumnItem,
 	TextBlockContent,
@@ -14,6 +15,7 @@ import {
 	cloneWithFreshIds,
 	locateBlock,
 	locateWithin,
+	withColumnCount,
 } from '../utils';
 import type { BlockSlot } from '../utils/blockTree';
 import { childBlockLists } from '@owlat/shared/blockTree';
@@ -56,7 +58,7 @@ export interface UseBlockManagementReturn {
 	) => ColumnItem | null;
 
 	// Column management
-	handleColumnCountChange: (blockId: string, newCount: 1 | 2 | 3) => void;
+	handleColumnCountChange: (blockId: string, newCount: ColumnCount) => void;
 
 	// Nested item operations, for an item at any depth below `blockId` (a
 	// columns, container or hero Block, itself a root or nested)
@@ -253,40 +255,13 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 	};
 
 	// Change column count
-	const handleColumnCountChange = (blockId: string, newCount: 1 | 2 | 3) => {
+	const handleColumnCountChange = (blockId: string, newCount: ColumnCount) => {
 		const content = findColumnsBlock(blockId);
-		if (!content) return;
-
-		const currentCount = content.columnCount;
-
-		if (newCount === currentCount) return;
-
-		content.columnCount = newCount;
-
-		// Adjust columns array
-		if (newCount > currentCount) {
-			// Add new columns
-			for (let i = currentCount; i < newCount; i++) {
-				content.columns.push([]);
-			}
-		} else {
-			// Remove extra columns (keep items from removed columns)
-			const removedItems: ColumnItem[] = [];
-			for (let i = newCount; i < currentCount; i++) {
-				const column = content.columns[i];
-				if (column) {
-					removedItems.push(...column);
-				}
-			}
-			content.columns = content.columns.slice(0, newCount);
-			// Add removed items to the last column
-			if (removedItems.length > 0) {
-				const lastColumn = content.columns[newCount - 1];
-				if (lastColumn) {
-					lastColumn.push(...removedItems);
-				}
-			}
-		}
+		if (!content || newCount === content.columnCount) return;
+		const next = withColumnCount(content, newCount);
+		content.columnCount = next.columnCount;
+		content.columns = next.columns;
+		delete content.columnWidths;
 		onTreeMutated?.();
 	};
 

@@ -14,7 +14,7 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 import { useTemplateList } from '~/composables/useTemplateList';
 import { formatDate } from '~/utils/formatters';
-import { sortTemplateRows } from '~/utils/templateListSort';
+import { TEMPLATE_SORT_OPTIONS, type TemplateSortOption } from '~/utils/templateListSort';
 import {
 	TEMPLATE_TYPE_FILTERS,
 	parseTemplateTypeFilter,
@@ -142,6 +142,16 @@ const libraryRef = ref<{
 	isCreating: boolean;
 } | null>(null);
 
+// Templates from before the name sort key existed sort ahead of every named
+// one until its backfill has filled them in, so the name sorts are offered only
+// once none is left. A name sort chosen earlier is served as the default.
+const { data: nameSortReady } = useOrganizationQuery(api.emailTemplates.emails.isNameSortReady);
+const servedSort = (sort: TemplateSortOption): TemplateSortOption =>
+	sort.sortBy === 'name' && nameSortReady.value !== true ? TEMPLATE_SORT_OPTIONS[0]! : sort;
+const offeredSortOptions = computed(() =>
+	TEMPLATE_SORT_OPTIONS.filter((option) => option.sortBy !== 'name' || nameSortReady.value === true)
+);
+
 // The list query is built inside `useTemplateList`; its pager is kept here for
 // Load more.
 let pager: { status: { readonly value: string }; loadMore: (numItems: number) => void } | undefined;
@@ -149,24 +159,31 @@ let pager: { status: { readonly value: string }; loadMore: (numItems: number) =>
 // `reactive` unwraps the composable's refs, so the template reads `list.items`.
 const list = reactive(
 	useTemplateList<TemplateRow>({
-		// Type filter + full-text search run server-side through the Listing engine;
-		// the sort is applied client-side over the loaded page, and a
-		// search keeps the engine's relevance order.
+		// Type filter, search and sort all run on the server, before pagination.
+		// A search is relevance-ordered (its index cannot sort), so it sends no
+		// sort and the menu says so. A blank term is no search: the server trims
+		// it and browses. The subscription is keyed by its args, sort included: a
+		// sort not shown recently starts from its first page with nothing on
+		// screen until it lands, and one still warm comes back with the pages it
+		// had loaded, in its own order. The old order never shows under the new
+		// label.
 		query: ({ search, sort }) => {
 			const { results, status, loadMore, isLoading, error, refetch } =
 				useOrganizationPaginatedQuery(
 					api.emailTemplates.emails.list,
 					() => ({
 						...(typeFilter.value === 'all' ? {} : { type: typeFilter.value }),
-						search: search.value || undefined,
+						...(search.value.trim()
+							? { search: search.value }
+							: {
+									sortBy: servedSort(sort.value).sortBy,
+									sortOrder: servedSort(sort.value).sortOrder,
+								}),
 					}),
 					{ initialNumItems: 50 }
 				);
 			pager = { status, loadMore };
-			const rows = computed(() =>
-				search.value ? results.value : sortTemplateRows(results.value, sort.value)
-			);
-			return { rows, isLoading, error, refetch };
+			return { rows: results, isLoading, error, refetch };
 		},
 		defaultViewMode: 'grid',
 		editPath: (template) => editPath(template._id),
@@ -219,10 +236,13 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 		:is-empty="list.isEmpty"
 		:active-search="list.debouncedSearch"
 		:search-placeholder="t('dashboard.send.index.searchPlaceholder')"
-		:sort-options="list.sortOptions"
-		:sort="list.currentSort.value"
+		:sort-options="offeredSortOptions"
+		:sort="servedSort(list.currentSort).value"
 		:sort-label="t('dashboard.send.index.sortLabel')"
 		sort-listbox-id="templates-sort-listbox"
+		:sort-disabled-label="
+			list.debouncedSearch.trim() ? t('dashboard.send.index.sortedByRelevance') : undefined
+		"
 		:empty-no-org="{
 			icon: MailIcon,
 			title: t('dashboard.send.index.emptyNoTeam.title'),

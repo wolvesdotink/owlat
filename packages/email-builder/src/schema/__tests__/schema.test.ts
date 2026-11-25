@@ -1,11 +1,25 @@
 import { describe, it, expect } from 'vitest';
+import blockSchema from '@owlat/public-contract/schemas/blocks.json';
 import { getSchema, getAllSchemas } from '../index';
 
 const ALL_BLOCK_TYPES = [
-	'text', 'image', 'button', 'divider', 'spacer',
-	'columns', 'social', 'container', 'hero', 'table',
-	'rawHtml', 'video', 'accordion', 'menu', 'carousel',
-	'list', 'progressBar',
+	'text',
+	'image',
+	'button',
+	'divider',
+	'spacer',
+	'columns',
+	'social',
+	'container',
+	'hero',
+	'table',
+	'rawHtml',
+	'video',
+	'accordion',
+	'menu',
+	'carousel',
+	'list',
+	'progressBar',
 ];
 
 describe('schema registry', () => {
@@ -156,6 +170,37 @@ describe('schema registry', () => {
 					expect(allKeys.has(field.showWhen!.key)).toBe(true);
 				}
 			}
+		});
+	});
+
+	// The settings panel writes `block.content[key]`; the published block
+	// schema refuses a content field it does not list, so every field a panel
+	// can write must be one the schema has.
+	describe('the published block schema', () => {
+		const COMPOSITE: Record<string, string[]> = {
+			padding: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'paddingLinked'],
+			margin: ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'],
+		};
+		const defs = (
+			blockSchema as unknown as {
+				$defs: Record<
+					string,
+					{ properties?: Record<string, { const?: string; properties?: object }> }
+				>;
+			}
+		).$defs;
+		const contentFields = (type: string): string[] => {
+			const def = Object.values(defs).find((d) => d.properties?.['type']?.const === type);
+			return Object.keys(def?.properties?.['content']?.properties ?? {});
+		};
+
+		it.each(ALL_BLOCK_TYPES)('lists every field the %s panel writes', (type) => {
+			const fields = contentFields(type);
+			expect(fields.length).toBeGreaterThan(0);
+			const written = getSchema(type)!.groups.flatMap((group) =>
+				group.fields.flatMap((field) => COMPOSITE[field.key] ?? [field.key])
+			);
+			expect(written.filter((key) => !fields.includes(key))).toEqual([]);
 		});
 	});
 });

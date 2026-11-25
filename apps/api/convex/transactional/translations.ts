@@ -84,13 +84,14 @@ export const addTranslation = transactionalMutation({
 
 /**
  * Update a specific language translation
- * For non-default languages, only updates translatable text (subject, block text)
+ * For non-default languages, only updates translatable text (subject, previewText, block text)
  */
 export const updateTranslation = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.string(),
 		subject: v.optional(v.string()),
+		previewText: v.optional(v.string()),
 		blocks: v.optional(v.string()), // JSON string of Record<blockId, TranslatableBlockContent>
 		// Ignored: the server renders every language's delivery HTML from the
 		// stored overlays in this write (lib/publishableEmail.ts). Still accepted

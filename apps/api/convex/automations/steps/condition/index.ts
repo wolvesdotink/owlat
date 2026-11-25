@@ -1,6 +1,6 @@
 import type { ActionCtx } from '../../../_generated/server';
 import { internal } from '../../../_generated/api';
-import type { Condition } from '../../../conditions';
+import { parseCondition, type Condition } from '../../../conditions';
 import type { StepExecuteArgs, StepModule, StepOutcome } from '../../types';
 
 export interface ConditionStepConfig {
@@ -19,14 +19,10 @@ export const conditionStepModule: StepModule<'condition', ConditionStepConfig> =
 		if (!r['condition'] || typeof r['condition'] !== 'object') {
 			throw new Error('condition step: missing `condition`');
 		}
-		const conditionRaw = r['condition'] as Record<string, unknown>;
-		if (typeof conditionRaw['kind'] !== 'string') {
-			throw new Error('condition step: condition is missing `kind`');
-		}
-		// Inner-condition shape validation happens when the step evaluates,
-		// via the conditions registry's `parseCondition`.
+		// The inner condition is parsed here, not first in the evaluating query, so a
+		// condition that does not parse fails the step as `invalid_step_config`.
 		return {
-			condition: conditionRaw as unknown as Condition,
+			condition: parseCondition(r['condition']),
 			yesBranchStepIndex:
 				typeof r['yesBranchStepIndex'] === 'number' ? r['yesBranchStepIndex'] : null,
 			noBranchStepIndex: typeof r['noBranchStepIndex'] === 'number' ? r['noBranchStepIndex'] : null,

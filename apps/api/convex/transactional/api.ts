@@ -111,6 +111,15 @@ function validateDecodedBody(body: SendTransactionalBody): Response | null {
 	}
 	const unstorable = unstorableRecordMessage(body.dataVariables, 'dataVariables');
 	if (unstorable) return invalidInputResponse(unstorable, 'dataVariables');
+	// The entries of a list that feeds a repeated Block are stored the same way.
+	for (const [name, value] of Object.entries(body.dataVariables ?? {})) {
+		if (!Array.isArray(value)) continue;
+		for (const entry of value) {
+			if (entry === null || typeof entry !== 'object') continue;
+			const entryUnstorable = unstorableRecordMessage(entry, `dataVariables.${name} entries`);
+			if (entryUnstorable) return invalidInputResponse(entryUnstorable, `dataVariables.${name}`);
+		}
+	}
 	if (envelopeBytes(body) > MAX_ENVELOPE_BYTES) {
 		return errorResponse(
 			'invalid_input',

@@ -7,6 +7,7 @@ import {
 	readFrameworkAliasFind,
 	readFrameworkStaticString,
 	readFrameworkStaticValues,
+	readFrameworkWildcardReplacement,
 	type FrameworkStaticValues,
 } from './frameworkAliasEvaluator';
 
@@ -66,8 +67,10 @@ export function createRepositoryPackageMatcher(
 	packageNames: readonly string[],
 	aliases: readonly RepositoryModuleAlias[]
 ): RepositoryPackageMatcher {
-	let matcherWork = 0;
+	// The comparison budget bounds one specifier's alias chain. A repository has thousands of
+	// import specifiers, and the source byte budget already bounds how many there are.
 	return (specifier: string, sourceFile?: string): boolean => {
+		let matcherWork = 0;
 		const pending = [specifier];
 		const visited = new Set<string>();
 		while (pending.length > 0) {
@@ -224,10 +227,9 @@ function collectFrameworkAliasValue(
 		}
 		const properties = readFrameworkAliasRule(element);
 		const find = readFrameworkAliasFind(properties.find.initializer, staticValues);
-		const targetPattern = readFrameworkStaticString(
-			properties.replacement.initializer,
-			staticValues
-		);
+		const replacement = readFrameworkStaticString(properties.replacement.initializer, staticValues);
+		const targetPattern =
+			find.matchKind === 'wildcard' ? readFrameworkWildcardReplacement(replacement) : replacement;
 		addAlias(aliases, { ...find, targetPattern });
 	}
 }
@@ -293,7 +295,8 @@ function resolveAlias(alias: RepositoryModuleAlias, specifier: string): string |
 	const suffix = pattern.slice(wildcardIndex + 1);
 	if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) return undefined;
 	const wildcard = specifier.slice(prefix.length, specifier.length - suffix.length);
-	return targetPattern.replaceAll('*', wildcard);
+	// A function replacement inserts the matched text verbatim, `$` sequences included.
+	return targetPattern.replaceAll('*', () => wildcard);
 }
 
 function addAlias(aliases: RepositoryModuleAlias[], alias: RepositoryModuleAlias): void {

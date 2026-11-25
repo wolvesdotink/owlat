@@ -8,7 +8,10 @@
  * queue); an automation Send sits in the transactional pool, and can be parked
  * by a deferral. A hard bounce, complaint or manual block (the blocklist), or a
  * global unsubscribe or contact deletion (`lib/marketingEligibility.ts`) landing
- * in that window must still stop the message.
+ * in that window must still stop the message. So must the contact leaving the
+ * topic an automation belongs to: the automation Send records its automation,
+ * and the topic is read from there. A campaign envelope is not re-checked
+ * against its topic; it records no topic.
  *
  * Which envelopes are marketing:
  *   - every `campaign` envelope. A seed-probe shadow copy is addressed to an
@@ -32,7 +35,8 @@
  * lost either: the worker returns a deferral that the completion re-enters.
  *
  * Point reads only: one `blockedEmails.by_email` lookup, one contact get and the
- * `instanceSettings` singleton.
+ * `instanceSettings` singleton, plus for an automation Send the Send, its
+ * automation and the topic membership.
  */
 
 import { v } from 'convex/values';
@@ -40,7 +44,8 @@ import { internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { isSuppressed } from '../lib/suppression';
 import {
-	loadContactMarketingIneligibility,
+	automationTopicIneligibility,
+	contactMarketingIneligibility,
 	type MarketingIneligibility,
 } from '../lib/marketingEligibility';
 import { readSendingHold, SENDING_HOLD_RECHECK_MS } from '../workspaces/abuseGate';
@@ -62,6 +67,9 @@ export const checkMarketingDispatch = internalQuery({
 	args: {
 		email: v.string(),
 		contactId: v.optional(v.id('contacts')),
+		// The Send of an automation envelope, whose automation may belong to a
+		// topic. Optional, so a worker built before it still gets an answer.
+		sendId: v.optional(v.id('transactionalSends')),
 		// Set for real transactional mail: the blocklist on that scope, nothing else.
 		scope: v.optional(v.literal('transactional')),
 	},
@@ -74,8 +82,15 @@ export const checkMarketingDispatch = internalQuery({
 		// stops a receipt.
 		if (args.scope === 'transactional') return null;
 		if (args.contactId !== undefined) {
-			const reason = await loadContactMarketingIneligibility(ctx, args.contactId);
+			const contact = await ctx.db.get(args.contactId);
+			const reason = contactMarketingIneligibility(contact);
 			if (reason !== null) return { kind: 'suppressed', reason };
+			const send = args.sendId !== undefined ? await ctx.db.get(args.sendId) : null;
+			const automation = send?.automationId ? await ctx.db.get(send.automationId) : null;
+			if (automation && contact) {
+				const leftTopic = await automationTopicIneligibility(ctx, automation, contact);
+				if (leftTopic !== null) return { kind: 'suppressed', reason: leftTopic.reason };
+			}
 		}
 		return (await readSendingHold(ctx.db)) === null ? null : { kind: 'held' };
 	},
@@ -117,9 +132,11 @@ export function sendingHoldOutcome(input: {
  * The address and contact the worker must pass to {@link checkMarketingDispatch}
  * before dispatching `envelope`, or `null` when the envelope is not marketing.
  */
-export function marketingDispatchRecipient(
-	envelope: WorkerEnvelopeInput
-): { email: string; contactId?: Id<'contacts'> } | null {
+export function marketingDispatchRecipient(envelope: WorkerEnvelopeInput): {
+	email: string;
+	contactId?: Id<'contacts'>;
+	sendId?: Id<'transactionalSends'>;
+} | null {
 	if (envelope.kind === 'campaign') {
 		const contactId =
 			envelope.seedProbeRef === undefined ? envelope.contactInfo.contactId : undefined;
@@ -129,6 +146,7 @@ export function marketingDispatchRecipient(
 		return {
 			email: envelope.to,
 			...(envelope.contactId !== undefined ? { contactId: envelope.contactId } : {}),
+			sendId: envelope.sendId,
 		};
 	}
 	return null;

@@ -273,13 +273,21 @@ const checked: [ClosureKind, typeof report.routes | typeof report.deferred][] = 
 	['route', report.routes],
 	['deferred', report.deferred],
 ];
+/**
+ * A locale chunk of the web build (apps/web/i18n/writeCatalogs.ts) holds copy,
+ * which no dynamic import shrinks, so its failure says how to re-budget it.
+ */
+const isLocaleChunk = (key: string) => key.includes('/owlat-i18n/');
 const over: string[] = [];
+const copyOver: string[] = [];
 const missing: string[] = [];
 const stale: string[] = [];
 for (const [kind, rows] of checked) {
 	for (const { key, budgetKiB, beyondEntry } of rows) {
 		if (budgetKiB === null) {
 			missing.push(`${kind} ${suggestedBudgetKiB(beyondEntry.gzip)} ${key}`);
+		} else if (beyondEntry.gzip > budgetKiB * 1024 && isLocaleChunk(key)) {
+			copyOver.push(`${kind} ${suggestedBudgetKiB(beyondEntry.gzip)} ${key}`);
 		} else if (beyondEntry.gzip > budgetKiB * 1024) {
 			over.push(
 				`${kind} ${key}: ${kb(beyondEntry.gzip)} KB gzip, over its ${budgetKiB} KB budget ` +
@@ -303,6 +311,16 @@ if (over.length > 0) {
 			'and why it has to load with this page or feature.'
 	);
 }
+if (copyOver.length > 0) {
+	console.error(
+		`\n${copyOver.length} locale chunk${copyOver.length === 1 ? ' is' : 's are'} over budget. ` +
+			'A locale chunk is copy, which no dynamic import shrinks: set its line in ' +
+			`${budgetsLabel} to this build plus the larger of 10% and 2 KiB:\n` +
+			copyOver.map((line) => `  ${line}`).join('\n') +
+			"\nWhen an area's line keeps rising, cut the area along a route boundary instead " +
+			'(SUB_AREAS in apps/web/i18n/catalogAreas.ts).'
+	);
+}
 if (missing.length > 0) {
 	console.error(
 		`\n${missing.length} closure${missing.length === 1 ? ' has' : 's have'} no budget. ` +
@@ -319,7 +337,7 @@ if (stale.length > 0) {
 			stale.map((line) => `  ${line}`).join('\n')
 	);
 }
-if (over.length + missing.length + stale.length > 0) {
+if (over.length + copyOver.length + missing.length + stale.length > 0) {
 	console.error(
 		'\nAfter the fix, `bun run ci:bundle` builds the web app and checks it again locally.'
 	);

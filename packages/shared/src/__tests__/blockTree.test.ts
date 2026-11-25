@@ -64,6 +64,24 @@ describe('childBlockLists', () => {
 		).toEqual([['x'], []]);
 	});
 
+	it('lists all five columns of a five-column row, and renews ids in the fifth', () => {
+		const row: BlockTreeNode = {
+			id: 'c',
+			type: 'columns',
+			content: { columnCount: 5, columns: [1, 2, 3, 4, 5].map((n) => [leaf(`s${n}`)]) },
+		};
+		expect(childBlockLists(row).map((list) => list.map((child) => child.id))).toEqual([
+			['s1'],
+			['s2'],
+			['s3'],
+			['s4'],
+			['s5'],
+		]);
+		let n = 0;
+		renewBlockTreeIds(row, () => `new-${++n}`);
+		expect(childBlockLists(row)[4]![0]!.id).toBe('new-6');
+	});
+
 	it('has no children for leaves, unknown types and malformed content', () => {
 		expect(childBlockLists(leaf('t'))).toEqual([]);
 		expect(

@@ -60,15 +60,19 @@ export function guessLocale(
 	return fallback;
 }
 
-/** The areas whose chunks `path` needs. */
+/**
+ * The areas whose chunks `path` needs: the most specific area that covers it. A
+ * page below a sub-area (`/dashboard/send/transactional/...`) is not one of its
+ * section's pages, so the section's chunk does not carry its messages.
+ */
 export function areasForPath(routes: readonly AreaRouteEntry[], path: string): string[] {
 	const normalized = path.toLowerCase().replace(/\/+$/, '') || '/';
-	return routes
-		.filter(
-			(route) =>
-				normalized === route.path || (!route.exact && normalized.startsWith(`${route.path}/`))
-		)
-		.map((route) => route.area);
+	const covering = routes.filter(
+		(route) =>
+			normalized === route.path || (!route.exact && normalized.startsWith(`${route.path}/`))
+	);
+	const longest = Math.max(0, ...covering.map((route) => route.path.length));
+	return covering.filter((route) => route.path.length === longest).map((route) => route.area);
 }
 
 export interface AreaCatalogOptions {

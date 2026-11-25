@@ -10,7 +10,12 @@
  * primitive renders its column-cell shell.
  */
 
-import { fullSupport } from '@owlat/shared';
+import {
+	fullSupport,
+	isValidColumnWidths,
+	MAX_COLUMN_COUNT,
+	MIN_COLUMN_WIDTH_PERCENT,
+} from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { toPixelWidth, toPercentNumber } from '../../helpers/dimensions';
 import { getColumnWidths } from '../../helpers/table';
@@ -41,7 +46,7 @@ export const columnsModule: BlockModule<'columns'> = {
 	},
 
 	html({ content, ctx, walk }) {
-		const widths = getColumnWidths(content.columnCount, content.ratio);
+		const widths = getColumnWidths(content.columnCount, content.ratio, content.columnWidths);
 		const verticalAlign = content.verticalAlign || 'top';
 		const gap = px(content.columnGap, 0);
 		const gapLeft = Math.floor(gap / 2);
@@ -322,9 +327,9 @@ export const columnsModule: BlockModule<'columns'> = {
 			[
 				{
 					field: 'columnCount',
-					check: (v) => isNumber(v) && [1, 2, 3, 4].includes(v),
+					check: (v) => isNumber(v) && Number.isInteger(v) && v >= 1 && v <= MAX_COLUMN_COUNT,
 					code: 'COLUMNS_COUNT_INVALID',
-					message: 'columnCount must be 1, 2, 3, or 4',
+					message: `columnCount must be a whole number from 1 to ${MAX_COLUMN_COUNT}`,
 				},
 				{
 					field: 'ratio',
@@ -376,6 +381,21 @@ export const columnsModule: BlockModule<'columns'> = {
 					}
 				}
 			}
+		}
+
+		// Custom widths the renderer would ignore: it falls back to the ratio
+		// preset, so the row renders, but not at the widths that were set.
+		if (
+			ic['columnWidths'] !== undefined &&
+			!isValidColumnWidths(ic['columnWidths'], ic['columnCount'])
+		) {
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'columns',
+				severity: 'warning',
+				code: 'COLUMNS_WIDTHS_INVALID',
+				message: `columnWidths must hold one whole percentage per column, each at least ${MIN_COLUMN_WIDTH_PERCENT}, summing to 100; the ratio preset is used instead`,
+			});
 		}
 
 		// Semantic

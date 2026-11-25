@@ -235,6 +235,12 @@ its budget loads the new code lazily (`import()`, `defineAsyncComponent`) or
 imports a smaller leaf module. Raise a line only with the reason in the pull
 request.
 
+Locale chunks (`owlat-i18n/areas/*`, one per route area and language) are the
+exception, because copy cannot load later. A change whose new strings take one
+over its line sets the line to what the failure prints. When the same area keeps
+growing, split it along a route boundary instead (`SUB_AREAS` in
+`apps/web/i18n/catalogAreas.ts`).
+
 ### Dead-code gate
 
 A zero-tolerance gate keeps orphaned exports, files, modules, and dependencies

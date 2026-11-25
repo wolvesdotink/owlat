@@ -154,11 +154,16 @@ function mountModal(state: ModalState, topics: Array<{ _id: string; name: string
 	return { wrapper, csvImport };
 }
 
-/** The button an operator would click, found by its visible label. */
-function clickButton(wrapper: ReturnType<typeof mount>, label: string) {
+/**
+ * The button an operator would click, found by its visible label. Settles the
+ * work the click starts: the error download imports the CSV writer first.
+ */
+async function clickButton(wrapper: ReturnType<typeof mount>, label: string) {
 	const button = wrapper.findAll('button').find((b) => b.text().includes(label));
 	if (!button) throw new Error(`No button labelled "${label}" in: ${wrapper.text()}`);
-	return button.trigger('click');
+	await button.trigger('click');
+	await vi.dynamicImportSettled();
+	await flushPromises();
 }
 
 const DISCARD_PROMPT = 'Discard this import?';
@@ -281,6 +286,21 @@ describe('CsvImportModal — the error rows', () => {
 		expect(downloads[0]!.filename).toBe('people-errors.csv');
 	});
 
+	it('says the connection failed when the CSV writer cannot be fetched', async () => {
+		const { wrapper } = mountModal({ step: 'complete', results: { failed: 12, errors } });
+		vi.doMock('~/utils/contactsCsv', () => {
+			throw new Error('Failed to fetch dynamically imported module');
+		});
+		try {
+			await clickButton(wrapper, 'Download error rows');
+		} finally {
+			vi.doUnmock('~/utils/contactsCsv');
+		}
+
+		expect(downloads).toHaveLength(0);
+		expect(toasts).toEqual(['Connection problem. Check your network and try again.']);
+	});
+
 	it('offers no download when the import had no failures', () => {
 		const { wrapper } = mountModal({ step: 'complete', results: { imported: 4 } });
 
@@ -357,10 +377,11 @@ describe('CsvImportModal — where the import goes next', () => {
 
 		expect(runOperation).toHaveBeenCalledTimes(1);
 		expect(runOperation).toHaveBeenCalledWith({
-			// The rows carry addresses only — an existing contact must not be
-			// rewritten by a topic assignment. The repeat address is sent once.
+			// The rows carry addresses only, so `update` rewrites no field; `skip`
+			// would leave contacts that already existed out of the topic. The
+			// repeat address is sent once.
 			contacts: [{ email: 'ada@example.com' }, { email: 'grace@example.com' }],
-			handleDuplicates: 'skip',
+			handleDuplicates: 'update',
 			topicId: 'topic-2',
 		});
 		expect(toasts).toEqual(['2 contacts added to Beta']);

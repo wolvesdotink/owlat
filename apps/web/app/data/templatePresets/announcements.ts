@@ -18,6 +18,7 @@ export const announcementPreset: TemplatePreset = {
 			id: 'announcement-text-1',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center; color: #c4785a; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em">Announcement</p>',
 				fontSize: 12,
 				textColor: '#c4785a',
@@ -27,6 +28,7 @@ export const announcementPreset: TemplatePreset = {
 			id: 'announcement-text-2',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<h1 style="text-align: center">Something Exciting is Coming!</h1>',
 				fontSize: 32,
 				textColor: '#111827',
@@ -41,6 +43,7 @@ export const announcementPreset: TemplatePreset = {
 			id: 'announcement-text-3',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center">We\'re thrilled to share some big news with you. This is where you can describe your announcement, whether it\'s a new product, feature, event, or milestone.</p>',
 				fontSize: 18,
 				textColor: '#4B5563',
@@ -91,6 +94,7 @@ export const announcementPreset: TemplatePreset = {
 			id: 'announcement-text-4',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center">Questions? We\'d love to hear from you.<br>Just reply to this email.</p>',
 				fontSize: 14,
 				textColor: '#6B7280',
@@ -116,6 +120,7 @@ export const productUpdatePreset: TemplatePreset = {
 			id: 'product-text-1',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center; color: #6B7280">Product Update</p>',
 				fontSize: 14,
 				textColor: '#6B7280',
@@ -125,6 +130,7 @@ export const productUpdatePreset: TemplatePreset = {
 			id: 'product-text-2',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<h1 style="text-align: center">Introducing Our Latest Feature</h1>',
 				fontSize: 28,
 				textColor: '#111827',
@@ -154,6 +160,7 @@ export const productUpdatePreset: TemplatePreset = {
 			id: 'product-text-3',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: "<h2>What's New</h2>",
 				fontSize: 20,
 				textColor: '#111827',
@@ -163,6 +170,7 @@ export const productUpdatePreset: TemplatePreset = {
 			id: 'product-text-4',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p>Describe the new feature or update here. Explain what it does and why your users will love it.</p>',
 				fontSize: 16,
 				textColor: '#374151',
@@ -177,6 +185,7 @@ export const productUpdatePreset: TemplatePreset = {
 			id: 'product-text-5',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<h2>Key Benefits</h2>',
 				fontSize: 20,
 				textColor: '#111827',
@@ -186,6 +195,7 @@ export const productUpdatePreset: TemplatePreset = {
 			id: 'product-text-6',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p><strong>Benefit one</strong> - Explain the value</p><p><strong>Benefit two</strong> - Explain the value</p><p><strong>Benefit three</strong> - Explain the value</p>',
 				fontSize: 16,
 				textColor: '#374151',
@@ -236,6 +246,7 @@ export const productUpdatePreset: TemplatePreset = {
 			id: 'product-text-7',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center">Need help getting started? Check out our <a href="#">documentation</a> or <a href="#">contact support</a>.</p>',
 				fontSize: 14,
 				textColor: '#6B7280',

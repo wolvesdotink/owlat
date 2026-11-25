@@ -5,7 +5,13 @@
  * went quiet never ends up in a PNG.
  */
 import { describe, expect, it } from 'vitest';
-import { SETTLE_ATTEMPTS, shootWhenSettled, type PageChecks } from '../settle';
+import {
+	SETTLE_ATTEMPTS,
+	SETTLE_TIMEOUT_MS,
+	shootWhenSettled,
+	TICK_GRACE_MS,
+	type PageChecks,
+} from '../settle';
 import { CaptureFailure } from '../surfaces';
 
 interface Script {
@@ -14,7 +20,8 @@ interface Script {
 	/** `blocker()` results, in call order; the last one repeats. */
 	blocker?: Array<string | null>;
 	waitLoaded?: boolean;
-	waitQuiet?: boolean;
+	/** `'when-frozen'`: a page whose timers keep changing it, quiet only once they stop. */
+	waitQuiet?: boolean | 'when-frozen';
 }
 
 function scripted(script: Script) {
@@ -24,6 +31,7 @@ function scripted(script: Script) {
 	const loaded = [...(script.loaded ?? [true])];
 	const blocker = [...(script.blocker ?? [null])];
 	let shots = 0;
+	let frozen = false;
 	const checks: PageChecks = {
 		blocker: async () => {
 			calls.push('blocker');
@@ -37,9 +45,18 @@ function scripted(script: Script) {
 			calls.push('waitLoaded');
 			return script.waitLoaded ?? true;
 		},
-		waitQuiet: async () => {
-			calls.push('waitQuiet');
-			return script.waitQuiet ?? true;
+		waitQuiet: async (timeoutMs) => {
+			calls.push(`waitQuiet ${timeoutMs}`);
+			const quiet = script.waitQuiet ?? true;
+			return quiet === 'when-frozen' ? frozen : quiet;
+		},
+		freezeTimers: async () => {
+			calls.push('freezeTimers');
+			frozen = true;
+		},
+		thawTimers: async () => {
+			calls.push('thawTimers');
+			frozen = false;
 		},
 		paint: async () => {
 			calls.push('paint');
@@ -60,7 +77,7 @@ describe('shootWhenSettled', () => {
 		expect(calls).toEqual([
 			'blocker',
 			'waitLoaded',
-			'waitQuiet',
+			`waitQuiet ${TICK_GRACE_MS}`,
 			'paint',
 			'screenshot',
 			'blocker',
@@ -71,7 +88,7 @@ describe('shootWhenSettled', () => {
 	it('discards a shot taken while a late placeholder showed, and waits again', async () => {
 		const { checks, calls } = scripted({ loaded: [false, true] });
 		expect(await shootWhenSettled('dashboard', checks)).toEqual(new Uint8Array([2]));
-		expect(calls.filter((call) => call === 'waitQuiet')).toHaveLength(2);
+		expect(calls.filter((call) => call.startsWith('waitQuiet'))).toHaveLength(2);
 	});
 
 	it('reports a placeholder that comes back after every quiet period', async () => {
@@ -106,5 +123,43 @@ describe('shootWhenSettled', () => {
 			/contact: the page kept changing/
 		);
 		expect(restless.calls).not.toContain('screenshot');
+	});
+
+	it('freezes the timers of a page that keeps ticking, shoots it, and lets them run again', async () => {
+		const ticking = scripted({ waitQuiet: 'when-frozen' });
+		expect(await shootWhenSettled('path-deliverability', ticking.checks)).toEqual(
+			new Uint8Array([1])
+		);
+		expect(ticking.calls).toEqual([
+			'blocker',
+			'waitLoaded',
+			`waitQuiet ${TICK_GRACE_MS}`,
+			'freezeTimers',
+			`waitQuiet ${SETTLE_TIMEOUT_MS}`,
+			'paint',
+			'screenshot',
+			'blocker',
+			'loaded',
+			'thawTimers',
+		]);
+	});
+
+	it('never freezes a page that goes quiet on its own', async () => {
+		const { checks, calls } = scripted({});
+		await shootWhenSettled('dashboard', checks);
+		expect(calls).not.toContain('freezeTimers');
+	});
+
+	it('lets the timers run again when the frozen page fails or shows a placeholder', async () => {
+		const restless = scripted({ waitQuiet: false });
+		await expect(shootWhenSettled('contact', restless.checks)).rejects.toThrow(
+			/also with its timers frozen/
+		);
+		expect(restless.calls.slice(-1)).toEqual(['thawTimers']);
+
+		const late = scripted({ waitQuiet: 'when-frozen', loaded: [false, true] });
+		await shootWhenSettled('path-x', late.checks);
+		expect(late.calls.filter((call) => call === 'freezeTimers')).toHaveLength(2);
+		expect(late.calls.filter((call) => call === 'thawTimers')).toHaveLength(2);
 	});
 });
