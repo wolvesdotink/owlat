@@ -13,9 +13,10 @@
  * Above the links it carries the sender's postal address when the brand kit
  * holds one (CAN-SPAM asks for a valid postal address in commercial mail).
  *
- * The link labels follow the language the body was rendered in, through the
- * table below: this renders inside Convex, where the web app's i18n catalogs
- * are not available. A language the table lacks falls back to English.
+ * The link labels, and the view-in-browser link's, follow the language the
+ * body was rendered in, through the table below: this renders inside Convex,
+ * where the web app's i18n catalogs are not available. A language the table
+ * lacks falls back to English.
  *
  * The anchors carry `data-no-track`, so link wrapping leaves them alone. An
  * opt-out must keep working when the tracking host does not, must not count
@@ -39,9 +40,20 @@ export interface FooterContent extends FooterUrls {
 
 type FooterLanguage = 'en' | 'de';
 
-const FOOTER_COPY: Record<FooterLanguage, { managePreferences: string; unsubscribe: string }> = {
-	en: { managePreferences: 'Manage Preferences', unsubscribe: 'Unsubscribe' },
-	de: { managePreferences: 'Einstellungen verwalten', unsubscribe: 'Abmelden' },
+const FOOTER_COPY: Record<
+	FooterLanguage,
+	{ managePreferences: string; unsubscribe: string; viewInBrowser: string }
+> = {
+	en: {
+		managePreferences: 'Manage Preferences',
+		unsubscribe: 'Unsubscribe',
+		viewInBrowser: 'View in browser',
+	},
+	de: {
+		managePreferences: 'Einstellungen verwalten',
+		unsubscribe: 'Abmelden',
+		viewInBrowser: 'Im Browser ansehen',
+	},
 };
 
 function footerCopy(language: string | undefined) {
@@ -56,6 +68,11 @@ export function addressLines(senderAddress: string | undefined): string[] {
 		.split(/\r?\n/)
 		.map((line) => line.trim())
 		.filter(Boolean);
+}
+
+/** The view-in-browser link the top of a campaign carries, labelled like the footer. */
+export function viewInBrowserHtml(url: string, language: string | undefined): string {
+	return `<div style="text-align:center;font-size:11px;color:#999;padding:8px 0 4px"><a href="${url}" data-no-track style="color:#999;text-decoration:underline">${footerCopy(language).viewInBrowser}</a></div>`;
 }
 
 export function footerHtml({

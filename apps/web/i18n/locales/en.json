@@ -783,6 +783,18 @@
 						"topicPlaceholder": "Select a topic..."
 					}
 				}
+			},
+			"mailTopic": {
+				"deleted": "This topic was deleted, so this automation sends no more emails. Choose another topic or No topic.",
+				"deletedOption": "Deleted topic",
+				"hintWithTopic": "Contacts who leave this topic stop getting this automation's emails. Its other steps still run for them.",
+				"hintWithoutTopic": "Without a topic, only an unsubscribe from all emails stops this automation's emails.",
+				"label": "Topic",
+				"none": "No topic",
+				"operation": "Change the automation's topic",
+				"sameAsTrigger": "Same as the trigger: {name}",
+				"sameAsTriggerUnnamed": "Same as the trigger",
+				"saved": "Topic saved"
 			}
 		},
 		"autonomy": {
@@ -3153,6 +3165,19 @@
 				"heading": "Deliverability regression detected | Deliverability regressions detected",
 				"openCheck": "Open check",
 				"resolve": "Resolve alert",
+				"sendingHold": {
+					"changedFrom": {
+						"banned": "It was banned before.",
+						"suspended": "It was suspended before."
+					},
+					"heading": "Sending is stopped",
+					"openHealth": "Open delivery health",
+					"subheading": "No new mail goes out from this instance until it lifts.",
+					"title": {
+						"banned": "Sending banned",
+						"suspended": "Sending suspended"
+					}
+				},
 				"statusLabel": "Status:",
 				"subheading": "A check that previously passed is failing again. Review it before your next send."
 			},
@@ -12009,13 +12034,28 @@
 						"trigger": "Trigger",
 						"loadError": "Couldn't load the step funnel"
 					},
+					"health": {
+						"waitingTitle": "{count} run is waiting for the sending setup | {count} runs are waiting for the sending setup",
+						"waitingTitleMore": "More than {count} runs are waiting for the sending setup",
+						"failedTitle": "{count} run failed in the last 7 days | {count} runs failed in the last 7 days",
+						"latestFailure": "The latest failure:",
+						"showWaiting": "Show waiting runs",
+						"showFailed": "Show failed runs"
+					},
 					"loading": "Loading automation...",
+					"mailTopic": "Topic: {name}",
+					"mailTopicDeleted": "Topic deleted",
 					"notFoundDescription": "This automation may have been deleted or you don't have access to it.",
 					"notFoundTitle": "Automation not found",
 					"pageTitle": "Automation details — Owlat",
 					"runs": {
 						"cancelled": "Cancelled",
 						"completed": "Completed",
+						"emailSkip": {
+							"leftDeletedTopic": "Emails skipped: this contact is not subscribed to the automation's topic.",
+							"leftTopic": "Emails skipped: this contact is not subscribed to the topic {name}.",
+							"unsubscribed": "Emails skipped: this contact unsubscribed from all emails."
+						},
 						"emptyDescription": "Contacts will appear here when the automation is triggered",
 						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",
@@ -12059,7 +12099,8 @@
 							"sendingNotAllowed": "Waiting for sending to be resumed on this instance. The email goes out once it is, or the run gives up on {date}.",
 							"unknown": "Waiting for sending to work again. The email goes out once it does, or the run gives up on {date}."
 						},
-						"waitingBadge": "Waiting"
+						"waitingBadge": "Waiting",
+						"waitingNote": "Runs whose email waits for the sending setup to be fixed. Each one sends once it is, or gives up a day after it started waiting."
 					},
 					"stats": {
 						"completed": "Completed",
@@ -12088,7 +12129,9 @@
 					"cardLabel": "7 days:",
 					"entered": "{count} entered",
 					"failed": "{count} failed",
-					"stalled": "{count} stalled"
+					"stalled": "{count} stalled",
+					"waiting": "{count} waiting",
+					"waitingMore": "{count}+ waiting"
 				},
 				"newAutomation": "New automation",
 				"noResults": {
@@ -14175,6 +14218,7 @@
 				"pageTitle": "Templates — Owlat",
 				"searchPlaceholder": "Search templates...",
 				"sortLabel": "Sort templates",
+				"sortedByRelevance": "Sorted by relevance",
 				"subtitle": "Email designs you reuse in campaigns and automations.",
 				"toasts": {
 					"duplicated": "Template duplicated successfully"
@@ -19512,6 +19556,11 @@
 				"bodyDomain": "{domain}: {check} stopped passing",
 				"bodyNoCheck": "A check stopped passing",
 				"private": "A deliverability check stopped passing"
+			},
+			"sendingBanned": {
+				"body": "No new mail goes out from this instance until a platform admin lifts the ban. Open Delivery health to see why",
+				"private": "No new mail goes out from this instance",
+				"title": "Sending banned"
 			},
 			"sendingSuspended": {
 				"body": "No new mail goes out from this instance. Open Delivery health to see why",
