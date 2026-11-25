@@ -12,7 +12,7 @@
 
 import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import { htmlToPlainText } from '@owlat/shared/html';
-import { stripPreheaderHtml } from '@owlat/email-renderer/preheader';
+import { preheaderTextHtml, stripPreheaderHtml } from '@owlat/email-renderer/preheader';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
 import { composeAutomation } from './automation';
@@ -91,7 +91,7 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	const stored = input.template.plainTextContent?.trim();
 	const body = stored
 		? personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
-		: htmlToPlainText(stripPreheaderHtml(composed.html), { preserveBreaks: true });
+		: htmlTextPart(composed.html);
 	const config = composed.transformConfig;
 	const lines = addressLines(config?.senderAddress);
 	const text =
@@ -113,6 +113,17 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	if (!config || !htmlPrintsAddress) return { ...composed, text };
 	const { senderAddress: _printedByTheBody, ...transformConfig } = config;
 	return { ...composed, transformConfig, text };
+}
+
+/**
+ * The text part derived from the HTML, without the hidden preheader and its
+ * padding. An email with no visible text (images only) gets the preheader line
+ * instead: an empty text part would make the transport derive one from the
+ * whole HTML, padding included.
+ */
+function htmlTextPart(html: string): string {
+	const visible = htmlToPlainText(stripPreheaderHtml(html), { preserveBreaks: true });
+	return visible || htmlToPlainText(preheaderTextHtml(html));
 }
 
 /**

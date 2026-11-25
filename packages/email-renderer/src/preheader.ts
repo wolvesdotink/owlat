@@ -23,7 +23,7 @@ export function getPreheaderHtml(text: string): string {
 }
 
 const PREHEADER_RE = new RegExp(
-	`${escapeRegExp(TEXT_OPEN)}[^<]*</div>${escapeRegExp(PADDING_OPEN)}[^<]*</span></div>`
+	`${escapeRegExp(TEXT_OPEN)}([^<]*)</div>${escapeRegExp(PADDING_OPEN)}[^<]*</span></div>`
 );
 
 function escapeRegExp(text: string): string {
@@ -37,4 +37,9 @@ function escapeRegExp(text: string): string {
  */
 export function stripPreheaderHtml(html: string): string {
 	return html.replace(PREHEADER_RE, '');
+}
+
+/** The preheader's own text as the HTML carries it (escaped), or '' without one. */
+export function preheaderTextHtml(html: string): string {
+	return PREHEADER_RE.exec(html)?.[1] ?? '';
 }

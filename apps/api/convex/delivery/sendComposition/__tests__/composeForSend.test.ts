@@ -408,6 +408,23 @@ describe('composeForSend — transactional', () => {
 		expect(composed.transformConfig).toBeNull();
 	});
 
+	it('derives a text part without the hidden preheader, or from the preheader alone for an image-only email', () => {
+		const html = (body: string) =>
+			renderEmailHtml(body ? [{ id: 't', type: 'text', content: { html: body } } as never] : [], {
+				variableType: 'data',
+				preheaderText: 'Order {{orderId}} is on its way',
+			});
+		const textOf = (htmlContent: string) =>
+			composeForSend({
+				kind: 'transactional',
+				template: { subject: 's', htmlContent },
+				dataVariables: { orderId: 'A-7' },
+			}).text;
+
+		expect(textOf(html('<p>Thanks for your order</p>'))).toBe('Thanks for your order');
+		expect(textOf(html(''))).toBe('Order A-7 is on its way');
+	});
+
 	it('returns merged attachment refs', () => {
 		const composed = composeForSend({
 			kind: 'transactional',

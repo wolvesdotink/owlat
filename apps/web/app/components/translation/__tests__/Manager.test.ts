@@ -197,14 +197,7 @@ describe.each(SURFACES)('$emailType translation table', (surface) => {
 		expect(runs.get(surface.editorUpdate)).toBeUndefined();
 	});
 
-	it("saves a language's preview text", async () => {
-		rows[surface.emailType].value = {
-			...row(4),
-			previewText: 'Your order',
-			translations: JSON.stringify({
-				de: { subject: 'Hallo', previewText: 'Deine', blocks: { b1: { html: 'Hallo Welt' } } },
-			}),
-		};
+	it("saves a language's preview text while the default has none", async () => {
 		const w = mountManager(surface.emailType);
 		await flush();
 		run(surface.update).mockResolvedValue({ ok: true, result: { contentRevision: 5 } });
