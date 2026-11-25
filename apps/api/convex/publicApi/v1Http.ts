@@ -24,6 +24,7 @@ import {
 } from '../contacts/api';
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
+import { dryRunTransactional } from '../transactional/dryRunHttp';
 import { getTransactionalSend, listTransactionalSends } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
@@ -250,6 +251,14 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/transactional',
 		method: 'POST',
 		handler: sendTransactional,
+	});
+
+	// POST /api/v1/transactional/dry-run - What a send would do, without sending.
+	// An exact path: the `/api/v1/transactional/` prefix only answers GET.
+	http.route({
+		path: '/api/v1/transactional/dry-run',
+		method: 'POST',
+		handler: dryRunTransactional,
 	});
 
 	// GET /api/v1/transactional - List sends, by recipient, status or window

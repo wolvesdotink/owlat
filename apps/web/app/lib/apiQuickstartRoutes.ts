@@ -3,9 +3,9 @@
  * public `/api/v1` route this instance serves, grouped by path.
  *
  * The routes are registered in `apps/api/convex/publicApi/v1Http.ts` and
- * described in `packages/public-contract/src/operations.ts` and
- * `templateOperations.ts`; a test compares the table with both, so a route
- * added there fails until it has a row here.
+ * described in `packages/public-contract/src/operations.ts`,
+ * `templateOperations.ts` and `renderOperations.ts`; a test compares the table
+ * with both, so a route added there fails until it has a row here.
  * A path parameter is written `:name`; everything from the first `:` on is the
  * part the router matches by prefix.
  *
@@ -23,6 +23,7 @@ export const API_QUICKSTART_ROUTES: readonly ApiQuickstartRoute[] = [
 	{ methods: ['GET', 'PUT', 'DELETE'], path: '/api/v1/contacts/:id', key: 'contact' },
 	{ methods: ['POST'], path: '/api/v1/events', key: 'events' },
 	{ methods: ['GET', 'POST'], path: '/api/v1/transactional', key: 'transactional' },
+	{ methods: ['POST'], path: '/api/v1/transactional/dry-run', key: 'transactionalDryRun' },
 	{ methods: ['GET'], path: '/api/v1/transactional/:sendId', key: 'transactionalSend' },
 	{ methods: ['GET', 'POST'], path: '/api/v1/transactional-emails', key: 'transactionalEmails' },
 	{

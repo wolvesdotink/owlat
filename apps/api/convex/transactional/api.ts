@@ -51,7 +51,6 @@ import {
 	sha256HexOfBytes,
 	storedTransactionalResponse,
 } from '../auth/apiRequestReceipts';
-import { answerDryRun } from './dryRunAnswer';
 import { dispatchRefusalResponse } from './refusalResponse';
 
 /** A request body that passed the contract's schema. */
@@ -102,7 +101,7 @@ function envelopeBytes(body: SendTransactionalBody): number {
  * 400 to send, or null when the body passes. No DB access — this is the
  * boundary check the module trusts has run.
  */
-function validateDecodedBody(body: SendTransactionalBody): Response | null {
+export function validateDecodedBody(body: SendTransactionalBody): Response | null {
 	if (!isValidEmail(body.email)) {
 		return invalidInputResponse('Invalid email format', 'email');
 	}
@@ -188,8 +187,7 @@ function queuedResponse(
 // ============================================================
 
 /**
- * POST /api/v1/transactional — send a transactional email, or with
- * `dryRun: true` compose it and answer what a send would, sending nothing.
+ * POST /api/v1/transactional — send a transactional email.
  */
 export const sendTransactional = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
@@ -213,6 +211,18 @@ export const sendTransactional = createAuthenticatedHandler(
 		} catch {
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
+		// Unknown fields are ignored, but this one says the caller did not
+		// mean to send: refuse it rather than send.
+		if (
+			raw !== null &&
+			typeof raw === 'object' &&
+			Object.prototype.hasOwnProperty.call(raw, 'dryRun')
+		) {
+			return invalidInputResponse(
+				'dryRun is not a field of a send, so nothing was sent. POST the same body to /api/v1/transactional/dry-run to try a send.',
+				'dryRun'
+			);
+		}
 		const decoded = decodeRequest(sendTransactionalRequestSchema, raw);
 		if (!decoded.ok) return invalidInputResponse(decoded.message, decoded.field);
 		const body = decoded.value;
@@ -223,10 +233,6 @@ export const sendTransactional = createAuthenticatedHandler(
 		const preparedAttachments = prepareAttachments(body.attachments);
 		if (!preparedAttachments.ok) return preparedAttachments.response;
 		const prepared = preparedAttachments.prepared;
-
-		// A dry run stops here: it stores no attachment, claims no
-		// Idempotency-Key and writes nothing (`./dryRunAnswer.ts`).
-		if (body.dryRun === true) return await answerDryRun(ctx, auth, body);
 
 		const idempotency = await resolveIdempotency(ctx, idempotencyKey.key, 'transactional', () =>
 			fingerprintInput(body, prepared)

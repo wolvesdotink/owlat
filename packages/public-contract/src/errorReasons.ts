@@ -113,7 +113,7 @@ export type DomainCheckRefusalReason = (typeof DOMAIN_CHECK_REFUSAL_REASONS)[num
 
 /**
  * Why a render was refused before it ran: too many renders from this key.
- * `POST /api/v1/render` and the dry run of `POST /api/v1/transactional` share
+ * `POST /api/v1/render` and `POST /api/v1/transactional/dry-run` share
  * the budget, apart from template writes and the send caps.
  */
 export const RENDER_REFUSAL_REASONS = ['render_rate_limited'] as const;

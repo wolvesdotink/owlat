@@ -7,7 +7,7 @@ import type {
 	TransactionalSendStatus,
 } from '../types/transactional';
 import type { ApiResponse, CursorPaginatedResponse, RequestOptions } from '../types/common';
-import { OwlatError, ValidationError } from '../errors';
+import { NotFoundError, OwlatError, ValidationError } from '../errors';
 
 /**
  * The checks a send's parameters get before they go on the wire: a template
@@ -163,12 +163,6 @@ export class TransactionalResource extends BaseResource {
 		params: SendTransactionalParams,
 		options?: RequestOptions
 	): Promise<SendTransactionalResponse> {
-		if (params.dryRun !== undefined) {
-			throw new ValidationError(
-				'Use transactional.dryRun() for a dry run: it answers with a different shape',
-				'invalid_input'
-			);
-		}
 		checkSendParams(params);
 
 		const response = await this.http.post<ApiResponse<SendTransactionalResponse>>(
@@ -188,9 +182,9 @@ export class TransactionalResource extends BaseResource {
 	 * limit, and no idempotency key is used. A draft is composed too when the
 	 * key also has `templates:read`. Needs the `transactional:send` scope.
 	 *
-	 * @throws {OwlatError} With code `dry_run_unsupported` if the server
-	 *   answered with a queued send: an instance older than the dry run ignores
-	 *   the flag and sends the email.
+	 * @throws {NotFoundError} If the template does not exist (`reason`
+	 *   `template_not_found`), or if the instance predates dry runs and has no
+	 *   such route: then it answers 404 and nothing is sent.
 	 *
 	 * @example
 	 * ```typescript
@@ -202,21 +196,26 @@ export class TransactionalResource extends BaseResource {
 	 * if (!preview.wouldQueue) console.warn(preview.refusal?.message);
 	 * ```
 	 */
-	async dryRun(params: Omit<SendTransactionalParams, 'dryRun'>): Promise<SendTransactionalDryRun> {
+	async dryRun(params: SendTransactionalParams): Promise<SendTransactionalDryRun> {
 		checkSendParams(params);
-		const response = await this.http.post<
-			ApiResponse<SendTransactionalDryRun | SendTransactionalResponse>
-		>('/api/v1/transactional', { ...params, dryRun: true });
-		const data = response.data.data;
-		if (!('dryRun' in data) || data.dryRun !== true) {
-			throw new OwlatError(
-				'The server queued the email instead of a dry run: it is older than the dry run and ignored the flag.',
-				'dry_run_unsupported',
-				202,
-				response.rateLimit
+		try {
+			const response = await this.http.post<ApiResponse<SendTransactionalDryRun>>(
+				'/api/v1/transactional/dry-run',
+				params
 			);
+			return response.data.data;
+		} catch (error) {
+			// The server's own 404s name a reason; a bare one is a server
+			// without this route, which sent nothing.
+			if (error instanceof OwlatError && error.statusCode === 404 && error.reason === undefined) {
+				throw new NotFoundError(
+					'This Owlat instance does not support dry runs: it has no POST /api/v1/transactional/dry-run. Nothing was sent.',
+					'not_found',
+					error.rateLimit
+				);
+			}
+			throw error;
 		}
-		return data;
 	}
 
 	/**

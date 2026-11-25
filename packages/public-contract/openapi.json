@@ -1608,7 +1608,7 @@
 			"post": {
 				"operationId": "sendTransactional",
 				"tags": ["Transactional"],
-				"summary": "Queue a transactional email for one recipient. With dryRun: true, compose it and answer what the send would do, without sending.",
+				"summary": "Queue a transactional email for one recipient. A body with a dryRun field is refused with 400: try a send at /api/v1/transactional/dry-run.",
 				"security": [
 					{
 						"apiKey": ["transactional:send"]
@@ -1661,73 +1661,6 @@
 					}
 				},
 				"responses": {
-					"200": {
-						"description": "With dryRun: true, the email a send would compose and the refusal it would meet. Nothing was sent, stored or counted, and no Idempotency-Key was used.",
-						"x-owlat-dry-run": true,
-						"headers": {
-							"X-RateLimit-Limit": {
-								"description": "Requests allowed per window for this key.",
-								"schema": {
-									"type": "integer"
-								}
-							},
-							"X-RateLimit-Remaining": {
-								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
-								"schema": {
-									"type": "integer"
-								}
-							},
-							"X-RateLimit-Reset": {
-								"description": "A Unix timestamp one second after the response; not when the limit refills.",
-								"schema": {
-									"type": "integer"
-								}
-							}
-						},
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"data": {
-											"$ref": "#/components/schemas/SendTransactionalDryRun"
-										}
-									},
-									"required": ["data"],
-									"additionalProperties": false
-								},
-								"example": {
-									"data": {
-										"status": "dry_run",
-										"dryRun": true,
-										"wouldQueue": false,
-										"refusal": {
-											"status": 400,
-											"category": "invalid_input",
-											"message": "Missing data variable \"firstName\": the email uses it without a fallback. Supply it, or mark it optional in the template's variables to send it empty.",
-											"data": {
-												"reason": "invalid_variables",
-												"field": "dataVariables",
-												"variables": ["firstName"]
-											},
-											"retryAfter": null
-										},
-										"email": "ada@example.com",
-										"templateId": "k57t3mpl4te0000000000000000000",
-										"slug": "order-confirmation",
-										"templateStatus": "published",
-										"contactId": null,
-										"language": "en",
-										"subject": "Your order A-1001",
-										"html": "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>Your order A-1001</title></head><body style=\"margin:0;padding:0;background-color:#f4f4f5\"><div style=\"display:none\">Arriving Thursday</div><h1>Thanks for your order, </h1></body></html>",
-										"text": "Thanks for your order,",
-										"unsubscribeFooter": false,
-										"missingVariables": ["firstName"]
-									}
-								}
-							}
-						}
-					},
 					"202": {
 						"description": "The email was queued.",
 						"headers": {
@@ -2061,8 +1994,7 @@
 																	"enum": [
 																		"too_many_failed_attempts",
 																		"recipient_rate_limited",
-																		"daily_send_limit",
-																		"render_rate_limited"
+																		"daily_send_limit"
 																	],
 																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
 																}
@@ -5972,6 +5904,373 @@
 				}
 			}
 		},
+		"/api/v1/transactional/dry-run": {
+			"post": {
+				"operationId": "dryRunTransactional",
+				"tags": ["Transactional"],
+				"summary": "Compose the email a send of this request would queue, and answer the refusal the send would meet now, without sending. Nothing is sent, stored or counted. An instance without dry runs answers 404 here and sends nothing.",
+				"security": [
+					{
+						"apiKey": ["transactional:send"]
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SendTransactionalRequest"
+							},
+							"example": {
+								"email": "ada@example.com",
+								"slug": "order-confirmation",
+								"dataVariables": {
+									"orderNumber": "A-1001"
+								},
+								"language": "en"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "What the send would deliver, and whether it would be queued. Nothing was sent.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/SendTransactionalDryRun"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"status": "dry_run",
+										"dryRun": true,
+										"wouldQueue": false,
+										"refusal": {
+											"status": 400,
+											"category": "invalid_input",
+											"message": "Missing data variable \"firstName\": the email uses it without a fallback. Supply it, or mark it optional in the template's variables to send it empty.",
+											"data": {
+												"reason": "invalid_variables",
+												"field": "dataVariables",
+												"variables": ["firstName"]
+											},
+											"retryAfter": null
+										},
+										"email": "ada@example.com",
+										"templateId": "k57t3mpl4te0000000000000000000",
+										"slug": "order-confirmation",
+										"templateStatus": "published",
+										"contactId": null,
+										"language": "en",
+										"subject": "Your order A-1001",
+										"html": "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>Your order A-1001</title></head><body style=\"margin:0;padding:0;background-color:#f4f4f5\"><div style=\"display:none\">Arriving Thursday</div><h1>Thanks for your order, </h1></body></html>",
+										"text": "Thanks for your order,",
+										"unsubscribeFooter": false,
+										"missingVariables": ["firstName"]
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["invalid_variables"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																},
+																"field": {
+																	"type": "string",
+																	"description": "The request field at fault: `dataVariables` on an `invalid_variables` refusal."
+																},
+																"variables": {
+																	"type": "array",
+																	"items": {
+																		"type": "string"
+																	},
+																	"description": "The data variables at fault: the one of the wrong type, or every one the email uses without a fallback that the request left out."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope", "feature_disabled", "abuse_blocked"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																},
+																"status": {
+																	"type": "string",
+																	"enum": ["suspended", "banned"],
+																	"description": "Whether sending is suspended or banned."
+																},
+																"since": {
+																	"type": ["string", "null"],
+																	"description": "ISO 8601 timestamp of when the status was set; null if not recorded."
+																},
+																"detail": {
+																	"type": ["string", "null"],
+																	"description": "The reason recorded with the status, or null."
+																},
+																"lift": {
+																	"anyOf": [
+																		{
+																			"$ref": "#/components/schemas/SendingHoldLift"
+																		},
+																		{
+																			"type": "null"
+																		}
+																	],
+																	"description": "How the suspension lifts, as GET /api/v1/status's sendingHold.lift; null only if it lifted while the request ran."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["template_not_found"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The workspace or the resource is not in a state that can carry out the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": [
+																		"no_delivery_provider",
+																		"recipient_blocked",
+																		"template_not_published",
+																		"template_no_content",
+																		"sender_not_configured",
+																		"domain_unverified"
+																	],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": [
+																		"too_many_failed_attempts",
+																		"recipient_rate_limited",
+																		"daily_send_limit",
+																		"render_rate_limited"
+																	],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/v1/topics": {
 			"get": {
 				"operationId": "listTopics",
@@ -9389,10 +9688,6 @@
 						"items": {
 							"$ref": "#/components/schemas/TransactionalAttachment"
 						}
-					},
-					"dryRun": {
-						"description": "true composes the email and answers what a send would, with a 200 instead of the 202 of a send: nothing is sent, stored or counted. An instance older than this field ignores it and sends the email.",
-						"type": "boolean"
 					}
 				},
 				"required": ["email"],

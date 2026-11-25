@@ -14,6 +14,7 @@ import {
 	type PublicOperationId,
 } from '@owlat/public-contract/schemas';
 import type { Owlat } from '../src';
+import { NotFoundError } from '../src';
 import { createTestClient, mockFetch } from './helpers';
 
 afterEach(() => {
@@ -169,6 +170,11 @@ const CALLS: Record<
 		path: `/api/v1/saved-blocks/${BLOCK_ID}`,
 		result: example('updateSavedBlock').response.data,
 	},
+	dryRunTransactional: {
+		call: (client) => client.transactional.dryRun(example('dryRunTransactional').request),
+		path: '/api/v1/transactional/dry-run',
+		result: example('dryRunTransactional').response.data,
+	},
 	renderEmail: {
 		call: (client) => client.render.email(example('renderEmail').request),
 		path: '/api/v1/render',
@@ -221,33 +227,33 @@ describe('SDK calls against the public contract', () => {
 		}
 	});
 
-	it('a dry run sends the send request with dryRun and returns the dry-run answer', async () => {
-		const operation = publicOperation('sendTransactional');
-		const answer = example('sendTransactional').dryRunResponse;
-		const spy = mockFetch({ status: operation.dryRun!.status, body: answer });
-		const request = example('sendTransactional').request;
-		await expect(createTestClient().transactional.dryRun(request)).resolves.toEqual(answer.data);
-		const body: unknown = JSON.parse(String(spy.mock.calls[0]![1]?.body));
-		expect(body).toEqual({ ...request, dryRun: true });
-		expect(decodeRequest(operation.request!.schema, body)).toEqual({ ok: true, value: body });
+	it('a dry run against a server without the route fails with the 404, which sent nothing', async () => {
+		// What a Convex router answers for a path it does not have.
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response('No matching routes found', { status: 404 })
+		);
+		const failure = createTestClient().transactional.dryRun(example('dryRunTransactional').request);
+		await expect(failure).rejects.toBeInstanceOf(NotFoundError);
+		await expect(failure).rejects.toThrow(/does not support dry runs/);
 	});
 
-	it('a dry run answered with a queued send fails loudly instead of passing as a preview', async () => {
-		mockFetch({ status: 202, body: example('sendTransactional').response });
+	it('a dry run of an unknown template keeps the server’s own 404', async () => {
+		mockFetch({
+			status: 404,
+			body: {
+				error: {
+					category: 'not_found',
+					message: 'Transactional email with slug "nope" not found',
+					data: { reason: 'template_not_found' },
+				},
+			},
+		});
 		await expect(
-			createTestClient().transactional.dryRun(example('sendTransactional').request)
-		).rejects.toMatchObject({ code: 'dry_run_unsupported' });
-	});
-
-	it('send() refuses the dryRun flag, whose answer has another shape', async () => {
-		const spy = mockFetch({ body: example('sendTransactional').response });
-		await expect(
-			createTestClient().transactional.send({
-				...example('sendTransactional').request,
-				dryRun: true,
-			})
-		).rejects.toMatchObject({ code: 'invalid_input' });
-		expect(spy).not.toHaveBeenCalled();
+			createTestClient().transactional.dryRun({ email: 'ada@example.com', slug: 'nope' })
+		).rejects.toMatchObject({
+			reason: 'template_not_found',
+			message: expect.stringContaining('nope'),
+		});
 	});
 
 	it('sends the send list filters under the names the contract documents', async () => {

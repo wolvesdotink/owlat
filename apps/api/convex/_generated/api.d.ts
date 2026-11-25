@@ -2031,7 +2031,7 @@ import type * as transactional_dispatch from "../transactional/dispatch.js";
 import type * as transactional_dispatchContent from "../transactional/dispatchContent.js";
 import type * as transactional_dispatchDecision from "../transactional/dispatchDecision.js";
 import type * as transactional_dryRun from "../transactional/dryRun.js";
-import type * as transactional_dryRunAnswer from "../transactional/dryRunAnswer.js";
+import type * as transactional_dryRunHttp from "../transactional/dryRunHttp.js";
 import type * as transactional_editing from "../transactional/editing.js";
 import type * as transactional_emails from "../transactional/emails.js";
 import type * as transactional_intakeChecks from "../transactional/intakeChecks.js";
@@ -4247,7 +4247,7 @@ declare const fullApi: ApiFromModules<{
 	"transactional/dispatchContent": typeof transactional_dispatchContent;
 	"transactional/dispatchDecision": typeof transactional_dispatchDecision;
 	"transactional/dryRun": typeof transactional_dryRun;
-	"transactional/dryRunAnswer": typeof transactional_dryRunAnswer;
+	"transactional/dryRunHttp": typeof transactional_dryRunHttp;
 	"transactional/editing": typeof transactional_editing;
 	"transactional/emails": typeof transactional_emails;
 	"transactional/intakeChecks": typeof transactional_intakeChecks;

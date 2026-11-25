@@ -1,14 +1,10 @@
 package com.owlat.sdk.resource;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonUnwrapped;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.owlat.sdk.RequestOptions;
+import com.owlat.sdk.exception.NotFoundException;
 import com.owlat.sdk.exception.OwlatException;
 import com.owlat.sdk.internal.HttpClient;
-import com.owlat.sdk.internal.JsonMapper;
 import com.owlat.sdk.model.ApiResponse;
 import com.owlat.sdk.model.CursorPaginatedResponse;
 import com.owlat.sdk.model.transactional.ListTransactionalSendsParams;
@@ -56,43 +52,26 @@ public class TransactionalResource extends BaseResource {
      * A draft is composed too when the key also has {@code templates:read}.
      * Needs the {@code transactional:send} scope.
      *
-     * @throws OwlatException with code {@code dry_run_unsupported} if the server
-     *         answered with a queued send: an instance older than the dry run
-     *         ignores the flag and sends the email
+     * @throws NotFoundException if the template does not exist (reason
+     *         {@code template_not_found}), or if the instance predates dry runs
+     *         and has no such route: it then answers 404 and sends nothing
      */
     public SendTransactionalDryRun dryRun(SendTransactionalParams params) {
-        JsonNode data = httpClient
-                .post(BASE_PATH, new DryRunRequest(params), new TypeReference<ApiResponse<JsonNode>>() {})
-                .getData();
-        if (data == null || !data.path("dryRun").asBoolean(false)) {
-            throw new OwlatException(
-                    "The server queued the email instead of a dry run: it is older than the dry run and ignored the flag.",
-                    "dry_run_unsupported", 202, null);
-        }
         try {
-            return JsonMapper.instance().treeToValue(data, SendTransactionalDryRun.class);
-        } catch (JsonProcessingException e) {
-            throw new OwlatException("Unexpected dry-run response: " + e.getOriginalMessage(),
-                    "parse_error", 200, null, e);
-        }
-    }
-
-    /** A send request with {@code dryRun: true} added. */
-    private static final class DryRunRequest {
-        private final SendTransactionalParams params;
-
-        DryRunRequest(SendTransactionalParams params) {
-            this.params = params;
-        }
-
-        @JsonUnwrapped
-        public SendTransactionalParams getParams() {
-            return params;
-        }
-
-        @JsonProperty("dryRun")
-        public boolean isDryRun() {
-            return true;
+            return httpClient
+                    .post(BASE_PATH + "/dry-run", params,
+                            new TypeReference<ApiResponse<SendTransactionalDryRun>>() {})
+                    .getData();
+        } catch (OwlatException e) {
+            // The server's own 404s name a reason; a bare one is a server
+            // without this route, which sent nothing.
+            if (e.getStatusCode() == 404 && e.getReason() == null) {
+                throw new NotFoundException(
+                        "This Owlat instance does not support dry runs: it has no POST "
+                                + "/api/v1/transactional/dry-run. Nothing was sent.",
+                        e.getRateLimit());
+            }
+            throw e;
         }
     }
 

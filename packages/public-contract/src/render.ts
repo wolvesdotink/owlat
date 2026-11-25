@@ -1,6 +1,6 @@
 /**
- * Rendering without storing: `POST /api/v1/render`, and the dry run of
- * `POST /api/v1/transactional`.
+ * Rendering without storing: `POST /api/v1/render`, and the dry run of a
+ * send, `POST /api/v1/transactional/dry-run`.
  *
  * The schemas check shape only. The blocks get the content check of a
  * template write, and the variables the checks of a send, on the server.

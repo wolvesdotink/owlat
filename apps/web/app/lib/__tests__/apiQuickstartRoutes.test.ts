@@ -9,8 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { API_QUICKSTART_ROUTES } from '../apiQuickstartRoutes';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V1_HTTP = join(HERE, '../../../../api/convex/publicApi/v1Http.ts');
-/** The contract's operation table and the module of template operations it splices in. */
-const OPERATIONS = ['operations.ts', 'templateOperations.ts'].map((file) =>
+/** The contract's operation table and the modules of operations it splices in. */
+const OPERATIONS = ['operations.ts', 'templateOperations.ts', 'renderOperations.ts'].map((file) =>
 	join(HERE, '../../../../../packages/public-contract/src', file)
 );
 

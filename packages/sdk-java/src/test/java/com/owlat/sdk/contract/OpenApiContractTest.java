@@ -146,6 +146,14 @@ class OpenApiContractTest {
                                 .url("https://owlat.example/terms.pdf").build())
                         .build(), RequestOptions.idempotencyKey("order-1001-confirmation")),
                 type(SendTransactionalResponse.class), false));
+        calls.put("dryRunTransactional", new Call(
+                owlat -> owlat.transactional().dryRun(SendTransactionalParams.builder("ada@example.com")
+                        .transactionalId("k57t3mpl4te0000000000000000000")
+                        .slug("order-confirmation")
+                        .dataVariables(primitiveRecord())
+                        .language("en-US")
+                        .build()),
+                type(SendTransactionalDryRun.class), false));
         calls.put("listTransactionalSends", new Call(
                 owlat -> owlat.transactional().list(ListTransactionalSendsParams.builder()
                         .email("ada@example.com")
@@ -456,41 +464,17 @@ class OpenApiContractTest {
 
     // ── the dry run of a send ───────────────────────────────────────────────
 
-    private static SendTransactionalParams dryRunParams() {
-        return SendTransactionalParams.builder("ada@example.com")
-                .slug("order-confirmation")
-                .dataVariables(primitiveRecord())
-                .language("en-US")
-                .build();
-    }
-
     @Test
-    void aDryRunSendsTheFlagAndReadsTheDocumentedAnswer() throws IOException {
-        OpenApiDocument.Operation operation = document.operation("sendTransactional");
-        JsonNode example = operation.dryRunContent().get("example");
-        status = operation.dryRunStatus();
-        responseBody = JsonMapper.instance().writeValueAsString(example);
-        Call call = new Call(owlat -> owlat.transactional().dryRun(dryRunParams()),
-                type(SendTransactionalDryRun.class), false);
-        Object result = call.invoke.apply(client());
-
-        assertNotEquals(operation.successStatus(), operation.dryRunStatus());
-        assertEquals(operation.method, method);
-        assertTrue(operation.matchesPath(rawPath), rawPath);
-        JsonNode sent = JsonMapper.instance().readTree(body);
-        assertTrue(sent.path("dryRun").asBoolean(false), body);
-        assertEquals(List.of(), new SchemaValidator(document.root, true).validate(operation.requestSchema(), sent));
-        assertEquals(List.of(), readBack(call, example.get("data"), result));
-    }
-
-    @Test
-    void aDryRunAnsweredWithAQueuedSendFails() throws IOException {
-        OpenApiDocument.Operation operation = document.operation("sendTransactional");
-        status = operation.successStatus();
-        responseBody = JsonMapper.instance().writeValueAsString(operation.successContent().get("example"));
-        com.owlat.sdk.exception.OwlatException thrown = assertThrows(com.owlat.sdk.exception.OwlatException.class,
-                () -> client().transactional().dryRun(dryRunParams()));
-        assertEquals("dry_run_unsupported", thrown.getCode());
+    void aDryRunAgainstAServerWithoutTheRouteFailsWithTheNotFound() {
+        // What a Convex router answers for a path it does not have.
+        status = 404;
+        responseBody = "No matching routes found";
+        com.owlat.sdk.exception.NotFoundException thrown = assertThrows(
+                com.owlat.sdk.exception.NotFoundException.class,
+                () -> client().transactional().dryRun(SendTransactionalParams.builder("ada@example.com")
+                        .slug("order-confirmation").build()));
+        assertTrue(thrown.getMessage().contains("does not support dry runs"), thrown.getMessage());
+        assertTrue(rawPath.endsWith("/dry-run"), rawPath);
     }
 
     @Test

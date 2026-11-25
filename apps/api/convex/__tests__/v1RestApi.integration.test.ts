@@ -41,6 +41,7 @@ import { getLimits } from '../publicApi/limitsHttp';
 import * as transactionalEmailsApi from '../publicApi/transactionalEmailsHttp';
 import * as savedBlocksApi from '../publicApi/savedBlocksHttp';
 import { renderEmail } from '../publicApi/renderHttp';
+import { dryRunTransactional } from '../transactional/dryRunHttp';
 import { rateLimiter } from '../lib/rateLimiter';
 import {
 	chargeTransactionalSendCaps,
@@ -3772,6 +3773,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	getSavedBlock: savedBlocksApi.getSavedBlock,
 	updateSavedBlock: savedBlocksApi.updateSavedBlock,
 	renderEmail,
+	dryRunTransactional,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */

@@ -175,12 +175,13 @@ await owlat.transactional.send(
 #### Dry run
 
 `transactional.dryRun` takes the same parameters as `send` and sends nothing.
-It answers with the subject, HTML and text a send would deliver, whether the
-send would be queued (`wouldQueue`), and the error it would be refused with
-(`refusal`). Nothing is stored or counted against a limit. With the
-`templates:read` scope as well, it composes a draft too. A server older than the
-dry run would send the email instead; the SDK then throws an `OwlatError` with
-the code `dry_run_unsupported`.
+It calls `POST /api/v1/transactional/dry-run` and answers with the subject, HTML
+and text a send would deliver, whether the send would be queued (`wouldQueue`),
+and the error it would be refused with (`refusal`). Nothing is stored or counted
+against a limit. With the `templates:read` scope as well, it composes a draft
+too. A server older than the dry run has no such route: it answers `404`, sends
+nothing, and the SDK throws a `NotFoundError` saying the instance does not
+support dry runs.
 
 ```typescript
 const preview = await owlat.transactional.dryRun({

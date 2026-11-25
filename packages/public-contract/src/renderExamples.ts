@@ -11,6 +11,7 @@ import type {
 	RenderRequest,
 	RenderResult,
 	SendTransactionalDryRun,
+	SendTransactionalRequest,
 } from './types';
 
 const HTML =
@@ -68,6 +69,34 @@ const RENDER_REQUEST: RenderRequest = {
 	darkMode: true,
 };
 
+/** The answer to the `dryRunTransactional` example request. */
+const DRY_RUN_RESPONSE = {
+	data: {
+		status: 'dry_run',
+		dryRun: true,
+		wouldQueue: false,
+		refusal: {
+			status: 400,
+			category: 'invalid_input',
+			message:
+				'Missing data variable "firstName": the email uses it without a fallback. Supply it, or mark it optional in the template\'s variables to send it empty.',
+			data: { reason: 'invalid_variables', field: 'dataVariables', variables: ['firstName'] },
+			retryAfter: null,
+		},
+		email: 'ada@example.com',
+		templateId: 'k57t3mpl4te0000000000000000000',
+		slug: 'order-confirmation',
+		templateStatus: 'published',
+		contactId: null,
+		language: 'en',
+		subject: 'Your order A-1001',
+		html: HTML.replace('Ada', ''),
+		text: 'Thanks for your order,',
+		unsubscribeFooter: false,
+		missingVariables: ['firstName'],
+	},
+} satisfies ApiResponse<SendTransactionalDryRun>;
+
 export const RENDER_EXAMPLES = {
 	renderEmail: {
 		request: RENDER_REQUEST,
@@ -95,32 +124,13 @@ export const RENDER_EXAMPLES = {
 			},
 		} satisfies ApiResponse<RenderResult>,
 	},
-} satisfies Record<string, OperationExample>;
-
-/** The answer to the `sendTransactional` example with `dryRun: true`. */
-export const SEND_TRANSACTIONAL_DRY_RUN_EXAMPLE = {
-	data: {
-		status: 'dry_run',
-		dryRun: true,
-		wouldQueue: false,
-		refusal: {
-			status: 400,
-			category: 'invalid_input',
-			message:
-				'Missing data variable "firstName": the email uses it without a fallback. Supply it, or mark it optional in the template\'s variables to send it empty.',
-			data: { reason: 'invalid_variables', field: 'dataVariables', variables: ['firstName'] },
-			retryAfter: null,
-		},
-		email: 'ada@example.com',
-		templateId: 'k57t3mpl4te0000000000000000000',
-		slug: 'order-confirmation',
-		templateStatus: 'published',
-		contactId: null,
-		language: 'en',
-		subject: 'Your order A-1001',
-		html: HTML.replace('Ada', ''),
-		text: 'Thanks for your order,',
-		unsubscribeFooter: false,
-		missingVariables: ['firstName'],
+	dryRunTransactional: {
+		request: {
+			email: 'ada@example.com',
+			slug: 'order-confirmation',
+			dataVariables: { orderNumber: 'A-1001' },
+			language: 'en',
+		} satisfies SendTransactionalRequest,
+		response: DRY_RUN_RESPONSE,
 	},
-} satisfies ApiResponse<SendTransactionalDryRun>;
+} satisfies Record<string, OperationExample>;

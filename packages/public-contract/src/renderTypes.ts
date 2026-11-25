@@ -1,6 +1,6 @@
 /**
- * The wire types of `POST /api/v1/render` and of the dry run of
- * `POST /api/v1/transactional`. Plain TypeScript with type-only imports from
+ * The wire types of `POST /api/v1/render` and of the dry run of a send,
+ * `POST /api/v1/transactional/dry-run`. Plain TypeScript with type-only imports from
  * this folder, re-exported by `types.ts`; see there for why.
  */
 
@@ -125,7 +125,7 @@ export interface RenderResult {
 	health: EmailHealth;
 }
 
-/** What `POST /api/v1/transactional` with `dryRun: true` answers. Nothing was sent. */
+/** What `POST /api/v1/transactional/dry-run` answers. Nothing was sent. */
 export interface SendTransactionalDryRun {
 	status: 'dry_run';
 	dryRun: true;

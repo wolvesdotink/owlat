@@ -130,10 +130,6 @@ export const sendTransactionalRequestSchema = requestBody({
 			error: `Maximum ${ATTACHMENT_COMPOSE_LIMITS.maxCount} attachments allowed`,
 		})
 		.optional(),
-	dryRun: z.boolean({ error: 'dryRun must be a boolean' }).optional().meta({
-		description:
-			'true composes the email and answers what a send would, with a 200 instead of the 202 of a send: nothing is sent, stored or counted. An instance older than this field ignores it and sends the email.',
-	}),
 })
 	.refine((body) => !!body.transactionalId || !!body.slug, {
 		error: 'Either transactionalId or slug is required',

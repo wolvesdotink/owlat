@@ -24,6 +24,7 @@ import {
 import { domainCheckRequestSchema, sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { sendLimitsSchema } from './limits';
+import { RENDER_OPERATIONS } from './renderOperations';
 import { TEMPLATE_OPERATIONS } from './templateOperations';
 import { deliveryStatusSchema } from './status';
 import {
@@ -37,12 +38,10 @@ import {
 	sendTransactionalResponseSchema,
 	transactionalSendStatusSchema,
 } from './transactional';
-import { sendTransactionalDryRunSchema } from './render';
 import { ERROR_REASON_STATUS } from './errors';
 import {
 	API_KEY_ERROR_REASONS,
 	DOMAIN_CHECK_REFUSAL_REASONS,
-	RENDER_REFUSAL_REASONS,
 	SEND_LIST_MAX_WINDOW_DAYS,
 	TRANSACTIONAL_REFUSAL_REASONS,
 	WRITE_REFUSAL_REASONS,
@@ -232,7 +231,7 @@ export const PUBLIC_OPERATIONS = [
 		path: '/api/v1/transactional',
 		tag: 'Transactional',
 		summary:
-			'Queue a transactional email for one recipient. With dryRun: true, compose it and answer what the send would do, without sending.',
+			'Queue a transactional email for one recipient. A body with a dryRun field is refused with 400: try a send at /api/v1/transactional/dry-run.',
 		scope: 'transactional:send',
 		pathParameters: [],
 		queryParameters: [],
@@ -245,19 +244,8 @@ export const PUBLIC_OPERATIONS = [
 			data: sendTransactionalResponseSchema,
 			paginated: false,
 		},
-		dryRun: {
-			status: 200,
-			description:
-				'With dryRun: true, the email a send would compose and the refusal it would meet. Nothing was sent, stored or counted, and no Idempotency-Key was used.',
-			name: 'SendTransactionalDryRun',
-			data: sendTransactionalDryRunSchema,
-		},
 		errors: [404, 409, 422],
-		reasons: [
-			...TRANSACTIONAL_REFUSAL_REASONS,
-			...WRITE_REFUSAL_REASONS,
-			...RENDER_REFUSAL_REASONS,
-		],
+		reasons: [...TRANSACTIONAL_REFUSAL_REASONS, ...WRITE_REFUSAL_REASONS],
 	},
 	{
 		operationId: 'listTransactionalSends',
@@ -302,6 +290,7 @@ export const PUBLIC_OPERATIONS = [
 		reasons: ['feature_disabled'],
 	},
 	...TEMPLATE_OPERATIONS,
+	...RENDER_OPERATIONS,
 	{
 		operationId: 'listTopics',
 		method: 'GET',
@@ -475,11 +464,6 @@ export function successBodySchema(operation: PublicOperation): z.ZodType {
 	const { paginated, data } = operation.success;
 	if (paginated === 'cursor') return cursorPaginatedEnvelope(data);
 	return paginated ? paginatedEnvelope(data) : dataEnvelope(data);
-}
-
-/** The `{ data }` body of an operation's dry-run answer, or `null` when it takes no dry run. */
-export function dryRunBodySchema(operation: PublicOperation): z.ZodType | null {
-	return operation.dryRun ? dataEnvelope(operation.dryRun.data) : null;
 }
 
 /** The operation with this ID. */

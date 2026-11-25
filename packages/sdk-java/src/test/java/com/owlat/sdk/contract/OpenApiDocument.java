@@ -32,32 +32,18 @@ final class OpenApiDocument {
             this.node = node;
         }
 
-        /** The documented success status: the one 2xx response that is not the dry run's. */
+        /** The documented success status: the one 2xx response. */
         int successStatus() {
-            return twoHundred(false);
+            Iterator<String> statuses = node.get("responses").fieldNames();
+            while (statuses.hasNext()) {
+                String status = statuses.next();
+                if (status.startsWith("2")) return Integer.parseInt(status);
+            }
+            throw new IllegalStateException(id + " documents no success response");
         }
 
         JsonNode successContent() {
             return node.get("responses").get(String.valueOf(successStatus())).get("content").get("application/json");
-        }
-
-        /** The status of the answer to {@code dryRun: true}, marked {@code x-owlat-dry-run}. */
-        int dryRunStatus() {
-            return twoHundred(true);
-        }
-
-        JsonNode dryRunContent() {
-            return node.get("responses").get(String.valueOf(dryRunStatus())).get("content").get("application/json");
-        }
-
-        private int twoHundred(boolean dryRun) {
-            Iterator<Map.Entry<String, JsonNode>> responses = node.get("responses").fields();
-            while (responses.hasNext()) {
-                Map.Entry<String, JsonNode> response = responses.next();
-                boolean marked = response.getValue().path("x-owlat-dry-run").asBoolean(false);
-                if (response.getKey().startsWith("2") && marked == dryRun) return Integer.parseInt(response.getKey());
-            }
-            throw new IllegalStateException(id + " documents no " + (dryRun ? "dry-run" : "success") + " response");
         }
 
         /** The request body's schema, or null for an operation without one. */

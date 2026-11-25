@@ -178,9 +178,10 @@ send.getErrorCode(); // e.g. "MTA_UNREACHABLE" once it failed
 CursorPaginatedResponse<TransactionalSendStatus> sends = owlat.transactional().list(
     ListTransactionalSendsParams.builder().email("user@example.com").build());
 
-// A dry run: what the send would deliver and whether it would be accepted,
-// without sending, storing or counting anything. A server older than the dry
-// run would send instead; the SDK then throws with code dry_run_unsupported.
+// A dry run (POST /api/v1/transactional/dry-run): what the send would deliver
+// and whether it would be accepted, without sending, storing or counting
+// anything. A server older than the dry run answers 404 and sends nothing; the
+// SDK throws a NotFoundException saying the instance does not support dry runs.
 SendTransactionalDryRun preview = owlat.transactional().dryRun(
     SendTransactionalParams.builder("user@example.com").slug("welcome-email").build());
 preview.isWouldQueue();

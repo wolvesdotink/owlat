@@ -1,7 +1,7 @@
 /**
- * The dry run of `POST /api/v1/transactional`: the email a send would compose
- * for this template, recipient, language and data, and the refusal the send
- * would meet, without sending.
+ * The dry run of `POST /api/v1/transactional`, served at `/dry-run` beside it
+ * (`./dryRunHttp.ts`): the email a send would compose for this template,
+ * recipient, language and data, and the refusal the send would meet.
  *
  * It is a query, so it cannot write: no contact is created, no Send is
  * queued, no cap or Idempotency-Key is spent and no webhook fires. The checks

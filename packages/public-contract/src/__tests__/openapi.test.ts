@@ -7,7 +7,6 @@ import { buildOpenApiDocument } from '../openapi';
 import { ERROR_REASON_STATUS } from '../errors';
 import {
 	ANY_KEY,
-	dryRunBodySchema,
 	KEYED_ERROR_STATUSES,
 	PUBLIC_OPERATIONS,
 	publicOperation,
@@ -194,8 +193,8 @@ describe('error reasons', () => {
 	});
 
 	it('lists the deletion refusal on every operation that writes, and on no read', () => {
-		// A render is a POST that stores nothing.
-		const reads = new Set<string>(['renderEmail']);
+		// A render and a dry run are POSTs that store nothing.
+		const reads = new Set<string>(['renderEmail', 'dryRunTransactional']);
 		for (const operation of PUBLIC_OPERATIONS) {
 			const listed = reasonsListed(operation.operationId, 422);
 			if (operation.method === 'GET' || reads.has(operation.operationId)) {
@@ -300,20 +299,15 @@ describe('examples', () => {
 		}
 	});
 
-	it('a dry-run answer is a valid body, under its own status and marked as a dry run', () => {
-		const operation = publicOperation('sendTransactional');
-		const schema = dryRunBodySchema(operation)!;
-		const result = schema.safeParse(OPERATION_EXAMPLES.sendTransactional.dryRunResponse);
-		expect(result.error?.issues).toBeUndefined();
-		expect(schema.safeParse(OPERATION_EXAMPLES.sendTransactional.response).success).toBe(false);
-		expect(operation.dryRun!.status).not.toBe(operation.success.status);
-		const responses = buildOpenApiDocument()['paths'] as Record<
-			string,
-			Record<string, { responses: Record<string, Record<string, unknown>> }>
-		>;
-		const documented = responses['/api/v1/transactional']!['post']!.responses;
-		expect(documented[String(operation.dryRun!.status)]?.['x-owlat-dry-run']).toBe(true);
-		expect(documented[String(operation.success.status)]?.['x-owlat-dry-run']).toBeUndefined();
+	it('a dry run answers on its own path and status, and a send body has no dryRun field', () => {
+		const dryRun = publicOperation('dryRunTransactional');
+		const send = publicOperation('sendTransactional');
+		expect(dryRun.path).not.toBe(send.path);
+		expect(dryRun.success.status).not.toBe(send.success.status);
+		expect(
+			successBodySchema(dryRun).safeParse(OPERATION_EXAMPLES.sendTransactional.response).success
+		).toBe(false);
+		expect(Object.keys(sendTransactionalRequestSchema.shape)).not.toContain('dryRun');
 	});
 
 	it('a response with an undocumented field is not a valid body', () => {

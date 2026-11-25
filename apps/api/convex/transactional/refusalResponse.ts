@@ -1,9 +1,9 @@
 /**
  * How `POST /api/v1/transactional` answers a refused send: the status, the
  * message and the `error.data` each refusal of the intake
- * (`./dispatchDecision.ts`) carries. A real send and a dry run (`./dryRun.ts`)
- * both answer through here, so a dry run reports a refusal word for word as
- * the send would.
+ * (`./dispatchDecision.ts`) carries. A real send, the dry run
+ * (`./dryRunHttp.ts`) and the render (`publicApi/renderHttp.ts`) all answer
+ * through here, so a refusal they report reads word for word as the send's.
  */
 
 import { internal } from '../_generated/api';
@@ -14,7 +14,8 @@ import { sendingHoldLiftSentence } from '../delivery/sendingHoldLift';
 import type { SendIntakeAbuseState } from '../delivery/sendIntakeGates';
 import { featureDisabledMessage } from '../lib/featureFlags';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
-import type { SendingHoldLift } from '@owlat/public-contract';
+import type { SendingHoldLift, SendRefusal } from '@owlat/public-contract';
+import { apiErrorResponseSchema } from '@owlat/public-contract/schemas';
 import type { DispatchRefusal, DispatchRejectionReason } from './dispatchDecision';
 
 /**
@@ -144,4 +145,22 @@ export async function dispatchRefusalResponse(
 			retryAfter: Math.max(1, Math.ceil(refusal.retryAfterMs / 1000)),
 		}),
 	});
+}
+
+/** A refusal as the send's error body carries it, with the status it would answer. */
+export async function refusalAsSendWouldAnswer(
+	ctx: ActionCtx,
+	refusal: DispatchRefusal
+): Promise<SendRefusal> {
+	const response = await dispatchRefusalResponse(ctx, refusal);
+	// The body this server just built; the shared schema reads it as a check.
+	const body = apiErrorResponseSchema.parse(await response.json());
+	const retryAfter = response.headers.get('Retry-After');
+	return {
+		status: response.status,
+		category: body.error.category,
+		message: body.error.message,
+		data: body.error.data ?? {},
+		retryAfter: retryAfter === null ? null : Number(retryAfter),
+	};
 }

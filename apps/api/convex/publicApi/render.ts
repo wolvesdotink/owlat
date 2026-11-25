@@ -1,7 +1,7 @@
 /**
  * What the API's renders read and spend: `POST /api/v1/render`
- * (`renderHttp.ts`) and the dry run of `POST /api/v1/transactional`
- * (`transactional/dryRunAnswer.ts`). Neither stores anything; each spends one
+ * (`renderHttp.ts`) and `POST /api/v1/transactional/dry-run`
+ * (`transactional/dryRunHttp.ts`). Neither stores anything; each spends one
  * token of the key's `apiRender` bucket, apart from template writes and the
  * send caps.
  */

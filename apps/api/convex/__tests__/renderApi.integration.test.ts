@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import {
 	apiErrorResponseSchema,
-	dryRunBodySchema,
 	publicOperation,
 	reasonsAt,
 	successBodySchema,
@@ -151,7 +150,7 @@ async function renderOk(res: Response) {
 async function dryRunOk(res: Response) {
 	expect(res.status).toBe(200);
 	const body: unknown = await res.clone().json();
-	const schema = dryRunBodySchema(publicOperation('sendTransactional'))!;
+	const schema = successBodySchema(publicOperation('dryRunTransactional'));
 	expect(schema.safeParse(body).error?.issues).toBeUndefined();
 	return (await res.json()).data;
 }
@@ -540,12 +539,11 @@ describe('POST /api/v1/render', () => {
 		await expectRefusal('renderEmail', res, 429, 'render_rate_limited');
 		expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0);
 
-		const dry = await request(t, key, 'POST', '/api/v1/transactional', {
+		const dry = await request(t, key, 'POST', '/api/v1/transactional/dry-run', {
 			email: 'ada@example.com',
 			slug: 'order',
-			dryRun: true,
 		});
-		await expectRefusal('sendTransactional', dry, 429, 'render_rate_limited');
+		await expectRefusal('dryRunTransactional', dry, 429, 'render_rate_limited');
 
 		// Writes and sends spend their own buckets.
 		await saveOrder(t, key);
@@ -559,9 +557,9 @@ describe('POST /api/v1/render', () => {
 	});
 });
 
-// ─── POST /api/v1/transactional with dryRun ─────────────────────────────────
+// ─── POST /api/v1/transactional/dry-run ─────────────────────────────────────
 
-describe('POST /api/v1/transactional with dryRun: true', () => {
+describe('POST /api/v1/transactional/dry-run', () => {
 	it('answers what the real send composes, with a 200 marked as a dry run', async () => {
 		const t = setupTest();
 		await seedSendable(t);
@@ -572,7 +570,7 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		for (const language of ['en', 'de']) {
 			const body = { email: 'ada@example.com', slug: 'order', language, dataVariables: DATA };
 			const dry = await dryRunOk(
-				await request(t, key, 'POST', '/api/v1/transactional', { ...body, dryRun: true })
+				await request(t, key, 'POST', '/api/v1/transactional/dry-run', body)
 			);
 			const sent = await request(t, key, 'POST', '/api/v1/transactional', body);
 			expect(sent.status).toBe(202);
@@ -605,14 +603,7 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		const headers = { 'Idempotency-Key': 'order-1001' };
 		const body = { email: 'ada@example.com', slug: 'order', dataVariables: DATA };
 
-		const dry = await request(
-			t,
-			key,
-			'POST',
-			'/api/v1/transactional',
-			{ ...body, dryRun: true },
-			headers
-		);
+		const dry = await request(t, key, 'POST', '/api/v1/transactional/dry-run', body, headers);
 		expect(dry.status).toBe(200);
 		expect(vi.mocked(transactionalEmailPool.enqueueAction)).not.toHaveBeenCalled();
 		expect(await sendFootprint(t, row._id, keyId)).toEqual(before);
@@ -638,11 +629,10 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		});
 		expect(first.status).toBe(202);
 		const accepted = await dryRunOk(
-			await request(t, key, 'POST', '/api/v1/transactional', {
+			await request(t, key, 'POST', '/api/v1/transactional/dry-run', {
 				email: 'ada@example.com',
 				slug: 'order',
 				dataVariables: DATA,
-				dryRun: true,
 			})
 		);
 		expect(accepted.contactId).toBe((await first.json()).data.contactId);
@@ -656,7 +646,7 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		const sent = await request(t, key, 'POST', '/api/v1/transactional', body);
 		const refusal = await expectRefusal('sendTransactional', sent, 422, 'recipient_blocked');
 		const dry = await dryRunOk(
-			await request(t, key, 'POST', '/api/v1/transactional', { ...body, dryRun: true })
+			await request(t, key, 'POST', '/api/v1/transactional/dry-run', body)
 		);
 		expect(dry.wouldQueue).toBe(false);
 		expect(dry.refusal).toEqual({
@@ -682,13 +672,12 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		expect((await request(t, key, 'POST', '/api/v1/transactional-emails/big/publish')).status).toBe(
 			200
 		);
-		const big = await request(t, key, 'POST', '/api/v1/transactional', {
+		const big = await request(t, key, 'POST', '/api/v1/transactional/dry-run', {
 			email: 'ada@example.com',
 			slug: 'big',
 			dataVariables: { items: Array.from({ length: 300 }, (_, i) => ({ name: `n${i}` })) },
-			dryRun: true,
 		});
-		await expectRefusal('sendTransactional', big, 422, 'recipient_blocked');
+		await expectRefusal('dryRunTransactional', big, 422, 'recipient_blocked');
 	});
 
 	it('reports a spent daily cap with its retry time and charges nothing', async () => {
@@ -714,11 +703,10 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		});
 		const before = await sendFootprint(t, row._id, keyId);
 		const dry = await dryRunOk(
-			await request(t, key, 'POST', '/api/v1/transactional', {
+			await request(t, key, 'POST', '/api/v1/transactional/dry-run', {
 				email: 'ada@example.com',
 				slug: 'order',
 				dataVariables: DATA,
-				dryRun: true,
 			})
 		);
 		expect(dry.refusal).toMatchObject({ status: 429, data: { reason: 'daily_send_limit' } });
@@ -732,11 +720,10 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		const { key } = await seedKey(t, ALL);
 		await saveOrder(t, key);
 		const dry = await dryRunOk(
-			await request(t, key, 'POST', '/api/v1/transactional', {
+			await request(t, key, 'POST', '/api/v1/transactional/dry-run', {
 				email: 'ada@example.com',
 				slug: 'order',
 				dataVariables: { firstName: 'Ada' },
-				dryRun: true,
 			})
 		);
 		expect(dry).toMatchObject({
@@ -755,24 +742,46 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		const writer = await seedKey(t, ALL);
 		await saveOrder(t, writer.key);
 		const { key } = await seedKey(t, ['transactional:send']);
-		const res = await request(t, key, 'POST', '/api/v1/transactional', {
+		const res = await request(t, key, 'POST', '/api/v1/transactional/dry-run', {
 			email: 'ada@example.com',
 			slug: 'order',
-			dryRun: true,
 		});
-		const body = await expectRefusal('sendTransactional', res, 422, 'template_not_published');
+		const body = await expectRefusal('dryRunTransactional', res, 422, 'template_not_published');
 		expect(JSON.stringify(body)).not.toContain('Hi ');
+	});
+
+	it('a send that carries a dryRun field is refused with 400 and sends nothing', async () => {
+		const t = setupTest();
+		await seedSendable(t);
+		const { key, keyId } = await seedKey(t, ALL);
+		const row = await saveOrder(t, key);
+		await publishOrder(t, key);
+		const before = await sendFootprint(t, row._id, keyId);
+		for (const dryRun of [true, false, 'yes']) {
+			const res = await request(t, key, 'POST', '/api/v1/transactional', {
+				email: 'ada@example.com',
+				slug: 'order',
+				dataVariables: DATA,
+				dryRun,
+			});
+			expect(res.status).toBe(400);
+			const body = await res.json();
+			expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+			expect(body.error.data).toEqual({ field: 'dryRun' });
+			expect(body.error.message).toContain('/api/v1/transactional/dry-run');
+		}
+		expect(vi.mocked(transactionalEmailPool.enqueueAction)).not.toHaveBeenCalled();
+		expect(await sendFootprint(t, row._id, keyId)).toEqual(before);
 	});
 
 	it('answers an unknown template with the send’s 404', async () => {
 		const t = setupTest();
 		await seedSendable(t);
 		const { key } = await seedKey(t, ALL);
-		const res = await request(t, key, 'POST', '/api/v1/transactional', {
+		const res = await request(t, key, 'POST', '/api/v1/transactional/dry-run', {
 			email: 'ada@example.com',
 			slug: 'nope',
-			dryRun: true,
 		});
-		await expectRefusal('sendTransactional', res, 404, 'template_not_found');
+		await expectRefusal('dryRunTransactional', res, 404, 'template_not_found');
 	});
 });
