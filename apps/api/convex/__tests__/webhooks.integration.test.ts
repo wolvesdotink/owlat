@@ -362,6 +362,26 @@ describe('webhooks.create', () => {
 		expect(result.webhookId).toBeDefined();
 	});
 
+	it('should reject an http:// URL for deliverability alerts', async () => {
+		const t = convexTest(schema, modules);
+
+		for (const event of ['deliverability.alert_raised', 'deliverability.alert_resolved'] as const) {
+			await expect(
+				t.mutation(api.webhooks.endpoints.create, {
+					name: 'On-call',
+					url: 'http://oncall.example.com/hook',
+					events: ['email.sent', event],
+				})
+			).rejects.toThrow('Deliverability alert webhooks need an HTTPS URL');
+		}
+		const result = await t.mutation(api.webhooks.endpoints.create, {
+			name: 'On-call',
+			url: 'https://oncall.example.com/hook',
+			events: ['deliverability.alert_raised'],
+		});
+		expect(result.webhookId).toBeDefined();
+	});
+
 	// Validation: empty events
 	it('should reject empty events array', async () => {
 		const t = convexTest(schema, modules);
@@ -401,6 +421,40 @@ describe('webhooks.update', () => {
 			const webhook = await ctx.db.get(webhookId);
 			expect(webhook!.name).toBe('Updated Name');
 			expect(webhook!.url).toBe('https://example.com/hook');
+		});
+	});
+
+	it('should refuse an http:// URL for a webhook that gets deliverability alerts, from either side', async () => {
+		const t = convexTest(schema, modules);
+		const [alerts, mail] = await t.run(async (ctx) => [
+			await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					url: 'https://oncall.example.com/hook',
+					events: ['deliverability.alert_raised'],
+				})
+			),
+			await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({ url: 'http://legacy.example.com/hook', events: ['email.sent'] })
+			),
+		]);
+
+		await expect(
+			t.mutation(api.webhooks.endpoints.update, {
+				webhookId: alerts,
+				url: 'http://oncall.example.com/hook',
+			})
+		).rejects.toThrow('Deliverability alert webhooks need an HTTPS URL');
+		await expect(
+			t.mutation(api.webhooks.endpoints.update, {
+				webhookId: mail,
+				events: ['email.sent', 'deliverability.alert_resolved'],
+			})
+		).rejects.toThrow('Deliverability alert webhooks need an HTTPS URL');
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(alerts))!.url).toBe('https://oncall.example.com/hook');
+			expect((await ctx.db.get(mail))!.events).toEqual(['email.sent']);
 		});
 	});
 

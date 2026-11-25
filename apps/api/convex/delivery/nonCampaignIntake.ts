@@ -39,7 +39,10 @@ import type { MessageType } from '../lib/sendProviders/route';
 import { recordSendAssignments } from './sendAssignments';
 import { attachmentRefValidator, normalizeEngagementScore } from './workerEnvelope';
 import { runSendIntakeGates, type SendIntakeRejectionReason } from './sendIntakeGates';
-import { loadContactMarketingIneligibility } from '../lib/marketingEligibility';
+import {
+	automationTopicIneligibility,
+	contactMarketingIneligibility,
+} from '../lib/marketingEligibility';
 import { findStepRunSend } from '../automations/stepRunSend';
 import { stepRunEndedBeforeSend } from '../automations/stepRunGate';
 import {
@@ -57,7 +60,8 @@ import { extractEmail } from '../lib/emailAddress';
  * {@link SendIntakeRejectionReason} vocabulary plus one reason of its own:
  * `recipient_ineligible` — the recipient CONTACT may no longer receive
  * marketing (soft-deleted, erased, or globally unsubscribed; see
- * `lib/marketingEligibility.ts`). Only marketing-scope kinds are gated on it,
+ * `lib/marketingEligibility.ts`), or no longer this automation's mail (it left
+ * the topic the automation belongs to). Only marketing-scope kinds are gated on it,
  * and it is permanent for this contact, like `recipient_blocked`. `detail`
  * carries the `MarketingIneligibility` value. And `sender_domain_unverified`:
  * the From address is not on a verified sending domain, the same verdict the
@@ -262,12 +266,20 @@ export const intake = internalMutation({
 
 		// Contact-level marketing eligibility, for marketing-scope kinds only: a
 		// contact that unsubscribed from everything or was deleted while an
-		// automation waited must not get its next step. The transactional scope
+		// automation waited must not get its next step, and neither must one
+		// that left the topic the automation belongs to. The transactional scope
 		// (agent 1:1 replies) keeps its own policy — the blocklist alone.
 		if (SUPPRESSION_SCOPE_BY_KIND[args.kind] === 'marketing' && args.contactId) {
-			const ineligibility = await loadContactMarketingIneligibility(ctx, args.contactId);
+			const contact = await ctx.db.get(args.contactId);
+			const ineligibility = contactMarketingIneligibility(contact);
 			if (ineligibility !== null) {
 				return { ok: false, reason: 'recipient_ineligible', detail: ineligibility };
+			}
+			const automation = args.automationId ? await ctx.db.get(args.automationId) : null;
+			const leftTopic =
+				automation && contact ? await automationTopicIneligibility(ctx, automation, contact) : null;
+			if (leftTopic !== null) {
+				return { ok: false, reason: 'recipient_ineligible', detail: leftTopic.reason };
 			}
 		}
 

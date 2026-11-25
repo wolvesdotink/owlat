@@ -783,6 +783,18 @@
 						"topicPlaceholder": "Select a topic..."
 					}
 				}
+			},
+			"mailTopic": {
+				"deleted": "This topic was deleted, so this automation sends no more emails. Choose another topic or No topic.",
+				"deletedOption": "Deleted topic",
+				"hintWithTopic": "Contacts who leave this topic stop getting this automation's emails. Its other steps still run for them.",
+				"hintWithoutTopic": "Without a topic, only an unsubscribe from all emails stops this automation's emails.",
+				"label": "Topic",
+				"none": "No topic",
+				"operation": "Change the automation's topic",
+				"sameAsTrigger": "Same as the trigger: {name}",
+				"sameAsTriggerUnnamed": "Same as the trigger",
+				"saved": "Topic saved"
 			}
 		},
 		"autonomy": {
@@ -3804,7 +3816,8 @@
 					"push": "Push on {count} device | Push on {count} devices",
 					"noPush": "No push",
 					"webhook": "Webhook to {count} endpoint | Webhook to {count} endpoints",
-					"noWebhook": "Webhook not set"
+					"noWebhook": "Webhook not set",
+					"webhookCleartext": "Webhook needs HTTPS"
 				},
 				"email": {
 					"title": "Email",
@@ -3838,6 +3851,7 @@
 					"reach": "Sent to {count} webhook, signed and retried. | Sent to {count} webhooks, signed and retried.",
 					"notSet": "No webhook receives deliverability alerts. Send them to your on-call tool or team chat.",
 					"off": "Outbound webhooks are turned off on this instance.",
+					"cleartext": "{count} webhook subscribed to alerts has an http:// URL and gets no alerts until its URL starts with https://. | {count} webhooks subscribed to alerts have an http:// URL and get no alerts until their URLs start with https://.",
 					"add": "Add alert webhook",
 					"manage": "Manage webhooks"
 				}
@@ -8983,7 +8997,9 @@
 						"title": "Microsoft reputation (SNDS)",
 						"red": "SNDS rates {ip} red for {day}: Outlook.com and Hotmail filter most of its mail. Owlat sends Microsoft mail from this address at a reduced rate until SNDS rates it green again. Other addresses and providers are not affected.",
 						"yellow": "SNDS rates {ip} yellow for {day}: Microsoft filters some of its mail. Nothing is held back yet.",
-						"action": "How to recover a red address"
+						"action": "How to recover a red address",
+						"trapHits": "SNDS counted {count} spam-trap hit for {ip} on {day}. Your list holds an address that never signed up, or one abandoned long ago and turned into a trap. Waiting does not fix this: find the list or import it came from, and remove contacts that never confirmed or have not engaged in a long time. | SNDS counted {count} spam-trap hits for {ip} on {day}. Your list holds addresses that never signed up, or ones abandoned long ago and turned into traps. Waiting does not fix this: find the list or import they came from, and remove contacts that never confirmed or have not engaged in a long time.",
+						"trapAction": "How to clean up after trap hits"
 					}
 				},
 				"dmarc": {
@@ -12027,12 +12043,19 @@
 						"showFailed": "Show failed runs"
 					},
 					"loading": "Loading automation...",
+					"mailTopic": "Topic: {name}",
+					"mailTopicDeleted": "Topic deleted",
 					"notFoundDescription": "This automation may have been deleted or you don't have access to it.",
 					"notFoundTitle": "Automation not found",
 					"pageTitle": "Automation details — Owlat",
 					"runs": {
 						"cancelled": "Cancelled",
 						"completed": "Completed",
+						"emailSkip": {
+							"leftDeletedTopic": "Emails skipped: this contact is not subscribed to the automation's topic.",
+							"leftTopic": "Emails skipped: this contact is not subscribed to the topic {name}.",
+							"unsubscribed": "Emails skipped: this contact unsubscribed from all emails."
+						},
 						"emptyDescription": "Contacts will appear here when the automation is triggered",
 						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",
@@ -19817,6 +19840,7 @@
 				"eventsRequired": "At least one event must be selected",
 				"nameRequired": "Name is required",
 				"urlInvalid": "Invalid URL format",
+				"urlAlertsNeedHttps": "Deliverability alerts are sent only to an https:// URL",
 				"urlProtocol": "URL must use HTTP or HTTPS protocol",
 				"urlRequired": "URL is required"
 			},

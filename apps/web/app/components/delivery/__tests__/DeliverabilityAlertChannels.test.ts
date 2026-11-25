@@ -14,7 +14,7 @@ interface Channels {
 	email: { recipientCount: number; isSenderConfigured: boolean; isOnOwnMta: boolean };
 	inApp: { recipientCount: number };
 	push: { isConfigured: boolean; deviceCount: number };
-	webhook: { isFeatureOn: boolean; count: number };
+	webhook: { isFeatureOn: boolean; count: number; cleartextCount: number };
 	me: { isSwitchOn: boolean; deviceCount: number };
 }
 
@@ -22,7 +22,7 @@ const READY: Channels = {
 	email: { recipientCount: 2, isSenderConfigured: true, isOnOwnMta: false },
 	inApp: { recipientCount: 2 },
 	push: { isConfigured: true, deviceCount: 1 },
-	webhook: { isFeatureOn: true, count: 1 },
+	webhook: { isFeatureOn: true, count: 1, cleartextCount: 0 },
 	me: { isSwitchOn: true, deviceCount: 1 },
 };
 
@@ -91,7 +91,7 @@ describe('DeliverabilityAlertChannels', () => {
 			email: { recipientCount: 2, isSenderConfigured: false, isOnOwnMta: false },
 			inApp: { recipientCount: 0 },
 			push: { isConfigured: false, deviceCount: 0 },
-			webhook: { isFeatureOn: true, count: 0 },
+			webhook: { isFeatureOn: true, count: 0, cleartextCount: 0 },
 			me: { isSwitchOn: false, deviceCount: 0 },
 		});
 		expectFullyLocalized(wrapper);
@@ -139,10 +139,42 @@ describe('DeliverabilityAlertChannels', () => {
 
 	it('sends a configured webhook to the webhook list, and says when webhooks are off', () => {
 		expect(actionTargets(mountCard())).toContain('/dashboard/admin/delivery/webhooks');
-		const off = mountCard({ ...READY, webhook: { isFeatureOn: false, count: 0 } });
+		const off = mountCard({
+			...READY,
+			webhook: { isFeatureOn: false, count: 0, cleartextCount: 0 },
+		});
 		expect(off.get('[data-testid="alert-channel-webhook"]').text()).toContain('turned off');
 		expect(actionTargets(off)).not.toContain(
 			'/dashboard/admin/delivery/webhooks?preset=deliverability-alerts'
+		);
+	});
+
+	it('says an alert webhook with an http URL gets no alerts, and links to it', () => {
+		const only = mountCard({
+			...READY,
+			webhook: { isFeatureOn: true, count: 0, cleartextCount: 1 },
+		});
+		expectFullyLocalized(only);
+		expect(only.get('[data-testid="alert-channels-summary"]').text()).toContain(
+			'Webhook needs HTTPS'
+		);
+		expect(only.get('[data-testid="alert-channel-webhook"]').text()).toBe(
+			'1 webhook subscribed to alerts has an http:// URL and gets no alerts until its URL starts with https://.'
+		);
+		expect(actionTargets(only)).toContain('/dashboard/admin/delivery/webhooks');
+		expect(actionTargets(only)).not.toContain(
+			'/dashboard/admin/delivery/webhooks?preset=deliverability-alerts'
+		);
+
+		const mixed = mountCard({
+			...READY,
+			webhook: { isFeatureOn: true, count: 1, cleartextCount: 2 },
+		});
+		expect(mixed.get('[data-testid="alert-channels-summary"]').text()).toContain(
+			'Webhook to 1 endpoint · Webhook needs HTTPS'
+		);
+		expect(mixed.get('[data-testid="alert-channel-webhook"]').text()).toBe(
+			'Sent to 1 webhook, signed and retried. 2 webhooks subscribed to alerts have an http:// URL and get no alerts until their URLs start with https://.'
 		);
 	});
 });

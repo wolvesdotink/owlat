@@ -44,13 +44,13 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { MAX_RETRY_ATTEMPTS, RETRY_DELAYS_MS } from '../lib/constants';
 import { automationStepFailureReasonValidator } from '../lib/validators/automations';
-import { marketingIneligibilityValidator } from '../lib/marketingEligibility';
+import { automationTopicId, marketingIneligibilityValidator } from '../lib/marketingEligibility';
 import { findStepRunSend } from './stepRunSend';
 import { gateStepRun } from './stepRunGate';
 import {
@@ -68,8 +68,8 @@ import {
 	failStepAndCancelRun,
 	isTerminalStepRunStatus,
 	recordSkippedSteps,
+	skipIneligibleEmailStepAndAdvance,
 	skipStepAndCancelRun,
-	skipUnsubscribedStepAndAdvance,
 	transitionStepRun,
 	PRE_UPGRADE_ABANDON_AFTER_MS,
 	PRE_UPGRADE_ABANDONED_ERROR,
@@ -277,12 +277,24 @@ const stepOutcomeValidator = v.union(
 	})
 );
 
+/** The topic the step run's automation belongs to, for the run's skip note. */
+async function topicOfStepRun(
+	ctx: MutationCtx,
+	stepRun: Doc<'automationStepRuns'>
+): Promise<{ topicId?: Id<'topics'> }> {
+	const run = await ctx.db.get(stepRun.automationRunId);
+	const automation = run ? await ctx.db.get(run.automationId) : null;
+	const topicId = automation ? automationTopicId(ctx, automation) : null;
+	return topicId === null ? {} : { topicId };
+}
+
 /**
  * Commit a successful attempt: complete the step run, record the steps a
  * forward branch skipped, then enter the next step (or complete the run). A
  * `contact_ineligible` outcome means the intake saw the contact change after
- * the claim: an unsubscribe skips the email step and moves the run on, a
- * deletion skips it and cancels the run.
+ * the claim: an unsubscribe from everything or from the automation's topic
+ * skips the email step and moves the run on, a deletion skips it and cancels
+ * the run.
  */
 export const finalizeStepRun = internalMutation({
 	args: {
@@ -301,7 +313,15 @@ export const finalizeStepRun = internalMutation({
 
 		if (args.outcome.kind === 'contact_ineligible') {
 			if (args.outcome.reason === 'contact_unsubscribed') {
-				return await skipUnsubscribedStepAndAdvance(ctx, stepRun);
+				return await skipIneligibleEmailStepAndAdvance(ctx, stepRun, {
+					reason: 'contact_unsubscribed',
+				});
+			}
+			if (args.outcome.reason === 'topic_unsubscribed') {
+				return await skipIneligibleEmailStepAndAdvance(ctx, stepRun, {
+					reason: 'topic_unsubscribed',
+					...(await topicOfStepRun(ctx, stepRun)),
+				});
 			}
 			await skipStepAndCancelRun(
 				ctx,

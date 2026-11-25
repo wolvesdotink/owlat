@@ -79,6 +79,12 @@ const DELIVERABILITY_ALERT_EVENTS: WebhookEvent[] = [
 	'deliverability.alert_resolved',
 ];
 
+/** Alert payloads describe the instance's sending problems; the API refuses them over http. */
+function isAlertUrlAccepted(url: string, events: readonly WebhookEvent[]): boolean {
+	if (!events.some((event) => DELIVERABILITY_ALERT_EVENTS.includes(event))) return true;
+	return new URL(url.trim()).protocol === 'https:';
+}
+
 /**
  * The message KEY for an event's label, or the raw event id when no definition
  * owns it — the caller renders both through `t(…)` (an id with nothing to
@@ -197,6 +203,11 @@ export function useWebhookForm() {
 			return;
 		}
 
+		if (!isAlertUrlAccepted(createForm.url, createForm.events)) {
+			createFormError.value = t(`${K}.errors.urlAlertsNeedHttps`);
+			return;
+		}
+
 		isCreating.value = true;
 
 		const result = await createWebhook({
@@ -300,6 +311,11 @@ export function useWebhookForm() {
 
 		if (editForm.events.length === 0) {
 			editFormError.value = t(`${K}.errors.eventsRequired`);
+			return;
+		}
+
+		if (!isAlertUrlAccepted(editForm.url, editForm.events)) {
+			editFormError.value = t(`${K}.errors.urlAlertsNeedHttps`);
 			return;
 		}
 

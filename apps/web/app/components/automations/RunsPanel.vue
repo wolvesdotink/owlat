@@ -121,6 +121,16 @@ const filterNote = computed(() => {
 	}
 });
 
+/** Why a run skipped an email step; the topic is named when it still exists. */
+const emailSkipNote = (reason: string, topicName: string | null): string => {
+	if (reason === 'contact_unsubscribed') {
+		return t('dashboard.automations.detail.index.runs.emailSkip.unsubscribed');
+	}
+	return topicName
+		? t('dashboard.automations.detail.index.runs.emailSkip.leftTopic', { name: topicName })
+		: t('dashboard.automations.detail.index.runs.emailSkip.leftDeletedTopic');
+};
+
 type RunBadge = { color: string; icon: IconComponent; label: string; animated: boolean };
 
 const getRunStatusBadge = (
@@ -297,6 +307,14 @@ const loadPrevRuns = () => {
 							</UiTooltip>
 						</div>
 					</div>
+					<!-- Why this run skipped an email, aligned with the contact's name -->
+					<p
+						v-if="run.emailSkip && !(run.failure ?? run.waiting)"
+						class="mt-2 sm:pl-13 text-sm text-text-secondary"
+						data-testid="run-email-skip"
+					>
+						{{ emailSkipNote(run.emailSkip.reason, run.emailSkipTopicName) }}
+					</p>
 					<!-- Why a run failed or what it waits for, aligned with the contact's name -->
 					<AutomationsRunFailureNote
 						v-if="run.failure ?? run.waiting"

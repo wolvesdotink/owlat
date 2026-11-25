@@ -53,6 +53,8 @@ export const SEND_FAILURE_CODE_CLASSES: Readonly<Record<string, SendFailureClass
 	SMTPUTF8_UNSUPPORTED: 'addressUnsupported',
 	RECIPIENT_SUPPRESSED: 'blocklisted',
 	RECIPIENT_UNSUBSCRIBED: 'unsubscribed',
+	// Left the topic an automation belongs to: an unsubscribe, from that topic.
+	RECIPIENT_LEFT_TOPIC: 'unsubscribed',
 	CONTACT_DELETED: 'contactDeleted',
 	CONTENT_REJECTED: 'content',
 	PROVIDER_REJECTED: 'providerRefused',

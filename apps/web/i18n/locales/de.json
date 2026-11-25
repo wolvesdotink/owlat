@@ -783,6 +783,18 @@
 						"topicPlaceholder": "Thema auswählen..."
 					}
 				}
+			},
+			"mailTopic": {
+				"deleted": "Dieses Thema wurde gelöscht, deshalb sendet diese Automation keine E-Mails mehr. Wähle ein anderes Thema oder Kein Thema.",
+				"deletedOption": "Gelöschtes Thema",
+				"hintWithTopic": "Kontakte, die dieses Thema verlassen, bekommen keine E-Mails dieser Automation mehr. Die übrigen Schritte laufen für sie weiter.",
+				"hintWithoutTopic": "Ohne Thema stoppt nur eine Abmeldung von allen E-Mails die E-Mails dieser Automation.",
+				"label": "Thema",
+				"none": "Kein Thema",
+				"operation": "Thema der Automation ändern",
+				"sameAsTrigger": "Wie der Auslöser: {name}",
+				"sameAsTriggerUnnamed": "Wie der Auslöser",
+				"saved": "Thema gespeichert"
 			}
 		},
 		"autonomy": {
@@ -3804,7 +3816,8 @@
 					"push": "Push auf {count} Gerät | Push auf {count} Geräten",
 					"noPush": "Kein Push",
 					"webhook": "Webhook an {count} Endpunkt | Webhook an {count} Endpunkte",
-					"noWebhook": "Kein Webhook eingerichtet"
+					"noWebhook": "Kein Webhook eingerichtet",
+					"webhookCleartext": "Webhook braucht HTTPS"
 				},
 				"email": {
 					"title": "E-Mail",
@@ -3837,6 +3850,7 @@
 					"title": "Webhook-Endpunkt",
 					"reach": "Geht an {count} Webhook, signiert und mit Wiederholungen. | Geht an {count} Webhooks, signiert und mit Wiederholungen.",
 					"notSet": "Kein Webhook empfängt Zustellbarkeitsalarme. Schick sie an dein Bereitschafts-Tool oder deinen Team-Chat.",
+					"cleartext": "{count} Webhook für Alarme hat eine http://-Adresse und bekommt keine Alarme, bis seine Adresse mit https:// beginnt. | {count} Webhooks für Alarme haben eine http://-Adresse und bekommen keine Alarme, bis ihre Adressen mit https:// beginnen.",
 					"off": "Ausgehende Webhooks sind auf dieser Instanz ausgeschaltet.",
 					"add": "Alarm-Webhook hinzufügen",
 					"manage": "Webhooks verwalten"
@@ -8983,7 +8997,9 @@
 						"title": "Microsoft-Reputation (SNDS)",
 						"red": "SNDS bewertet {ip} für den {day} mit Rot: Outlook.com und Hotmail filtern den Großteil der Mails von dieser Adresse. Owlat sendet Mails an Microsoft von dieser Adresse mit reduzierter Rate, bis SNDS sie wieder grün bewertet. Andere Adressen und Anbieter sind nicht betroffen.",
 						"yellow": "SNDS bewertet {ip} für den {day} mit Gelb: Microsoft filtert einen Teil der Mails von dieser Adresse. Noch wird nichts zurückgehalten.",
-						"action": "So wird eine rote Adresse wieder grün"
+						"action": "So wird eine rote Adresse wieder grün",
+						"trapHits": "SNDS hat am {day} {count} Spamfallen-Treffer für {ip} gezählt. Deine Liste enthält eine Adresse, die sich nie angemeldet hat, oder eine, die lange aufgegeben und zur Falle wurde. Abwarten hilft hier nicht: Finde die Liste oder den Import, aus dem sie stammt, und entferne Kontakte, die nie bestätigt oder lange nicht mehr reagiert haben. | SNDS hat am {day} {count} Spamfallen-Treffer für {ip} gezählt. Deine Liste enthält Adressen, die sich nie angemeldet haben, oder solche, die lange aufgegeben und zu Fallen wurden. Abwarten hilft hier nicht: Finde die Liste oder den Import, aus dem sie stammen, und entferne Kontakte, die nie bestätigt oder lange nicht mehr reagiert haben.",
+						"trapAction": "So räumst du nach Spamfallen-Treffern auf"
 					}
 				},
 				"dmarc": {
@@ -12027,12 +12043,19 @@
 						"showFailed": "Fehlgeschlagene Durchläufe anzeigen"
 					},
 					"loading": "Automation wird geladen …",
+					"mailTopic": "Thema: {name}",
+					"mailTopicDeleted": "Thema gelöscht",
 					"notFoundDescription": "Diese Automation wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
 					"notFoundTitle": "Automation nicht gefunden",
 					"pageTitle": "Automationsdetails — Owlat",
 					"runs": {
 						"cancelled": "Abgebrochen",
 						"completed": "Abgeschlossen",
+						"emailSkip": {
+							"leftDeletedTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema der Automation angemeldet.",
+							"leftTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema {name} angemeldet.",
+							"unsubscribed": "E-Mails übersprungen: Dieser Kontakt hat sich von allen E-Mails abgemeldet."
+						},
 						"emptyDescription": "Kontakte erscheinen hier, sobald die Automation ausgelöst wird",
 						"emptyFiltered": "Keine Durchläufe für diesen Filter",
 						"emptyTitle": "Noch keine Kontakte in dieser Automation",
@@ -19817,6 +19840,7 @@
 				"eventsRequired": "Es muss mindestens ein Ereignis ausgewählt sein",
 				"nameRequired": "Name ist erforderlich",
 				"urlInvalid": "Ungültiges URL-Format",
+				"urlAlertsNeedHttps": "Zustellbarkeitsalarme gehen nur an eine https://-Adresse",
 				"urlProtocol": "Die URL muss das Protokoll HTTP oder HTTPS verwenden",
 				"urlRequired": "URL ist erforderlich"
 			},

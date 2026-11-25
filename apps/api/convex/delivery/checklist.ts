@@ -42,7 +42,7 @@ import { OWN_SENDING_DOMAIN_PROVIDER_KIND, SENDING_DOMAIN_PROVIDERS } from '../d
 import type { ChecklistRelayIdentity } from './checklistValidatorTypes';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import { readInstanceCounter } from '../lib/instanceCounters';
-import { readSndsIpStandings } from './sndsStanding';
+import { readSndsCenterNote } from './sndsStanding';
 import { readStandingSendingHold } from './sendingHoldAlerts';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
@@ -326,6 +326,11 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		)
 	);
 	const loopbackInfrastructureReady = settings?.mtaHealth !== undefined;
+	// SNDS reports on the instance's own sending addresses, which only send
+	// while mail leaves through the built-in server.
+	const sndsNote = sendPaths.usesOwnMta
+		? await readSndsCenterNote(ctx.db, now)
+		: { standings: [], trapHits: [] };
 	const recommended = graded.filter(
 		(item) => item.severity === 'recommended' && item.status !== 'pass' && !item.notGraded
 	).length;
@@ -365,7 +370,8 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		nextItem,
 		groups,
 		ipv6: { enabled: ipv6Enabled, addresses: ipv6Addresses },
-		sndsStandings: await readSndsIpStandings(ctx.db, now),
+		sndsStandings: sndsNote.standings,
+		sndsTrapHits: sndsNote.trapHits,
 		loopback: {
 			domains: loopbackDomains(items, domains, loopbackInfrastructureReady).map(
 				(option, index) => ({
