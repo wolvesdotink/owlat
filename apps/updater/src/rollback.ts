@@ -20,6 +20,7 @@ import { errorMessage } from '@owlat/shared';
 import { exec, OWLAT_DIR } from './http.js';
 import { composeArgvIn, oneLine, servicesToRecreate } from './rollout.js';
 import { verifyReadiness } from './readiness.js';
+import { recordPinnedVersion } from './versionRecord.js';
 import { removeUpdateContainers, resolveInstallation } from './deployRun.js';
 import {
 	COPY_TIMEOUT_MS,
@@ -266,6 +267,10 @@ async function restoreAndStart(
 		fail('rollback-restore', reason);
 		return result('partial', `${reason}. The data is restored; convex and redis are stopped.`);
 	}
+	// The restored `.env` pins the snapshot's release, so VERSION goes back with
+	// it, for the automatic rollback and `owlat rollback` alike.
+	const recorded = await recordPinnedVersion('rollback');
+	if (recorded && !recorded.ok) console.error('[rollback]', recorded.stderr);
 	current = markSnapshot(current, 'starting');
 	const removed = current.absent.map((file) => `removed ${file}, which it did not have`);
 	steps.push({

@@ -407,6 +407,7 @@ describe('the automatic rollback', () => {
 		).toBeLessThan(indexOf(isRestore));
 		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(OLD_COMPOSE);
 		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe(OLD_ENV);
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.16$/m);
 		expect(json.steps.map((s) => s.step).slice(-3)).toEqual([
 			'rollback-restore',
 			'rollback-up',
@@ -637,6 +638,22 @@ describe('owlat rollback (GET /snapshot, POST /rollback)', () => {
 		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
 		expect(record).toMatch(/^version=0\.4\.16$/m);
 		expect(record).toMatch(/^applied_by=rollback$/m);
+	});
+
+	it('names the restored pin in VERSION, read as compose reads .env', async () => {
+		// The snapshot's own version comes from a stricter parser that misses a
+		// pin with a comment after it.
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16 # pinned\n', {
+			mode: 0o600,
+		});
+		await update();
+		const info = (await (await fetch(`${base}/snapshot`, { headers: AUTH })).json()) as {
+			snapshot: { id: string };
+		};
+
+		await post('/rollback', { snapshot: info.snapshot.id });
+
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.16$/m);
 	});
 
 	it('answers that there is nothing to restore before any update', async () => {

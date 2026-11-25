@@ -66,6 +66,22 @@ describe('syncVersionRecord, at startup', () => {
 		expect(record()).toBe('version=0.4.19\n');
 	});
 
+	it('keeps VERSION after an update that failed between moving the pin and `up`', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+		writeFileSync(
+			join(OWLAT_DIR, '.owlat-last-rollout.json'),
+			JSON.stringify({
+				targetVersion: '0.6.24',
+				startedAt: 1,
+				phase: 'done',
+				committed: true,
+				outcome: 'failed',
+			})
+		);
+		expect(await syncVersionRecord()).toBeNull();
+		expect(record()).toBe('version=0.4.19\n');
+	});
+
 	it('writes VERSION after an update that finished, as the hand-over leaves it', async () => {
 		writeFileSync(
 			join(OWLAT_DIR, '.owlat-last-rollout.json'),

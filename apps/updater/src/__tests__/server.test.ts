@@ -719,6 +719,22 @@ describe('POST /update', () => {
 		expect(record).not.toContain('0.4.19');
 	});
 
+	it('names the release .env still pins when moving the pin failed', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.19\n');
+		// The snapshot copies `.env` owner-only too; without it, the pin is the write.
+		withoutSnapshot();
+		writeOwnerOnlyFileSpy.mockRejectedValueOnce(new Error('Refusing to write .env'));
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:0.6.24', ''].join(
+			'\n'
+		);
+
+		const res = await post('/update', { composeTemplate: template });
+
+		const json = (await res.json()) as { steps?: Array<{ step: string; ok?: boolean }> };
+		expect(json.steps?.find((s) => s.step === 'pin-version')?.ok).toBe(false);
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.19$/m);
+	});
+
 	it('leaves VERSION alone when the update stops before the release is applied', async () => {
 		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
 		commandMock.mockImplementation(

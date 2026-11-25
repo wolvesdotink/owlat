@@ -17,11 +17,22 @@ import { readRecord } from './rolloutState.js';
 
 type Step = { step: string; ok?: boolean; stdout: string; stderr: string };
 
-/** Rewrite `<install dir>/VERSION` for `version`. Reported, never thrown. */
-export async function recordRunningVersion(
-	version: string,
-	appliedBy: 'updater' | 'rollback'
-): Promise<Step> {
+/** The release `.env` pins, read as compose reads it; '' when there is none. */
+async function pinnedVersion(): Promise<string> {
+	const env = await readEnvFile(join(OWLAT_DIR, '.env')).catch(() => ({}) as EnvMap);
+	return env['OWLAT_VERSION']?.trim() ?? '';
+}
+
+/**
+ * Rewrite `<install dir>/VERSION` for the release `.env` pins once a rollout
+ * or rollback has settled it. Read back from `.env`, never taken from what the
+ * operation meant to apply: a pin that failed to write leaves the old release
+ * in `.env`, and VERSION names what `.env` names. Null on a `dev` stack.
+ * Reported, never thrown.
+ */
+export async function recordPinnedVersion(appliedBy: 'updater' | 'rollback'): Promise<Step | null> {
+	const version = await pinnedVersion();
+	if (!isReleaseVersion(version)) return null;
 	try {
 		await writeVersionRecord(OWLAT_DIR, { version, recordedAt: new Date(), appliedBy });
 		return { step: 'version-record', ok: true, stdout: `VERSION names ${version}`, stderr: '' };
@@ -41,20 +52,23 @@ export async function recordRunningVersion(
  * update, and on the first update of an install that predates VERSION it is
  * the previous release's updater that applies it, which never writes the
  * file. Not while the last rollout stopped after promoting its release
- * without finishing `up` (interrupted, or `up` failed halfway): `.env` then
- * pins a release whose containers may never have been recreated, until the
- * next rollout settles it. Nothing to do on a `dev` stack or an unreadable
- * `.env`.
+ * without finishing `up` (interrupted, `up` failed halfway, or failed before
+ * `up` ran): `.env` then pins a release whose containers may never have been
+ * recreated, until the next rollout settles it. Nothing to do on a `dev`
+ * stack or an unreadable `.env`.
  */
+const UNSETTLED_OUTCOMES: ReadonlySet<string> = new Set([
+	'interrupted',
+	'partially-applied',
+	'failed',
+]);
+
 export async function syncVersionRecord(): Promise<Step | null> {
 	const last = readRecord();
-	if (last?.committed && (last.outcome === 'interrupted' || last.outcome === 'partially-applied')) {
-		return null;
-	}
-	const env = await readEnvFile(join(OWLAT_DIR, '.env')).catch(() => ({}) as EnvMap);
-	const pinned = env['OWLAT_VERSION']?.trim() ?? '';
+	if (last?.committed && last.outcome && UNSETTLED_OUTCOMES.has(last.outcome)) return null;
+	const pinned = await pinnedVersion();
 	if (!isReleaseVersion(pinned)) return null;
 	const record = await readFile(join(OWLAT_DIR, VERSION_RECORD_FILE), 'utf-8').catch(() => null);
 	if (record !== null && parseVersionRecordVersion(record) === pinned) return null;
-	return recordRunningVersion(pinned, 'updater');
+	return recordPinnedVersion('updater');
 }

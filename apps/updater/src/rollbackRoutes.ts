@@ -11,7 +11,6 @@ import { scheduleUpdaterRecreateSafely } from './rollout.js';
 import { isRateLimited } from './security.js';
 import { isSnapshotId, readSnapshot } from './snapshot.js';
 import { describeSnapshot, rollBack, rollbackAnswer, when } from './rollback.js';
-import { recordRunningVersion } from './versionRecord.js';
 
 /** `GET /snapshot`: the snapshot `owlat rollback` would restore, if any. */
 export function handleSnapshotInfo(res: ServerResponse) {
@@ -67,14 +66,8 @@ export async function handleRollback(req: IncomingMessage, res: ServerResponse) 
 	);
 	const rollback = await rollBack(snapshot);
 	const steps = [...rollback.steps];
-	if (rollback.ok) {
-		// The restored `.env` pins the snapshot's release; VERSION goes back with it.
-		if (snapshot.fromVersion) {
-			steps.push(await recordRunningVersion(snapshot.fromVersion, 'rollback'));
-		}
-		// The updater itself follows the release it restored, like after an update.
-		steps.push(await scheduleUpdaterRecreateSafely());
-	}
+	// The updater itself follows the release it restored, like after an update.
+	if (rollback.ok) steps.push(await scheduleUpdaterRecreateSafely());
 	const description = rollback.ok
 		? `Rolled back to snapshot ${snapshot.id}: the stack runs the release and data from ${when(snapshot)} again. ${rollback.summary}`
 		: rollbackAnswer(snapshot, 'The rollback did not complete.', rollback);

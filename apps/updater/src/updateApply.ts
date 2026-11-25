@@ -19,7 +19,7 @@ import {
 import { verifyReadiness } from './readiness.js';
 import { markSnapshot, type Snapshot } from './snapshot.js';
 import { rollBack, rollbackAnswer } from './rollback.js';
-import { recordRunningVersion } from './versionRecord.js';
+import { recordPinnedVersion } from './versionRecord.js';
 import { writeLastRollout, type LastRollout, type RolloutOutcome } from './rolloutState.js';
 
 interface UpdateAnswer {
@@ -241,13 +241,12 @@ export async function applyRelease(
 		}
 	}
 
-	// Step 9b: Name the release that now runs in the install directory's
-	// VERSION file, which is also how an install that predates the file gets
-	// one. Past the rollback above, so a release that went back to its snapshot
-	// is never recorded. Reported, never fatal: the stack runs either way.
-	const appliedVersion = composeTemplate ? parseReleaseVersionFromTemplate(composeTemplate) : null;
-	if (appliedVersion) {
-		steps.push(await recordRunningVersion(appliedVersion, 'updater'));
+	// Step 9b: Name the release `.env` now pins in the install directory's
+	// VERSION file. Past the rollback above, so a release that went back to its
+	// snapshot is never recorded. Reported, never fatal: the stack runs either way.
+	if (composeTemplate) {
+		const recorded = await recordPinnedVersion('updater');
+		if (recorded) steps.push(recorded);
 	}
 
 	// Step 10: Hand this container's own replacement to a helper that outlives
