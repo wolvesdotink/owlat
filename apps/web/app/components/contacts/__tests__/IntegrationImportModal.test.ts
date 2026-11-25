@@ -138,12 +138,21 @@ describe('IntegrationImportModal — choosing a provider', () => {
 
 	it('shows the form once the pick settles, with no second fetch of the step', async () => {
 		const wrapper = await mountModal();
-
-		await wrapper
-			.findAll('button')
-			.find((b) => b.text().includes('Stripe'))!
-			.trigger('click');
-		await flushPromises();
+		// Any fetch of the step after the one on open fails, so only the load
+		// the modal already holds can render the form.
+		vi.doMock('../integrationImport/ConfigureStep.vue', () => {
+			throw new Error('Failed to fetch dynamically imported module');
+		});
+		try {
+			await wrapper
+				.findAll('button')
+				.find((b) => b.text().includes('Stripe'))!
+				.trigger('click');
+			await vi.dynamicImportSettled();
+			await flushPromises();
+		} finally {
+			vi.doUnmock('../integrationImport/ConfigureStep.vue');
+		}
 
 		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
 	});
