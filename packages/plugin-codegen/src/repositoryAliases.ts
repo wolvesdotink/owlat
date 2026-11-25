@@ -96,7 +96,7 @@ export function createRepositoryPackageMatcher(
 	};
 }
 
-export function findConfigFiles(
+function findConfigFiles(
 	workspaceRoot: string,
 	repositoryFiles: readonly string[]
 ): readonly string[] {
@@ -295,7 +295,8 @@ function resolveAlias(alias: RepositoryModuleAlias, specifier: string): string |
 	const suffix = pattern.slice(wildcardIndex + 1);
 	if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) return undefined;
 	const wildcard = specifier.slice(prefix.length, specifier.length - suffix.length);
-	return targetPattern.replaceAll('*', wildcard);
+	// A function replacement inserts the matched text verbatim, `$` sequences included.
+	return targetPattern.replaceAll('*', () => wildcard);
 }
 
 function addAlias(aliases: RepositoryModuleAlias[], alias: RepositoryModuleAlias): void {

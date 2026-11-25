@@ -52,11 +52,11 @@ export function readFrameworkWildcardReplacement(replacement: string): string {
 	if (replacement.includes('*')) {
 		throw new Error('Framework RegExp wildcard replacements must not contain a literal *');
 	}
-	const targetPattern = replacement.replaceAll('$1', '*');
-	if (/\$[$&`'<0-9]/.test(targetPattern)) {
+	// Checked on the original string: in `$$1` the `$$` is a literal dollar, not a capture.
+	if (replacement.replaceAll('$1', '').includes('$')) {
 		throw new Error('Framework RegExp wildcard replacements may only use $1');
 	}
-	return targetPattern;
+	return replacement.replaceAll('$1', '*');
 }
 
 export function readFrameworkStaticValues(sourceFile: ts.SourceFile): FrameworkStaticValues {

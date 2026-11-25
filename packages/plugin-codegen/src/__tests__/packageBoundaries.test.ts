@@ -457,6 +457,7 @@ describe('plugin package boundary lint', () => {
 		'{ find: /^mail-(.+)-(.+)$/, replacement: "$1" }',
 		'{ find: /^mail-(.+)$/, replacement: "@acme/$2" }',
 		'{ find: /^mail-(.+)$/, replacement: "$&" }',
+		'{ find: /^mail-(.+)$/, replacement: "@acme/$$1" }',
 		'{ find: /^mail-(.+)$/, replacement: "@acme/*" }',
 		'{ find: /^mail-\\*(.+)$/, replacement: "$1" }',
 		'{ find: /^mail-(.+)$/i, replacement: "$1" }',
@@ -530,6 +531,15 @@ describe('plugin package boundary lint', () => {
 			code: 'repository_config_invalid',
 			details: ['package.json'],
 		});
+	});
+
+	it('substitutes wildcard text verbatim, without replacement patterns', () => {
+		const matcher = createRepositoryPackageMatcher(configuredPackages, [
+			{ matchKind: 'wildcard', specifierPattern: 'x-*', targetPattern: '*' },
+			{ matchKind: 'exact', specifierPattern: 'fwd-$&', targetPattern: '@acme/mail-plugin' },
+		]);
+
+		expect(matcher('x-fwd-$&')).toBe(true);
 	});
 
 	it('allows the exact alias matcher work budget and fails closed one comparison later', () => {
