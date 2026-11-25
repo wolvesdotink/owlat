@@ -774,6 +774,22 @@ describe('POST /api/v1/transactional/dry-run', () => {
 		expect(await sendFootprint(t, row._id, keyId)).toEqual(before);
 	});
 
+	it('answers feature_disabled like the send before it spends a render token', async () => {
+		const t = setupTest();
+		await seedSendable(t);
+		const { key, keyId } = await seedKey(t, ALL);
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { featureFlags: { transactional: false } });
+			await rateLimiter.limit(ctx, 'apiRender', { key: keyId, count: 30 });
+		});
+		const body = { email: 'ada@example.com', slug: 'order' };
+		const sent = await request(t, key, 'POST', '/api/v1/transactional', body);
+		const dry = await request(t, key, 'POST', '/api/v1/transactional/dry-run', body);
+		await expectRefusal('sendTransactional', sent, 403, 'feature_disabled');
+		await expectRefusal('dryRunTransactional', dry, 403, 'feature_disabled');
+	});
+
 	it('answers an unknown template with the send’s 404', async () => {
 		const t = setupTest();
 		await seedSendable(t);

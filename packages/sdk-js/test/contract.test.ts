@@ -237,6 +237,15 @@ describe('SDK calls against the public contract', () => {
 		await expect(failure).rejects.toThrow(/does not support dry runs/);
 	});
 
+	it('send() refuses a dryRun parameter before anything goes on the wire', async () => {
+		const spy = mockFetch({ status: 202, body: example('sendTransactional').response });
+		const params = { ...example('sendTransactional').request, dryRun: true };
+		await expect(createTestClient().transactional.send(params)).rejects.toMatchObject({
+			code: 'invalid_input',
+		});
+		expect(spy).not.toHaveBeenCalled();
+	});
+
 	it('a dry run of an unknown template keeps the server’s own 404', async () => {
 		mockFetch({
 			status: 404,

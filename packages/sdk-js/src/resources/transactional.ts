@@ -163,6 +163,14 @@ export class TransactionalResource extends BaseResource {
 		params: SendTransactionalParams,
 		options?: RequestOptions
 	): Promise<SendTransactionalResponse> {
+		// An older server ignores an unknown field and would send: a caller
+		// who passes dryRun meant not to, so nothing goes on the wire.
+		if (Object.prototype.hasOwnProperty.call(params, 'dryRun')) {
+			throw new ValidationError(
+				'dryRun is not a parameter of send(), so nothing was sent. Use transactional.dryRun() to try a send.',
+				'invalid_input'
+			);
+		}
 		checkSendParams(params);
 
 		const response = await this.http.post<ApiResponse<SendTransactionalResponse>>(

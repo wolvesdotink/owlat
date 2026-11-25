@@ -26,6 +26,7 @@ import {
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
 import { errorResponse, invalidInputResponse, jsonResponse } from '../auth/apiResponses';
+import { featureDisabledMessage } from '../lib/featureFlags';
 import { normalizeEmail } from '../lib/inputGuards';
 import { renderRateLimitedResponse } from '../publicApi/render';
 import { TRANSACTIONAL_MAX_BODY_BYTES, validateDecodedBody } from './api';
@@ -36,6 +37,14 @@ export const dryRunTransactional = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'transactional:send', request.headers.get('Origin'));
 		if (denied) return denied;
+		// The send's feature floor, before the body is read or a render token
+		// spent, so a dry run answers it as the send does.
+		const flags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
+		if (!flags.transactional) {
+			return errorResponse('forbidden', featureDisabledMessage('transactional'), {
+				data: { reason: 'feature_disabled' },
+			});
+		}
 		let raw: unknown;
 		try {
 			raw = await request.json();
