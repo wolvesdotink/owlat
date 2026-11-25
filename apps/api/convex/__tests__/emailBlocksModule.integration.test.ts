@@ -869,6 +869,60 @@ describe('Saved block module — propagation keeps linked copies translated', ()
 		expect((merged!.content['sections'] as { title: string }[])[0]!.title).toBe('Versand');
 	});
 
+	it('two older copies of a linked accordion that share a section id keep their own titles', async () => {
+		const t = convexTest(schema, modules);
+		const accordion = (id: string, title: string): Node => ({
+			id,
+			type: 'accordion',
+			content: { sections: [{ id: 's-sec', title, items: [] }] },
+		});
+		const blockId = await t.run((ctx) =>
+			ctx.db.insert('emailBlocks', {
+				name: 'Footer',
+				content: savedContent([accordion('s-acc', 'Shipping')]),
+				usageCount: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+		// Older propagations renewed only the root id, so both copies kept the
+		// saved block's section id.
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([
+						linked(accordion('block_1', 'Shipping'), blockId, 'g1'),
+						linked(accordion('block_2', 'Shipping'), blockId, 'g2'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								block_1: { sectionTitles: { 's-sec': 'Versand' } },
+								block_2: { sectionTitles: { 's-sec': 'Lieferung' } },
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [accordion('s-acc', 'Shipping and returns')]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		const overlay = parseTranslations(row!.translations)['de']?.blocks ?? {};
+		const merged = JSON.parse(
+			mergeTranslationWithContent(JSON.stringify(parseContentBlocks(row!.content)), overlay)
+		) as Node[];
+		expect(
+			merged.map((node) => (node.content['sections'] as { title: string }[])[0]!.title)
+		).toEqual(['Versand', 'Lieferung']);
+	});
+
 	it('the same saved block linked twice keeps unique ids and a translation per copy', async () => {
 		const t = convexTest(schema, modules);
 		const blockId = await seedFooter(t);

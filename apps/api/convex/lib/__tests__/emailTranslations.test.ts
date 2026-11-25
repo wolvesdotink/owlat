@@ -598,20 +598,27 @@ describe('list items, table text, menu labels and accordion titles', () => {
 				{ ...LIST, content: { ...LIST.content, items: ['Contact us', 'Contact'] } },
 			]),
 			defaultLanguage: 'en',
-			supportedLanguages: ['en', 'de'],
+			supportedLanguages: ['en', 'de', 'fr'],
 			translations: JSON.stringify({
 				de: {
 					subject: 'Hallo',
 					blocks: { list: { texts: { [k('Contact us')]: 'Kontakt', [k('Contact')]: 'Kontakt' } } },
 				},
+				// French translated only one of the two.
+				fr: {
+					subject: 'Bonjour',
+					blocks: { list: { texts: { [k('Contact us')]: 'Contactez-nous' } } },
+				},
 			}),
 		});
 		const patch = setDefaultLanguagePatch(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS)!;
-		const en = parseTranslations(patch.translations)['en']!.blocks!;
-		expect(JSON.parse(mergeTranslationWithContent(patch.content!, en))[0].content.items).toEqual([
-			'Kontakt',
-			'Kontakt',
-		]);
+		const translations = parseTranslations(patch.translations);
+		for (const language of ['en', 'fr']) {
+			const blocks = translations[language]!.blocks!;
+			expect(
+				JSON.parse(mergeTranslationWithContent(patch.content!, blocks))[0].content.items
+			).toEqual(['Kontakt', 'Kontakt']);
+		}
 	});
 
 	it('moves every overlay onto the new default text when a language becomes the default', () => {

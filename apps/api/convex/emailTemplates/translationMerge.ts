@@ -341,22 +341,28 @@ export function rekeyItemTexts(
 			rekeyed[blockId] = { ...rest };
 			continue;
 		}
+		// Every old text now written the same way shares one new key. The key
+		// keeps a translation only when all of them had the same one; otherwise
+		// keeping it would show it on an item it does not belong to (an
+		// untranslated or cleared one counts as different), so those items
+		// become untranslated instead.
 		const newSlots = after.get(blockId);
-		const moved: Record<string, string> = {};
-		// Two source texts the new default writes the same way share one key.
-		// When their translations differ, keeping either would show it on the
-		// wrong item, so both items become untranslated instead.
-		const conflicting = new Set<string>();
+		const candidates = new Map<string, Set<string>>();
 		for (const [position, slot] of before.get(blockId) ?? []) {
 			const target = newSlots?.get(position);
-			const key = itemTextKey(slot.text);
-			if (!target || !hasOwn(texts, key)) continue;
+			if (!target) continue;
 			const newKey = itemTextKey(target.text);
-			const value = texts[key] as string;
-			if (!hasOwn(moved, newKey)) moved[newKey] = value;
-			else if (moved[newKey] !== value) conflicting.add(newKey);
+			const key = itemTextKey(slot.text);
+			const value = hasOwn(texts, key) ? (texts[key] as string) : '';
+			const values = candidates.get(newKey) ?? new Set<string>();
+			values.add(value);
+			candidates.set(newKey, values);
 		}
-		for (const key of conflicting) delete moved[key];
+		const moved: Record<string, string> = {};
+		for (const [newKey, values] of candidates) {
+			const [value] = values;
+			if (values.size === 1 && value) moved[newKey] = value;
+		}
 		rekeyed[blockId] = Object.keys(moved).length > 0 ? { ...rest, texts: moved } : { ...rest };
 	}
 	return rekeyed;

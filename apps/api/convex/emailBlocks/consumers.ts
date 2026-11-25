@@ -218,13 +218,17 @@ function legacyCopyRenames(
 	sourceIds: ReadonlySet<string>,
 	groupId: string,
 	renames: BlockIdRenewal[],
-	sectionRenames: BlockIdRenewal[]
+	sectionRenames: SectionRename[]
 ): void {
 	for (const [index, node] of copy.entries()) {
 		const counterpart = previous[index]?.type === node.type ? previous[index] : undefined;
+		let blockId = node.id;
 		if (!node.id.startsWith(`${groupId}-`)) {
 			const source = sourceIds.has(node.id) ? node.id : counterpart?.id;
-			if (source !== undefined) renames.push({ from: node.id, to: linkedCopyId(groupId, source) });
+			if (source !== undefined) {
+				blockId = linkedCopyId(groupId, source);
+				renames.push({ from: node.id, to: blockId });
+			}
 		}
 		// Accordion sections get linked-copy ids too, and a translation keys
 		// their titles by section id: each one maps the same way as its Block.
@@ -232,15 +236,9 @@ function legacyCopyRenames(
 		for (const [entryIndex, entry] of ownedEntries(node).entries()) {
 			const id = entry['id'];
 			if (typeof id !== 'string' || id.startsWith(`${groupId}-`)) continue;
-			const counterpartId = counterpartEntries[entryIndex]?.['id'];
-			const source = sourceIds.has(id)
-				? id
-				: typeof counterpartId === 'string'
-					? counterpartId
-					: undefined;
-			if (source !== undefined) {
-				sectionRenames.push({ from: id, to: linkedCopyId(groupId, source) });
-			}
+			const cloned = counterpartEntries[entryIndex]?.['id'];
+			const source = sourceIds.has(id) ? id : typeof cloned === 'string' ? cloned : null;
+			if (source) sectionRenames.push({ blockId, from: id, to: linkedCopyId(groupId, source) });
 		}
 		const previousLists = counterpart ? childBlockLists(counterpart) : [];
 		for (const [listIndex, list] of childBlockLists(node).entries()) {
@@ -254,6 +252,15 @@ function legacyCopyRenames(
 			);
 		}
 	}
+}
+
+/**
+ * A section id a copy's accordion changes, scoped to that accordion (its id
+ * after the Block renames): two copies of one saved block can share a
+ * section id, and each copy's translation follows only its own section.
+ */
+interface SectionRename extends BlockIdRenewal {
+	blockId: string;
 }
 
 /** The tree's Block types and child lists, without ids or content. */
@@ -285,7 +292,7 @@ function collectIds(nodes: BlockTreeNode[], ids: Set<string>): Set<string> {
 function carryRenamedOverlays(
 	translationsBlob: string | undefined,
 	renames: readonly BlockIdRenewal[],
-	sectionRenames: readonly BlockIdRenewal[],
+	sectionRenames: readonly SectionRename[],
 	blocks: EditorBlock[]
 ): string | undefined {
 	if ((renames.length === 0 && sectionRenames.length === 0) || !translationsBlob) {
@@ -315,20 +322,15 @@ function carryRenamedOverlays(
 				changed = true;
 			}
 		}
-		for (const entry of Object.values(overlays)) {
-			if (!entry.sectionTitles) continue;
-			const titles = { ...entry.sectionTitles };
-			let moved = false;
-			for (const { from, to } of sectionRenames) {
-				if (!kept.has(to) || !hasOwn(titles, from) || hasOwn(titles, to)) continue;
-				titles[to] = titles[from] as string;
-				delete titles[from];
-				moved = true;
+		for (const { blockId, from, to } of sectionRenames) {
+			const entry = hasOwn(overlays, blockId) ? overlays[blockId] : undefined;
+			const titles = entry?.sectionTitles;
+			if (!entry || !titles || !kept.has(to) || !hasOwn(titles, from) || hasOwn(titles, to)) {
+				continue;
 			}
-			if (moved) {
-				entry.sectionTitles = titles;
-				changed = true;
-			}
+			const { [from]: title, ...others } = titles;
+			entry.sectionTitles = { ...others, [to]: title as string };
+			changed = true;
 		}
 	}
 	return changed ? serializeTranslations(translations) : undefined;
@@ -371,7 +373,7 @@ export function replaceLinkedBlocks(
 		collectIds(treeNodes(previousBlocks), new Set())
 	);
 	const renames: BlockIdRenewal[] = [];
-	const sectionRenames: BlockIdRenewal[] = [];
+	const sectionRenames: SectionRename[] = [];
 	const previousShape = treeShape(treeNodes(previousBlocks));
 	for (const [groupId, copy] of groups) {
 		const clonedFrom = treeShape(treeNodes(copy)) === previousShape ? previousBlocks : [];
