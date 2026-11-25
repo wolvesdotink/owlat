@@ -1,3 +1,5 @@
+import { validateBlocks } from '@owlat/email-renderer';
+import type { EditorBlock } from '@owlat/shared';
 import { describe, expect, it } from 'vitest';
 import { getPresetById, marketingTemplatePresets } from '../marketingTemplatePresets';
 
@@ -39,6 +41,19 @@ describe('marketingTemplatePresets', () => {
 		for (const preset of marketingTemplatePresets) {
 			const ids = preset.content.map((block) => block.id);
 			expect(new Set(ids).size, preset.id).toBe(ids.length);
+		}
+	});
+
+	// The published block schema requires what the validator refuses without,
+	// so a preset that passes the validator is valid content under the schema.
+	// An image without a source is a placeholder the author fills in.
+	it('seeds blocks the renderer validator accepts without errors', () => {
+		for (const preset of marketingTemplatePresets) {
+			const { issues } = validateBlocks(preset.content as unknown as EditorBlock[]);
+			expect(
+				issues.filter((issue) => issue.severity === 'error' && issue.code !== 'IMAGE_NO_SRC'),
+				preset.id
+			).toEqual([]);
 		}
 	});
 });

@@ -1,12 +1,15 @@
 /**
- * `llms.txt` for the docs site, in the llmstxt.org shape: a title, a one-line
- * summary, a paragraph, then sections of links with a one-line description
- * each. Built from the English pages' front matter at `nuxt generate` time
- * (see the `nitro:build:public-assets` hook in `nuxt.config.ts`), so a page
- * that is added, renamed or retitled shows up without anyone editing the file.
+ * What `llms.txt` puts first for an integrator or an agent: a note on the two
+ * documents every instance serves, then sections of links to the API pages,
+ * the guides that matter for email content, and the machine-readable
+ * documents. `nuxt-ai-ready` (part of `@nuxtjs/seo`) writes the file at
+ * `nuxt generate` time with these sections ahead of its own page index, so
+ * this module only chooses and orders the links.
  *
- * It links the English pages only. The German pages mirror them under `/de/`,
- * and an agent reading the file needs one copy of each.
+ * Built from the English pages' front matter, so a page that is added,
+ * renamed or retitled shows up without anyone editing this list. It links
+ * the English pages only: the German pages mirror them under `/de/`, and an
+ * agent needs one copy of each.
  *
  * No imports beyond Node: the docs image builds the site with only the
  * packages its Dockerfile copies.
@@ -25,8 +28,20 @@ interface Page {
 	description: string;
 }
 
+interface LlmsTxtLink {
+	title: string;
+	description?: string;
+	href: string;
+}
+
+/** The part of `nuxt-ai-ready`'s `llmsTxt` option this site sets. */
+export interface LlmsTxtSections {
+	notes: string[];
+	sections: Array<{ title: string; links: LlmsTxtLink[] }>;
+}
+
 /** Guide pages that matter to an integrator or agent: API keys, email content, MCP. */
-const CONTENT_GUIDES = [
+const GUIDES = [
 	'1.guide/17.transactional.md',
 	'1.guide/20.transactional-setup.md',
 	'1.guide/4.email-templates.md',
@@ -95,10 +110,13 @@ export function readPages(englishRoot: string): Page[] {
 		});
 }
 
-const link = (page: Page) =>
-	`- [${page.title}](${DOCS_ORIGIN}${page.url})${page.description ? `: ${page.description}` : ''}`;
+const link = (page: Page): LlmsTxtLink => ({
+	title: page.title,
+	href: `${DOCS_ORIGIN}${page.url}`,
+	...(page.description && { description: page.description }),
+});
 
-export function buildLlmsTxt(englishRoot: string): string {
+export function llmsTxtSections(englishRoot: string): LlmsTxtSections {
 	const pages = readPages(englishRoot);
 	const byFile = new Map(pages.map((page) => [page.file, page]));
 	const guide = (file: string) => {
@@ -106,37 +124,33 @@ export function buildLlmsTxt(englishRoot: string): string {
 		if (!page) throw new Error(`llms.txt links ${file}, which the docs do not have`);
 		return page;
 	};
-	const api = pages.filter((page) => page.file.startsWith('2.api/'));
-	const curated = new Set<string>([...CONTENT_GUIDES, ...api.map((page) => page.file)]);
-	const rest = pages.filter(
-		(page) =>
-			!curated.has(page.file) &&
-			(page.file.startsWith('1.guide/') || page.file.startsWith('3.developer/'))
-	);
-
-	return [
-		'# Owlat',
-		'',
-		'> Owlat is a modular, self-hosted email platform: marketing campaigns, transactional email, a personal mailbox and a team inbox, with a REST API and SDKs for JavaScript and Java.',
-		'',
-		'Every Owlat install serves its own API under its API base URL. Two documents describe it without an API key: `GET <API base URL>/api/v1/openapi.json`, the OpenAPI 3.1 document of the public API with that instance as its server, and `GET <API base URL>/api/v1/schemas/blocks.json`, the JSON Schema of the block content that templates, transactional emails and saved blocks store. Read the block reference before writing block JSON. The pages below are English; German versions live at the same paths under `/de/`.',
-		'',
-		'## API',
-		'',
-		...api.map(link),
-		'',
-		'## Guides',
-		'',
-		...CONTENT_GUIDES.map((file) => link(guide(file))),
-		'',
-		'## Machine-readable',
-		'',
-		`- [Block content schema](${DOCS_ORIGIN}/schemas/blocks.json): JSON Schema 2020-12 of block content for the current release, one definition per block type with a worked example. An instance serves its own at /api/v1/schemas/blocks.json.`,
-		'- [OpenAPI document](https://github.com/wolvesdotink/owlat/blob/main/packages/public-contract/openapi.json): the public API with a placeholder server. An instance serves its own at /api/v1/openapi.json.',
-		'',
-		'## Optional',
-		'',
-		...rest.map(link),
-		'',
-	].join('\n');
+	return {
+		notes: [
+			'Every Owlat install serves its own API under its API base URL. Two documents describe it without an API key: `GET <API base URL>/api/v1/openapi.json`, the OpenAPI 3.1 document of the public API with that instance as its server, and `GET <API base URL>/api/v1/schemas/blocks.json`, the JSON Schema of the block content that templates, transactional emails and saved blocks store. Read the block content reference before writing block JSON.',
+		],
+		sections: [
+			{
+				title: 'API',
+				links: pages.filter((page) => page.file.startsWith('2.api/')).map(link),
+			},
+			{ title: 'Guides', links: GUIDES.map((file) => link(guide(file))) },
+			{
+				title: 'Machine-readable',
+				links: [
+					{
+						title: 'Block content schema',
+						href: `${DOCS_ORIGIN}/schemas/blocks.json`,
+						description:
+							'JSON Schema 2020-12 of block content for the current release, one definition per block type with a worked example. An instance serves its own at /api/v1/schemas/blocks.json.',
+					},
+					{
+						title: 'OpenAPI document',
+						href: 'https://github.com/wolvesdotink/owlat/blob/main/packages/public-contract/openapi.json',
+						description:
+							'The public API with a placeholder server. An instance serves its own at /api/v1/openapi.json.',
+					},
+				],
+			},
+		],
+	};
 }

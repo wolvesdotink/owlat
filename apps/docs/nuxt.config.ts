@@ -1,10 +1,8 @@
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import type { ModuleOptions } from 'nuxt-og-image';
-import { buildLlmsTxt } from './scripts/llmsTxt';
+import { llmsTxtSections } from './scripts/llmsTxt';
 
 export default defineNuxtConfig({
 	extends: ['../../packages/ui'],
@@ -116,13 +114,9 @@ export default defineNuxtConfig({
 		],
 	},
 
-	hooks: {
-		// llms.txt at the site root, built from the English pages' front matter.
-		'nitro:build:public-assets'(nitro) {
-			writeFileSync(
-				join(nitro.options.output.publicDir, 'llms.txt'),
-				buildLlmsTxt(fileURLToPath(new URL('./content/en', import.meta.url)))
-			);
-		},
+	// nuxt-ai-ready (from @nuxtjs/seo) writes llms.txt; these sections come
+	// first, ahead of its index of every page.
+	aiReady: {
+		llmsTxt: llmsTxtSections(fileURLToPath(new URL('./content/en', import.meta.url))),
 	},
 });

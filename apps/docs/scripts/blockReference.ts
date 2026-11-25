@@ -47,7 +47,7 @@ const WORDS = {
 		schemes: (list: string) => `URLs in \`href\`, \`src\` and \`srcset\` may use ${list}.`,
 		schemesByTag: (tag: string, list: string) => `On \`<${tag}>\` they may use ${list} instead.`,
 		rawDiff: (tags: string) =>
-			`A raw HTML block keeps the same, without ${tags} and without the variable chip attributes on \`<span>\`.`,
+			`When the email renders, a text block's HTML goes through the raw HTML policy: the same lists without ${tags} and without the variable chip attributes on \`<span>\`. Those stay in the stored blocks for the editor but do not reach the email. A raw HTML block uses that policy too.`,
 		sharedLacking: (list: string) => `Takes the shared fields except ${list}.`,
 		sharedAll: 'Takes all the shared fields.',
 		example: 'Example:',
@@ -72,7 +72,7 @@ const WORDS = {
 		schemes: (list: string) => `URLs in \`href\`, \`src\` und \`srcset\` dürfen ${list} nutzen.`,
 		schemesByTag: (tag: string, list: string) => `Auf \`<${tag}>\` stattdessen ${list}.`,
 		rawDiff: (tags: string) =>
-			`Ein Raw-HTML-Block behält dasselbe, ohne ${tags} und ohne die Attribute der Variablen-Chips auf \`<span>\`.`,
+			`Beim Rendern der E-Mail läuft das HTML eines Textblocks durch die Raw-HTML-Regeln: dieselben Listen ohne ${tags} und ohne die Attribute der Variablen-Chips auf \`<span>\`. Die bleiben in den gespeicherten Blöcken für den Editor, kommen aber nicht in der E-Mail an. Ein Raw-HTML-Block nutzt dieselben Regeln.`,
 		sharedLacking: (list: string) => `Nimmt die gemeinsamen Felder außer ${list}.`,
 		sharedAll: 'Nimmt alle gemeinsamen Felder.',
 		example: 'Beispiel:',

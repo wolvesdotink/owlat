@@ -486,7 +486,7 @@
 							"type": "string"
 						},
 						"url": {
-							"description": "Where the button leads. An empty URL or `#` is refused.",
+							"description": "Where the button leads. The validator reports an empty URL or `#` as an error.",
 							"type": "string"
 						},
 						"backgroundColor": {
@@ -717,6 +717,10 @@
 							"description": "Divider alignment",
 							"type": "string",
 							"enum": ["left", "center", "right"]
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
 						},
 						"paddingTop": {
 							"description": "Space inside the block's border, in px.",

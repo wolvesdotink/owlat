@@ -392,6 +392,7 @@
         "fast-json-patch": "^3.1.1",
       },
       "devDependencies": {
+        "@owlat/public-contract": "workspace:*",
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "happy-dom": "catalog:",

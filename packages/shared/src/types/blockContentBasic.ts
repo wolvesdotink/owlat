@@ -146,7 +146,7 @@ export interface ButtonBlockContent
 		ConditionalOption {
 	/** The button label. */
 	text: string;
-	/** Where the button leads. An empty URL or `#` is refused. */
+	/** Where the button leads. The validator reports an empty URL or `#` as an error. */
 	url: string;
 	/** The button's fill color. The section around it takes `blockBackgroundColor`. */
 	backgroundColor: string;
@@ -216,6 +216,7 @@ export interface DividerBlockContent
 	style: 'solid' | 'dashed' | 'dotted';
 	/** Divider alignment */
 	align?: 'left' | 'center' | 'right';
+	borderRadius?: number;
 	paddingTop?: number;
 	paddingRight?: number;
 	paddingBottom?: number;

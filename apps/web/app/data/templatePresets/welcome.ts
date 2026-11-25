@@ -13,6 +13,7 @@ export const welcomePreset: TemplatePreset = {
 			id: 'welcome-text-1',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<h1 style="text-align: center">Welcome aboard, {{firstName}}! </h1>',
 				fontSize: 28,
 				textColor: '#111827',
@@ -27,6 +28,7 @@ export const welcomePreset: TemplatePreset = {
 			id: 'welcome-text-2',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center">We\'re thrilled to have you join our community. Here\'s what you can expect from us:</p>',
 				fontSize: 16,
 				textColor: '#4B5563',
@@ -41,6 +43,7 @@ export const welcomePreset: TemplatePreset = {
 			id: 'welcome-text-3',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p><strong>Exclusive updates</strong> - Be the first to know about new features</p><p><strong>Helpful resources</strong> - Tips and guides to help you succeed</p><p><strong>Special offers</strong> - Subscriber-only deals and promotions</p>',
 				fontSize: 16,
 				textColor: '#374151',
@@ -91,6 +94,7 @@ export const welcomePreset: TemplatePreset = {
 			id: 'welcome-text-4',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center">Have questions? Just reply to this email - we\'re here to help!</p>',
 				fontSize: 14,
 				textColor: '#6B7280',
