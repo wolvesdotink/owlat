@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { HandleDuplicates } from '~/composables/useCsvImport';
 import IntegrationImportCompleteStep from './integrationImport/CompleteStep.vue';
-import IntegrationImportConfigureStep from './integrationImport/ConfigureStep.vue';
 import IntegrationImportImportingStep from './integrationImport/ImportingStep.vue';
 import IntegrationImportSelectStep from './integrationImport/SelectStep.vue';
 import { CircleWarningIcon, LinkHorizontalIcon, UploadIcon } from '@coolicons/vue';
@@ -18,6 +18,13 @@ const convex = useConvex();
 const { showToast } = useToast();
 
 const isOpen = defineModel<boolean>('open', { default: false });
+
+// The configure form is the largest step and shows only after a provider is
+// picked, so it loads when the modal opens rather than with the contacts page
+// that mounts the modal. Picking a provider waits for it: the step never renders
+// empty, and a chunk that cannot be fetched shows the modal's error line.
+const loadConfigureStep = () => import('./integrationImport/ConfigureStep.vue');
+const IntegrationImportConfigureStep = defineAsyncComponent(loadConfigureStep);
 
 type IntegrationImportStep = 'select' | 'configure' | 'importing' | 'complete';
 type IntegrationType = 'mailchimp' | 'stripe' | 'mandrill' | null;
@@ -97,6 +104,8 @@ watch(importProgress, (p) => {
 watch(isOpen, (newValue) => {
 	if (!newValue) return;
 	reset();
+	// A failed early fetch is retried, and reported, by the provider pick.
+	loadConfigureStep().catch(() => {});
 	// A run keeps going after the modal closes; reopening returns to its
 	// progress instead of offering a second import next to it.
 	const p = importProgress.value;
@@ -123,10 +132,16 @@ const close = () => {
 	isOpen.value = false;
 };
 
-const selectIntegration = (id: IntegrationType) => {
+const selectIntegration = async (id: IntegrationType) => {
+	error.value = '';
+	try {
+		await loadConfigureStep();
+	} catch {
+		error.value = t('shared.operationError.network');
+		return;
+	}
 	selectedIntegration.value = id;
 	step.value = 'configure';
-	error.value = '';
 };
 
 const goBackToSelect = () => {

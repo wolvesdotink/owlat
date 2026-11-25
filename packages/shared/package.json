@@ -582,6 +582,10 @@
 			"types": "./src/aiModelCatalog.ts",
 			"import": "./src/aiModelCatalog.ts"
 		},
+		"./aiBudget": {
+			"types": "./src/aiBudget.ts",
+			"import": "./src/aiBudget.ts"
+		},
 		"./aiRouting": {
 			"types": "./src/aiRouting.ts",
 			"import": "./src/aiRouting.ts"
