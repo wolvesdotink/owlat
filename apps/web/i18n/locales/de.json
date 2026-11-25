@@ -11982,7 +11982,7 @@
 					"toasts": {
 						"activated": "Automation aktiviert",
 						"draftSaved": "Entwurf gespeichert",
-						"paused": "Automation pausiert",
+						"paused": "Automation pausiert. E-Mails, die schon in der Warteschlange waren, werden nicht verschickt, auch nicht, wenn du sie fortsetzt.",
 						"resumeBlocked": "Deine Schrittänderungen konnten nicht gespeichert werden, deshalb wurde die Automation nicht fortgesetzt.",
 						"resumed": "Automation fortgesetzt",
 						"stepSaveFailed": "Deine Schrittänderungen konnten nicht gespeichert werden."
@@ -12027,6 +12027,7 @@
 						"cancelled": "Abgebrochen",
 						"completed": "Abgeschlossen",
 						"emailSkip": {
+							"automationPaused": "Nicht verschickt: Die Automation wurde pausiert, bevor diese E-Mail rausging.",
 							"leftDeletedTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema der Automation angemeldet.",
 							"leftTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema {name} angemeldet.",
 							"unsubscribed": "E-Mails übersprungen: Dieser Kontakt hat sich von allen E-Mails abgemeldet."
@@ -12138,7 +12139,7 @@
 					"activated": "„{name}“ ist jetzt aktiv",
 					"draftNotToggleable": "Bitte vervollständige und aktiviere diese Automation im Builder",
 					"duplicated": "Automation wurde dupliziert",
-					"paused": "„{name}“ wurde pausiert"
+					"paused": "„{name}“ wurde pausiert. E-Mails, die schon in der Warteschlange waren, werden nicht verschickt, auch nicht, wenn du die Automation fortsetzt."
 				},
 				"noStatusResults": {
 					"title": "Keine Automationen mit dem Status „{status}“",
@@ -18150,6 +18151,7 @@
 			"hideProviderText": "Fehlerdetails ausblenden",
 			"labels": {
 				"addressUnsupported": "Adresse nicht unterstützt",
+				"automationPaused": "Automation pausiert",
 				"blocklisted": "Auf der Unterdrückungsliste",
 				"contactDeleted": "Kontakt gelöscht",
 				"content": "Inhalt abgelehnt",
@@ -18172,6 +18174,7 @@
 			},
 			"reasons": {
 				"addressUnsupported": "Der Mailserver, über den gesendet wurde, kann keine Adressen mit Zeichen außerhalb von einfachem ASCII verarbeiten, etwa ü, weder beim Absender noch beim Empfänger.",
+				"automationPaused": "Nicht verschickt, weil die Automation pausiert wurde, bevor die Nachricht rausging. Wenn du die Automation fortsetzt, wird sie nicht nachgeholt.",
 				"blocklisted": "Übersprungen, weil die Adresse auf der Unterdrückungsliste steht. Das macht Owlat von selbst, du musst nichts tun.",
 				"contactDeleted": "Übersprungen, weil der Kontakt gelöscht wurde, bevor die Nachricht rausging.",
 				"content": "Der Anbieter hat den Inhalt der Nachricht abgelehnt, zum Beispiel als Spam. Ändere den Inhalt, bevor du sie noch einmal sendest.",

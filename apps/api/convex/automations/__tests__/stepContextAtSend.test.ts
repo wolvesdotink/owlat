@@ -9,6 +9,10 @@
  * Each event is injected right after the claim commits, by wrapping the email
  * step's `execute`, and the real walker, step module and intake run around it.
  *
+ * A pause after the Send is written is caught by the worker's last gate,
+ * which withdraws the queued email; the last block drives that through the
+ * gate and the send completion.
+ *
  * Contact changes in the same window (deleted, unsubscribed) are pinned in
  * `contactEligibility.test.ts`, and a blocklisted address or a suspension in
  * `emailStepOutcomes.test.ts`: the intake checks those on its own.
@@ -24,6 +28,7 @@ import type * as emailStep from '../steps/email';
 import { cancelRun } from '../stepRunTransitions';
 import { STEP_LEASE_MS } from '../stepOrchestration';
 import {
+	DAY_MS,
 	advanceAndRun,
 	runDueScheduled,
 	runOf,
@@ -243,5 +248,105 @@ describe('the automation changes between the claim and the send', () => {
 			'completed',
 		]);
 		expect((await runOf(t, started.runId)).status).toBe('completed');
+	});
+});
+
+describe('the automation is paused after the Send is queued', () => {
+	/** A two-email series with a delay between, its first email queued, not yet dispatched. */
+	async function queueFirstEmail(t: T) {
+		await seedSettings(t);
+		const { automationId, stepIds } = await seedAutomation(t, [
+			{ email: 'Welcome' },
+			{ delayDays: 2 },
+			{ email: 'Follow-up' },
+		]);
+		const { runId, contactId } = await seedRun(t, automationId);
+		await t.mutation(internal.automations.stepOrchestration.beginAutomationRun, {
+			automationRunId: runId,
+		});
+		await runDueScheduled(t);
+		const [send] = await sends(t);
+		if (!send) throw new Error('no Send queued');
+		expect(send.status).toBe('queued');
+		return { automationId, stepIds, runId, contactId, sendId: send._id };
+	}
+
+	/** The worker's last gate for the queued Send, then the completion of its answer. */
+	async function dispatch(t: T, queued: Awaited<ReturnType<typeof queueFirstEmail>>) {
+		const verdict = await t.query(internal.delivery.marketingDispatchGate.checkMarketingDispatch, {
+			email: 'reader@example.com',
+			contactId: queued.contactId,
+			sendId: queued.sendId,
+		});
+		if (verdict === null) return verdict;
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: 'test-work-id' as never,
+			result: { kind: 'success', returnValue: verdict },
+			context: { sendRef: { kind: 'transactional' as const, id: queued.sendId } },
+		});
+		return verdict;
+	}
+
+	const pause = (t: T, automationId: Id<'automations'>) =>
+		t.mutation(internal.automations.lifecycle.transition, {
+			automationId,
+			input: { to: 'paused', at: Date.now() },
+			userId: 'user-1',
+		});
+
+	it('the queued email is withdrawn, the step run and the run say so, nothing counts as failed', async () => {
+		const t = convexTest(schema, walkerModules);
+		const queued = await queueFirstEmail(t);
+		await pause(t, queued.automationId);
+
+		expect(await dispatch(t, queued)).toEqual({ kind: 'suppressed', reason: 'automation_paused' });
+
+		const [send] = await sends(t);
+		expect(send).toMatchObject({ status: 'failed', errorCode: 'AUTOMATION_PAUSED' });
+		const [emailStepRun] = await stepRunsOf(t, queued.runId);
+		expect(emailStepRun).toMatchObject({
+			status: 'skipped',
+			emailSendId: queued.sendId,
+			errorMessage: 'Automation was paused before the queued email went out; email withdrawn',
+		});
+		expect(emailStepRun?.failureReason).toBeUndefined();
+		const run = await runOf(t, queued.runId);
+		expect(run).toMatchObject({ status: 'cancelled', emailSkip: { reason: 'automation_paused' } });
+		expect(run.endReason).toBeUndefined();
+		const automation = await automationOf(t, queued.automationId);
+		expect(automation.consecutiveRunFailures ?? 0).toBe(0);
+		const step = await t.run(async (ctx) => ctx.db.get(queued.stepIds[0]!));
+		expect(step).toMatchObject({ statCompleted: 0, statSkipped: 1 });
+		expect(await t.run(async (ctx) => ctx.db.query('automationHealthDays').collect())).toEqual([]);
+	});
+
+	it('resuming does not bring the email back, and the ended run sends nothing more', async () => {
+		const t = convexTest(schema, walkerModules);
+		const queued = await queueFirstEmail(t);
+		await pause(t, queued.automationId);
+		vi.advanceTimersByTime(60_000);
+		await t.run(async (ctx) =>
+			ctx.db.patch(queued.automationId, { status: 'active', statusChangedAt: Date.now() })
+		);
+
+		// The worker reaches the Send only after the resume.
+		expect(await dispatch(t, queued)).toEqual({ kind: 'suppressed', reason: 'automation_paused' });
+		await advanceAndRun(t, 3 * DAY_MS);
+		await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		await runDueScheduled(t);
+
+		expect((await sends(t)).map((s) => [s.subject, s.status])).toEqual([['Welcome', 'failed']]);
+		expect((await runOf(t, queued.runId)).status).toBe('cancelled');
+	});
+
+	it('an automation that stayed active sends the queued email, and the run goes on', async () => {
+		const t = convexTest(schema, walkerModules);
+		const queued = await queueFirstEmail(t);
+
+		expect(await dispatch(t, queued)).toBeNull();
+
+		const [emailStepRun] = await stepRunsOf(t, queued.runId);
+		expect(emailStepRun?.status).toBe('completed');
+		expect((await runOf(t, queued.runId)).status).toBe('running');
 	});
 });

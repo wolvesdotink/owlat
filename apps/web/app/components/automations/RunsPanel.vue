@@ -102,6 +102,9 @@ const emailSkipNote = (reason: string, topicName: string | null): string => {
 	if (reason === 'contact_unsubscribed') {
 		return t('dashboard.automations.detail.index.runs.emailSkip.unsubscribed');
 	}
+	if (reason === 'automation_paused') {
+		return t('dashboard.automations.detail.index.runs.emailSkip.automationPaused');
+	}
 	return topicName
 		? t('dashboard.automations.detail.index.runs.emailSkip.leftTopic', { name: topicName })
 		: t('dashboard.automations.detail.index.runs.emailSkip.leftDeletedTopic');

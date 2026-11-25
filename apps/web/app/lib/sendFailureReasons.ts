@@ -21,6 +21,7 @@ export const SEND_FAILURE_CLASSES = [
 	'blocklisted',
 	'unsubscribed',
 	'contactDeleted',
+	'automationPaused',
 	'content',
 	'providerRefused',
 	'providerUnavailable',
@@ -56,6 +57,8 @@ export const SEND_FAILURE_CODE_CLASSES: Readonly<Record<string, SendFailureClass
 	// Left the topic an automation belongs to: an unsubscribe, from that topic.
 	RECIPIENT_LEFT_TOPIC: 'unsubscribed',
 	CONTACT_DELETED: 'contactDeleted',
+	// The automation was paused after it queued the email: withdrawn, not failed.
+	AUTOMATION_PAUSED: 'automationPaused',
 	CONTENT_REJECTED: 'content',
 	PROVIDER_REJECTED: 'providerRefused',
 	PROVIDER_FAILED: 'providerRefused',

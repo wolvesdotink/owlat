@@ -140,9 +140,10 @@ const awaitingFeedbackArm = v.object({
 });
 
 /**
- * The recipient was on the blocklist, or its contact was no longer eligible
- * for marketing, at the worker's pre-dispatch gate, so nothing was dispatched at all — the send was deliberately NOT
- * delivered.
+ * The recipient was on the blocklist, its contact was no longer eligible for
+ * marketing, or the automation that queued it was paused, at the worker's
+ * pre-dispatch gate, so nothing was dispatched at all — the send was
+ * deliberately NOT delivered.
  *
  * The worker RETURNS this rather than throwing, so the workpool run counts as a
  * success and is not retried; the completion callback turns it into a terminal,
@@ -154,8 +155,10 @@ const awaitingFeedbackArm = v.object({
 const suppressedArm = v.object({
 	kind: v.literal('suppressed'),
 	// Absent for a blocklist hit (the arm's original meaning). Set when the
-	// CONTACT may no longer receive marketing — see lib/marketingEligibility.ts.
-	reason: v.optional(marketingIneligibilityValidator),
+	// CONTACT may no longer receive marketing — see lib/marketingEligibility.ts —
+	// or, `automation_paused`, when the automation that queued the mail has not
+	// stayed active since (delivery/marketingDispatchGate.ts).
+	reason: v.optional(v.union(marketingIneligibilityValidator, v.literal('automation_paused'))),
 });
 
 export const sendWorkerOutcomeValidator = v.union(

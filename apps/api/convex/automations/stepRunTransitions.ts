@@ -291,6 +291,7 @@ export function completeSentStepAndAdvance(
 const EMAIL_SKIP_MESSAGE: Record<AutomationEmailSkipReason, string> = {
 	contact_unsubscribed: 'Contact unsubscribed from marketing; email step skipped',
 	topic_unsubscribed: "Contact is not subscribed to the automation's topic; email step skipped",
+	automation_paused: 'Automation was paused before the queued email went out; email withdrawn',
 };
 
 /**
@@ -316,6 +317,34 @@ export async function skipIneligibleEmailStepAndAdvance(
 	return await endStepAndAdvance(ctx, stepRun, 'skipped', {
 		errorMessage: EMAIL_SKIP_MESSAGE[skip.reason],
 	});
+}
+
+/**
+ * Record that the email a completed email step queued was withdrawn before
+ * dispatch because its automation was paused (`delivery/marketingDispatchGate.ts`).
+ *
+ * The one move out of a terminal step run: `completed` on an email step means
+ * its Send was queued, and this corrects it to `skipped` once the Send ends
+ * unsent, so the funnel and the sent count do not include it. The run ends as
+ * a pause ends it at the step claim, cancelled without counting a failure, and
+ * notes why on the run. A run that already ended keeps its status and gets the
+ * note. Nothing else is touched, so a duplicate call changes nothing.
+ */
+export async function withdrawQueuedEmailStepRun(
+	ctx: MutationCtx,
+	stepRunId: Id<'automationStepRuns'>
+): Promise<void> {
+	const stepRun = await ctx.db.get(stepRunId);
+	if (!stepRun || stepRun.stepType !== 'email' || stepRun.status !== 'completed') return;
+	await ctx.db.patch(stepRun._id, {
+		status: 'skipped',
+		errorMessage: EMAIL_SKIP_MESSAGE.automation_paused,
+	});
+	await applyStepStatusTransition(ctx, stepRun.automationStepId, 'completed', 'skipped');
+	const run = await ctx.db.get(stepRun.automationRunId);
+	if (!run) return;
+	await ctx.db.patch(run._id, { emailSkip: { reason: 'automation_paused' } });
+	await cancelRun(ctx, run._id);
 }
 
 /**

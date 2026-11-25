@@ -3,7 +3,7 @@ import type { Infer } from 'convex/values';
 import type { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
 import { deferralExhaustedBy, governedRetryDelayMs } from './sendRetryPlan';
 import { isSendWorkerOutcome, type DeliveryHold, type SendWorkerOutcome } from './workerOutcome';
-import type { MarketingIneligibility } from '../lib/marketingEligibility';
+import type { MarketingDispatchRefusalReason } from './marketingDispatchGate';
 import { InternalFailure } from '../_utils/errors';
 
 // ============================================================================
@@ -119,16 +119,26 @@ const SUPPRESSED_SEND_FAILURE = {
 		message: "Contact left the automation's topic before dispatch",
 		code: 'RECIPIENT_LEFT_TOPIC',
 	},
+	// Not about the recipient: the sender withdrew the mail. It shares the
+	// set below because it is just as much a skip, not a delivery failure.
+	automation_paused: {
+		message: 'Automation paused before dispatch; the queued email was withdrawn',
+		code: 'AUTOMATION_PAUSED',
+	},
 } as const satisfies Record<
-	'blocklist' | MarketingIneligibility,
+	'blocklist' | MarketingDispatchRefusalReason,
 	{ message: string; code: string }
 >;
 
+/** The code of an automation email withdrawn at dispatch because its automation was paused. */
+export const AUTOMATION_PAUSED_ERROR_CODE = SUPPRESSED_SEND_FAILURE.automation_paused.code;
+
 /**
- * The error codes of a send that was never attempted because of its recipient:
- * suppressed, unsubscribed or deleted at dispatch. The send lifecycle reads
- * them to keep such a skip out of `email.failed` for sends nobody requested
- * through the API (`delivery/sendLifecycle/reducers.ts`).
+ * The error codes of a send that was never attempted at dispatch: its
+ * recipient was suppressed, unsubscribed or deleted, or its automation was
+ * paused. The send lifecycle reads them to keep such a skip out of
+ * `email.failed` for sends nobody requested through the API
+ * (`delivery/sendLifecycle/reducers.ts`).
  */
 export const SKIPPED_RECIPIENT_ERROR_CODES: ReadonlySet<string> = new Set(
 	Object.values(SUPPRESSED_SEND_FAILURE).map((failure) => failure.code)
