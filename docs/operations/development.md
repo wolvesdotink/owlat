@@ -72,7 +72,10 @@ In order, it:
    `INSTANCE_SECRET`, so file uploads and the updater-facing server routes
    work without exporting it yourself; a value in your shell or a `.env` file
    does not replace it. Editing anything under `apps/api/convex` re-syncs the
-   stage (`[stage] 1 copied, 0 removed`) and the watcher pushes.
+   stage (`[stage] 1 copied, 0 removed`) and the watcher pushes. With
+   `--no-web` only the watcher runs, and the run prints the variables a Nuxt
+   you start yourself needs: the desktop app's `tauri dev` uses that as its
+   backend ([apps/desktop/README.md](../../apps/desktop/README.md#develop)).
 
 Sign in at the printed web URL as `dev@example.com` / `devpassword12345`
 (owner), or `taylor@example.com` (admin) and `jordan@example.com` (member)

@@ -16,6 +16,7 @@ import {
 	MIN_AVAILABLE_GIB,
 	memoryRefusal,
 	minAvailableGiB,
+	vmStatAvailableBytes,
 } from '../ci/bundle';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -61,6 +62,40 @@ describe('ci:bundle memory guard', () => {
 		const meminfo = 'MemTotal:       32000000 kB\nMemAvailable:    6291456 kB\n';
 		expect(availableBytes(meminfo, 1)).toBe(6 * GIB);
 		expect(availableBytes(undefined, 1234)).toBe(1234);
+	});
+
+	// `vm_stat` on an Apple-silicon Mac (16 KiB pages). Its "Pages free" leaves
+	// out the speculative pages, which the kernel's free count (os.freemem())
+	// includes.
+	const VM_STAT = [
+		'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
+		'Pages free:                                4000.',
+		'Pages active:                            300000.',
+		'Pages inactive:                          250000.',
+		'Pages speculative:                         6000.',
+		'Pages throttled:                              0.',
+		'Pages wired down:                        150000.',
+		'Pages purgeable:                          20000.',
+		'"Translation faults":                 123456789.',
+		'Pages copy-on-write:                    1234567.',
+		'File-backed pages:                       200000.',
+		'Anonymous pages:                         356000.',
+		'Pages stored in compressor:              300000.',
+		'Pages occupied by compressor:            100000.',
+		'',
+	].join('\n');
+
+	it('counts free, speculative and inactive pages from vm_stat on macOS', () => {
+		expect(vmStatAvailableBytes(VM_STAT)).toBe((4000 + 6000 + 250000) * 16384);
+	});
+
+	it('reads the page size vm_stat names, and nothing from output it cannot read', () => {
+		const intel = VM_STAT.replace('page size of 16384 bytes', 'page size of 4096 bytes');
+		expect(vmStatAvailableBytes(intel)).toBe((4000 + 6000 + 250000) * 4096);
+		expect(vmStatAvailableBytes(undefined)).toBeUndefined();
+		expect(vmStatAvailableBytes('')).toBeUndefined();
+		expect(vmStatAvailableBytes(VM_STAT.replace(/^Pages inactive:.*$/m, ''))).toBeUndefined();
+		expect(vmStatAvailableBytes(VM_STAT.replace(/^Mach Virtual.*$/m, ''))).toBeUndefined();
 	});
 
 	it('takes the threshold from the environment, and rejects one it cannot read', () => {
