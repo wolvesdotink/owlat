@@ -37,7 +37,7 @@ export const dryRunTransactional = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'transactional:send', request.headers.get('Origin'));
 		if (denied) return denied;
-		// The send's feature floor, before the body is read or a render token
+		// The send's feature floor, before the body is parsed or a render token
 		// spent, so a dry run answers it as the send does.
 		const flags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
 		if (!flags.transactional) {
