@@ -134,7 +134,7 @@ describe('wrong blocks are not valid', () => {
 		['a font size written as a CSS length', withContent(text, { fontSize: '16px' })],
 		['an alignment outside the enum', withContent(image, { align: 'middle' })],
 		['a misspelled field', withContent(text, { colour: '#000000' })],
-		['five columns', withContent(columns, { columnCount: 5 })],
+		['six columns', withContent(columns, { columnCount: 6 })],
 		['a column ratio that is not a preset', withContent(columns, { ratio: 'two-thirds' })],
 		['a container inside a column', withContent(columns, { columns: [[container], []] })],
 		['a hero inside a container', withContent(container, { items: [hero] })],
