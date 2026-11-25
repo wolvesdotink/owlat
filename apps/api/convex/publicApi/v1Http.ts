@@ -45,6 +45,7 @@ import {
 	listSavedBlocks,
 	updateSavedBlock,
 } from './savedBlocksHttp';
+import { renderEmail } from './renderHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -146,6 +147,12 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 
 	http.route({
 		pathPrefix: '/api/v1/saved-blocks/',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		path: '/api/v1/render',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -324,6 +331,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		pathPrefix: '/api/v1/saved-blocks/',
 		method: 'PUT',
 		handler: updateSavedBlock,
+	});
+
+	// POST /api/v1/render - Render blocks without storing them
+	http.route({
+		path: '/api/v1/render',
+		method: 'POST',
+		handler: renderEmail,
 	});
 
 	// ============ STATUS API ENDPOINTS ============

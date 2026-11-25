@@ -255,6 +255,26 @@ const RENDER_INPUTS = [
 type SearchableField = 'name' | 'subject' | 'slug';
 
 /**
+ * The content columns an edit stores, as it stores them: the subject and
+ * preview text trimmed, text-block HTML in the blocks and the translation
+ * overlays sanitized (lib/emailContentSanitize.ts). Only the fields given are
+ * returned. The API's render (`publicApi/render.ts`) reads its input through
+ * this too, so it renders what a save of the same content would store.
+ */
+export function storedContentFields(
+	args: Pick<EditableEmailArgs, 'subject' | 'previewText' | 'content' | 'translations'>
+): Pick<EditableEmailPatch, 'subject' | 'previewText' | 'content' | 'translations'> {
+	return {
+		...(args.subject !== undefined && { subject: args.subject.trim() }),
+		...(args.previewText !== undefined && { previewText: args.previewText.trim() }),
+		...(args.content !== undefined && { content: sanitizeStoredBlocksJson(args.content) }),
+		...(args.translations !== undefined && {
+			translations: sanitizeTranslationsJson(args.translations),
+		}),
+	};
+}
+
+/**
  * Build the patch for the editable fields both tables share, and keep the
  * saved-block usage counts in step with a changed `linkedBlockIds`.
  *
@@ -297,10 +317,7 @@ export async function buildEditablePatch(
 	}
 
 	if (args.name !== undefined) patch.name = args.name.trim();
-	if (args.subject !== undefined) patch.subject = args.subject.trim();
-	if (args.previewText !== undefined) patch.previewText = args.previewText.trim();
-	// Text-block HTML is sanitized on every write (lib/emailContentSanitize.ts).
-	if (args.content !== undefined) patch.content = sanitizeStoredBlocksJson(args.content);
+	Object.assign(patch, storedContentFields(args));
 
 	if (args.plainTextOverride !== undefined) {
 		// Patching a field to `undefined` REMOVES it, which is what "the author
@@ -310,9 +327,7 @@ export async function buildEditablePatch(
 	}
 
 	if (args.supportedLanguages !== undefined) patch.supportedLanguages = args.supportedLanguages;
-	if (args.translations !== undefined) {
-		patch.translations = sanitizeTranslationsJson(args.translations);
-	} else if (patch.content !== undefined) {
+	if (args.translations === undefined && patch.content !== undefined) {
 		// The editor renews repeated Block ids on load: each renewed copy keeps
 		// the translation it shared with the original.
 		const carried = carryRenewedBlockOverlays(row.content, patch.content, row.translations);

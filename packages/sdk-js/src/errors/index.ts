@@ -9,8 +9,9 @@ export class OwlatError extends Error {
 	 * The Operation error category from the API (e.g., 'not_found',
 	 * 'invalid_input', 'rate_limited'). For client-side faults that never reach
 	 * the API this is a synthetic code ('timeout', 'network_error',
-	 * 'parse_error', 'retry_exhausted'), and for a response that did not come
-	 * from the API it is 'unexpected_response'.
+	 * 'parse_error', 'retry_exhausted'), for a response that did not come
+	 * from the API it is 'unexpected_response', and for a dry run a server too
+	 * old to know it answered with a queued send it is 'dry_run_unsupported'.
 	 */
 	readonly code: string;
 

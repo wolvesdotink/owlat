@@ -169,6 +169,11 @@ const CALLS: Record<
 		path: `/api/v1/saved-blocks/${BLOCK_ID}`,
 		result: example('updateSavedBlock').response.data,
 	},
+	renderEmail: {
+		call: (client) => client.render.email(example('renderEmail').request),
+		path: '/api/v1/render',
+		result: example('renderEmail').response.data,
+	},
 	getStatus: {
 		call: (client) => client.status.get(),
 		path: '/api/v1/status',
@@ -214,6 +219,35 @@ describe('SDK calls against the public contract', () => {
 		} else {
 			expect(init?.body ?? undefined).toBeUndefined();
 		}
+	});
+
+	it('a dry run sends the send request with dryRun and returns the dry-run answer', async () => {
+		const operation = publicOperation('sendTransactional');
+		const answer = example('sendTransactional').dryRunResponse;
+		const spy = mockFetch({ status: operation.dryRun!.status, body: answer });
+		const request = example('sendTransactional').request;
+		await expect(createTestClient().transactional.dryRun(request)).resolves.toEqual(answer.data);
+		const body: unknown = JSON.parse(String(spy.mock.calls[0]![1]?.body));
+		expect(body).toEqual({ ...request, dryRun: true });
+		expect(decodeRequest(operation.request!.schema, body)).toEqual({ ok: true, value: body });
+	});
+
+	it('a dry run answered with a queued send fails loudly instead of passing as a preview', async () => {
+		mockFetch({ status: 202, body: example('sendTransactional').response });
+		await expect(
+			createTestClient().transactional.dryRun(example('sendTransactional').request)
+		).rejects.toMatchObject({ code: 'dry_run_unsupported' });
+	});
+
+	it('send() refuses the dryRun flag, whose answer has another shape', async () => {
+		const spy = mockFetch({ body: example('sendTransactional').response });
+		await expect(
+			createTestClient().transactional.send({
+				...example('sendTransactional').request,
+				dryRun: true,
+			})
+		).rejects.toMatchObject({ code: 'invalid_input' });
+		expect(spy).not.toHaveBeenCalled();
 	});
 
 	it('sends the send list filters under the names the contract documents', async () => {

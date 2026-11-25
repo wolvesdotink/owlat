@@ -15,6 +15,7 @@ import {
 	type PublicOperation,
 } from './operations';
 import { sendingDomainSetupSchema } from './domains';
+import { emailHealthSchema, sendRefusalSchema } from './render';
 import { sendingHoldLiftSchema } from './status';
 import { contentIssueSchema, emailBlockSchema, emailTranslationSchema } from './templates';
 import { transactionalAttachmentSchema } from './transactional';
@@ -92,6 +93,16 @@ function withoutSafeIntegerBounds(node: unknown): unknown {
 		out[key] = withoutSafeIntegerBounds(value);
 	}
 	return out;
+}
+
+/** `{ data }` holding one `name`. */
+function dataBody(name: string): JsonObject {
+	return {
+		type: 'object',
+		properties: { data: ref(name) },
+		required: ['data'],
+		additionalProperties: false,
+	};
 }
 
 function successBody(operation: PublicOperation): JsonObject {
@@ -329,6 +340,25 @@ function operationObject(operation: PublicOperation): JsonObject {
 					},
 				},
 			},
+			...(operation.dryRun
+				? {
+						[String(operation.dryRun.status)]: {
+							description: operation.dryRun.description,
+							// Marks the response a request with `dryRun: true` gets, so a
+							// reader of the document can tell the two successes apart.
+							'x-owlat-dry-run': true,
+							...(keyed ? { headers: RATE_LIMIT_HEADERS } : {}),
+							content: {
+								'application/json': {
+									schema: dataBody(operation.dryRun.name),
+									...(example?.dryRunResponse === undefined
+										? {}
+										: { example: example.dryRunResponse }),
+								},
+							},
+						},
+					}
+				: {}),
 			...Object.fromEntries(
 				errorStatuses.map((status) => [
 					String(status),
@@ -386,6 +416,11 @@ export function buildOpenApiDocument(
 			['SendingDomainSetup', sendingDomainSetupSchema],
 			['SendingHoldLift', sendingHoldLiftSchema],
 			...operations.map((operation) => [operation.success.name, operation.success.data] as const),
+			...operations.flatMap((operation) =>
+				operation.dryRun ? [[operation.dryRun.name, operation.dryRun.data] as const] : []
+			),
+			['SendRefusal', sendRefusalSchema],
+			['EmailHealth', emailHealthSchema],
 		],
 		'output'
 	);

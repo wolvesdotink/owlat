@@ -172,6 +172,25 @@ await owlat.transactional.send(
 );
 ```
 
+#### Dry run
+
+`transactional.dryRun` takes the same parameters as `send` and sends nothing.
+It answers with the subject, HTML and text a send would deliver, whether the
+send would be queued (`wouldQueue`), and the error it would be refused with
+(`refusal`). Nothing is stored or counted against a limit. With the
+`templates:read` scope as well, it composes a draft too. A server older than the
+dry run would send the email instead; the SDK then throws an `OwlatError` with
+the code `dry_run_unsupported`.
+
+```typescript
+const preview = await owlat.transactional.dryRun({
+	email: 'user@example.com',
+	slug: 'order-confirmation',
+	dataVariables: { orderNumber: 'A-1001' },
+});
+if (!preview.wouldQueue) console.warn(preview.refusal?.message);
+```
+
 ### Events
 
 Send events to trigger automations.
@@ -287,6 +306,19 @@ const { issues } = await owlat.transactionalEmails.upsert(
 );
 await owlat.transactionalEmails.publish('order-confirmation');
 const { data: savedBlocks } = await owlat.savedBlocks.list();
+```
+
+`render.email` renders blocks the way this instance stores them, without
+storing anything: the HTML, the text body, the issues a write would report and
+a health score. With `dataVariables` it composes the email as a send would.
+Needs `templates:read`.
+
+```typescript
+const { html, issues, sendRefusal } = await owlat.render.email({
+	subject: 'Your order {{orderNumber}}',
+	blocks: email.blocks,
+	dataVariables: { orderNumber: 'A-1001' },
+});
 ```
 
 ## Error Handling

@@ -39,4 +39,5 @@ export const ERROR_REASON_STATUS: Record<ApiErrorReason, number> = {
 	template_write_rate_limited: 429,
 	domain_check_rate_limited: 429,
 	domain_registering: 409,
+	render_rate_limited: 429,
 };

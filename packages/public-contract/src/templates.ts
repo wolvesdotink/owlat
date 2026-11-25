@@ -90,10 +90,10 @@ const emailTranslationInputSchema = z.object(
 	{ error: 'Each translation must be an object' }
 );
 
-const languageCode = (message: string) =>
+export const languageCode = (message: string) =>
 	z.string({ error: message }).regex(LANGUAGE_CODE_PATTERN, { error: message });
 
-const transactionalEmailInputShape = {
+export const transactionalEmailInputShape = {
 	name: requiredString('name is required', 'name must be a string').max(TEMPLATE_NAME_MAX_LENGTH, {
 		error: `name must be at most ${TEMPLATE_NAME_MAX_LENGTH} characters`,
 	}),

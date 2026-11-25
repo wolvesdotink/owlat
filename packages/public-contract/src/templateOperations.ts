@@ -16,7 +16,12 @@ import {
 	transactionalEmailSummarySchema,
 	transactionalEmailWriteResultSchema,
 } from './templates';
-import { WRITE_REFUSAL_REASONS, type TemplateWriteRefusalReason } from './types';
+import { renderRequestSchema, renderResultSchema } from './render';
+import {
+	RENDER_REFUSAL_REASONS,
+	WRITE_REFUSAL_REASONS,
+	type TemplateWriteRefusalReason,
+} from './types';
 import {
 	PAGE_CURSOR,
 	PAGE_LIMIT,
@@ -276,5 +281,33 @@ export const TEMPLATE_OPERATIONS = [
 		},
 		errors: [404, 422],
 		reasons: [...CONTENT_WRITE_REASONS, ...WRITE_REFUSAL_REASONS],
+	},
+	{
+		operationId: 'renderEmail',
+		method: 'POST',
+		path: '/api/v1/render',
+		tag: 'Templates',
+		summary:
+			'Render block content as this instance would store it, without storing anything: the HTML, the text body and the subject, the issues the content check of a write finds, and a health score. With dataVariables a transactional email is composed as a send composes it.',
+		scope: 'templates:read',
+		pathParameters: [],
+		queryParameters: [],
+		idempotent: false,
+		request: { name: 'RenderRequest', schema: renderRequestSchema },
+		success: {
+			status: 200,
+			description: 'The rendered email. Nothing was stored.',
+			name: 'RenderResult',
+			data: renderResultSchema,
+			paginated: false,
+		},
+		errors: [],
+		reasons: [
+			'feature_disabled',
+			'invalid_content',
+			'content_too_large',
+			'invalid_variables',
+			...RENDER_REFUSAL_REASONS,
+		],
 	},
 ] as const satisfies readonly PublicOperation[];

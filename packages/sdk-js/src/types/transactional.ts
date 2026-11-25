@@ -3,6 +3,8 @@ import type { TransactionalSendStatusValue } from '@owlat/public-contract';
 export type {
 	SendTransactionalRequest as SendTransactionalParams,
 	SendTransactionalResponse,
+	SendTransactionalDryRun,
+	SendRefusal,
 	TransactionalAttachment,
 	TransactionalSendStatus,
 	TransactionalSendStatusValue,

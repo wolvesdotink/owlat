@@ -5,6 +5,7 @@ import com.owlat.sdk.resource.ContactsResource;
 import com.owlat.sdk.resource.DomainsResource;
 import com.owlat.sdk.resource.EventsResource;
 import com.owlat.sdk.resource.LimitsResource;
+import com.owlat.sdk.resource.RenderResource;
 import com.owlat.sdk.resource.SavedBlocksResource;
 import com.owlat.sdk.resource.StatusResource;
 import com.owlat.sdk.resource.TopicsResource;
@@ -22,6 +23,7 @@ public class Owlat {
     private final LimitsResource limits;
     private final TransactionalEmailsResource transactionalEmails;
     private final SavedBlocksResource savedBlocks;
+    private final RenderResource render;
 
     /**
      * A client from an API key alone, which talks to the hosted address
@@ -48,6 +50,7 @@ public class Owlat {
         this.limits = new LimitsResource(httpClient);
         this.transactionalEmails = new TransactionalEmailsResource(httpClient);
         this.savedBlocks = new SavedBlocksResource(httpClient);
+        this.render = new RenderResource(httpClient);
     }
 
     public ContactsResource contacts() {
@@ -89,5 +92,10 @@ public class Owlat {
     /** Read and write saved blocks. */
     public SavedBlocksResource savedBlocks() {
         return savedBlocks;
+    }
+
+    /** Render block content without storing it, as this instance would. */
+    public RenderResource render() {
+        return render;
     }
 }

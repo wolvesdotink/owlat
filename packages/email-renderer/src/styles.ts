@@ -78,6 +78,19 @@ color:#d4ff00!important;
 `;
 };
 
+/** The media query the email's own dark-mode rules sit behind. */
+const PREFERS_DARK_QUERY = '(prefers-color-scheme:dark)';
+
+/**
+ * The rendered email as a client set to one colour scheme shows it: the
+ * email's own `prefers-color-scheme: dark` rules (colours, the dark logo swap)
+ * always apply for `dark` and never for `light`, whatever the viewer's system
+ * says. The brand kit preview pins the scheme this way. Clients that recolour
+ * an email by themselves (the Gmail app, Outlook) are not modelled.
+ */
+export const forceColorScheme = (html: string, scheme: 'light' | 'dark'): string =>
+	html.replaceAll(PREFERS_DARK_QUERY, scheme === 'dark' ? 'all' : 'not all');
+
 /**
  * Real dark mode support via prefers-color-scheme media query.
  * Applied in actual email clients (not the preview toggle).
@@ -87,7 +100,7 @@ export const getDarkModeMediaQuery = (ctx: RenderContext): string => {
 	return `
 .owlat-light-img{display:block}
 .owlat-dark-img{display:none}
-@media (prefers-color-scheme:dark){
+@media ${PREFERS_DARK_QUERY}{
 body,.body-bg{background-color:${bg}!important}
 .owlat-wrap{background-color:${bg}!important}
 .owlat-dark-bg{background-color:var(--dark-bg)!important}

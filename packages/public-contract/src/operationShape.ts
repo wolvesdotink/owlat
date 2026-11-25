@@ -84,6 +84,17 @@ export interface PublicOperation {
 		data: z.ZodType;
 		paginated: boolean | 'cursor';
 	};
+	/**
+	 * The second success of an operation that takes `dryRun: true` in its
+	 * body: the status and item it answers then. It differs from `success`,
+	 * so a dry run cannot be read as the real thing.
+	 */
+	dryRun?: {
+		status: number;
+		description: string;
+		name: string;
+		data: z.ZodType;
+	};
 	/** Error statuses the operation answers with, beyond the ones every keyed call can. */
 	errors: readonly number[];
 	/** The `error.data.reason` codes the operation answers with, beyond the ones every keyed call can. */

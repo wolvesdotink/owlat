@@ -127,7 +127,7 @@ export function llmsTxtSections(englishRoot: string): LlmsTxtSections {
 	};
 	return {
 		notes: [
-			'Every Owlat install serves its own API under its API base URL. Two documents describe it without an API key: `GET <API base URL>/api/v1/openapi.json`, the OpenAPI 3.1 document of the public API with that instance as its server, and `GET <API base URL>/api/v1/schemas/blocks.json`, the JSON Schema of the block content that templates, transactional emails and saved blocks store. Read the block content reference before writing block JSON.',
+			'Every Owlat install serves its own API under its API base URL. Two documents describe it without an API key: `GET <API base URL>/api/v1/openapi.json`, the OpenAPI 3.1 document of the public API with that instance as its server, and `GET <API base URL>/api/v1/schemas/blocks.json`, the JSON Schema of the block content that templates, transactional emails and saved blocks store. Read the block content reference before writing block JSON, and check a draft with `POST <API base URL>/api/v1/render` (key scope `templates:read`): it answers the HTML and text the instance would store or send and the issues a write would report, without storing anything.',
 		],
 		sections: [
 			{

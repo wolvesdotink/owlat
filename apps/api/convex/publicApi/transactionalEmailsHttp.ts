@@ -114,12 +114,28 @@ type PreparedWrite =
 	  }
 	| { ok: false; response: Response };
 
+/** The content of a decoded body, checked and serialised as the row stores it. */
+export type PreparedContent =
+	| {
+			ok: true;
+			defaultLanguage: string;
+			/** The sanitised blocks the content check returned, as stored JSON. */
+			content: string;
+			/** The translation overlays as stored JSON. */
+			translations: string;
+			issues: TransactionalEmailWriteResult['issues'];
+	  }
+	| { ok: false; response: Response };
+
 /**
- * Check a decoded body the way the editor would before saving it, and serialise
- * it as the row stores it. Refuses a block the content check finds an error in,
- * naming the block, and content too large to store.
+ * Check the blocks and translations of a body the way the editor would before
+ * saving them, and serialise them as the row stores them. Refuses a block the
+ * content check finds an error in, naming the block, and content too large to
+ * store. A write and the render (`renderHttp.ts`) both start here.
  */
-function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
+export function prepareContent(
+	body: Pick<TransactionalEmailInput, 'blocks' | 'translations' | 'defaultLanguage'>
+): PreparedContent {
 	const defaultLanguage = body.defaultLanguage ?? 'en';
 	const translations = body.translations ?? {};
 	if (Object.prototype.hasOwnProperty.call(translations, defaultLanguage)) {
@@ -175,20 +191,36 @@ function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
 
 	return {
 		ok: true,
-		fields: {
-			name: body.name.trim(),
-			subject: body.subject ?? '',
-			content: JSON.stringify(check.blocks),
-			translations: translationsJson,
-			defaultLanguage,
-			dataVariablesSchema: { ...body.dataVariablesSchema },
-			showUnsubscribe: body.showUnsubscribe ?? false,
-		},
+		defaultLanguage,
+		content: JSON.stringify(check.blocks),
+		translations: translationsJson,
 		issues: check.issues,
 	};
 }
 
-async function readJson(request: Request): Promise<unknown | Response> {
+/**
+ * Check a decoded body the way the editor would before saving it, and
+ * serialise it as the row stores it.
+ */
+function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
+	const content = prepareContent(body);
+	if (!content.ok) return content;
+	return {
+		ok: true,
+		fields: {
+			name: body.name.trim(),
+			subject: body.subject ?? '',
+			content: content.content,
+			translations: content.translations,
+			defaultLanguage: content.defaultLanguage,
+			dataVariablesSchema: { ...body.dataVariablesSchema },
+			showUnsubscribe: body.showUnsubscribe ?? false,
+		},
+		issues: content.issues,
+	};
+}
+
+export async function readJson(request: Request): Promise<unknown | Response> {
 	try {
 		return await request.json();
 	} catch {

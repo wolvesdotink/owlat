@@ -1,11 +1,18 @@
 package com.owlat.sdk.resource;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.owlat.sdk.RequestOptions;
+import com.owlat.sdk.exception.OwlatException;
 import com.owlat.sdk.internal.HttpClient;
+import com.owlat.sdk.internal.JsonMapper;
 import com.owlat.sdk.model.ApiResponse;
 import com.owlat.sdk.model.CursorPaginatedResponse;
 import com.owlat.sdk.model.transactional.ListTransactionalSendsParams;
+import com.owlat.sdk.model.transactional.SendTransactionalDryRun;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.owlat.sdk.model.transactional.SendTransactionalResponse;
 import com.owlat.sdk.model.transactional.TransactionalSendStatus;
@@ -39,6 +46,54 @@ public class TransactionalResource extends BaseResource {
         return httpClient
                 .post(BASE_PATH, params, new TypeReference<ApiResponse<SendTransactionalResponse>>() {}, options)
                 .getData();
+    }
+
+    /**
+     * Compose a transactional email for one recipient and answer what a send
+     * of the same parameters would do, without sending: the subject, HTML and
+     * text a send would deliver, and the refusal it would meet now. Nothing is
+     * sent, stored or counted against a limit, and no idempotency key is used.
+     * A draft is composed too when the key also has {@code templates:read}.
+     * Needs the {@code transactional:send} scope.
+     *
+     * @throws OwlatException with code {@code dry_run_unsupported} if the server
+     *         answered with a queued send: an instance older than the dry run
+     *         ignores the flag and sends the email
+     */
+    public SendTransactionalDryRun dryRun(SendTransactionalParams params) {
+        JsonNode data = httpClient
+                .post(BASE_PATH, new DryRunRequest(params), new TypeReference<ApiResponse<JsonNode>>() {})
+                .getData();
+        if (data == null || !data.path("dryRun").asBoolean(false)) {
+            throw new OwlatException(
+                    "The server queued the email instead of a dry run: it is older than the dry run and ignored the flag.",
+                    "dry_run_unsupported", 202, null);
+        }
+        try {
+            return JsonMapper.instance().treeToValue(data, SendTransactionalDryRun.class);
+        } catch (JsonProcessingException e) {
+            throw new OwlatException("Unexpected dry-run response: " + e.getOriginalMessage(),
+                    "parse_error", 200, null, e);
+        }
+    }
+
+    /** A send request with {@code dryRun: true} added. */
+    private static final class DryRunRequest {
+        private final SendTransactionalParams params;
+
+        DryRunRequest(SendTransactionalParams params) {
+            this.params = params;
+        }
+
+        @JsonUnwrapped
+        public SendTransactionalParams getParams() {
+            return params;
+        }
+
+        @JsonProperty("dryRun")
+        public boolean isDryRun() {
+            return true;
+        }
     }
 
     /**

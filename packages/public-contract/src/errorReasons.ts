@@ -111,10 +111,21 @@ export const DOMAIN_CHECK_REFUSAL_REASONS = [
 /** Why a requested domain check was refused. */
 export type DomainCheckRefusalReason = (typeof DOMAIN_CHECK_REFUSAL_REASONS)[number];
 
+/**
+ * Why a render was refused before it ran: too many renders from this key.
+ * `POST /api/v1/render` and the dry run of `POST /api/v1/transactional` share
+ * the budget, apart from template writes and the send caps.
+ */
+export const RENDER_REFUSAL_REASONS = ['render_rate_limited'] as const;
+
+/** Why a render was refused. */
+export type RenderRefusalReason = (typeof RENDER_REFUSAL_REASONS)[number];
+
 /** Every `error.data.reason` the contract declares. */
 export type ApiErrorReason =
 	| ApiKeyErrorReason
 	| TransactionalRefusalReason
 	| WriteRefusalReason
 	| TemplateWriteRefusalReason
-	| DomainCheckRefusalReason;
+	| DomainCheckRefusalReason
+	| RenderRefusalReason;

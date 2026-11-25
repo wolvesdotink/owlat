@@ -27,6 +27,8 @@ import com.owlat.sdk.model.limits.GetLimitsParams;
 import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.template.EmailTranslation;
+import com.owlat.sdk.model.template.RenderParams;
+import com.owlat.sdk.model.template.RenderResult;
 import com.owlat.sdk.model.template.SavedBlock;
 import com.owlat.sdk.model.template.SavedBlockInput;
 import com.owlat.sdk.model.template.SavedBlockSummary;
@@ -43,6 +45,7 @@ import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicResponse;
 import com.owlat.sdk.model.topic.Topic;
 import com.owlat.sdk.model.transactional.ListTransactionalSendsParams;
+import com.owlat.sdk.model.transactional.SendTransactionalDryRun;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.owlat.sdk.model.transactional.SendTransactionalResponse;
 import com.owlat.sdk.model.transactional.TransactionalAttachment;
@@ -203,6 +206,20 @@ class OpenApiContractTest {
         calls.put("updateSavedBlock", new Call(
                 owlat -> owlat.savedBlocks().update(BLOCK_ID, blockInput()),
                 type(SavedBlockWriteResult.class), false));
+        calls.put("renderEmail", new Call(
+                owlat -> owlat.render().email(RenderParams.builder(textBlocks("b-heading"))
+                        .transactional()
+                        .subject("Your order {{orderNumber}}")
+                        .previewText("Arriving {{deliveryDay}}")
+                        .translations(Map.of("de", new EmailTranslation("Deine Bestellung",
+                                Map.of("b-heading", new TranslatedBlockText("<p>Danke</p>", "Los", "Bild")))))
+                        .defaultLanguage("en")
+                        .language("de")
+                        .dataVariablesSchema(Map.of("orderNumber", "string"))
+                        .dataVariables(primitiveRecord())
+                        .darkMode(true)
+                        .build()),
+                type(RenderResult.class), false));
         calls.put("getLimits", new Call(
                 owlat -> owlat.limits().get(GetLimitsParams.bySlug("ada@example.com", "password-reset")),
                 type(SendLimits.class), false));
@@ -435,6 +452,45 @@ class OpenApiContractTest {
             return out;
         }
         return node;
+    }
+
+    // ── the dry run of a send ───────────────────────────────────────────────
+
+    private static SendTransactionalParams dryRunParams() {
+        return SendTransactionalParams.builder("ada@example.com")
+                .slug("order-confirmation")
+                .dataVariables(primitiveRecord())
+                .language("en-US")
+                .build();
+    }
+
+    @Test
+    void aDryRunSendsTheFlagAndReadsTheDocumentedAnswer() throws IOException {
+        OpenApiDocument.Operation operation = document.operation("sendTransactional");
+        JsonNode example = operation.dryRunContent().get("example");
+        status = operation.dryRunStatus();
+        responseBody = JsonMapper.instance().writeValueAsString(example);
+        Call call = new Call(owlat -> owlat.transactional().dryRun(dryRunParams()),
+                type(SendTransactionalDryRun.class), false);
+        Object result = call.invoke.apply(client());
+
+        assertNotEquals(operation.successStatus(), operation.dryRunStatus());
+        assertEquals(operation.method, method);
+        assertTrue(operation.matchesPath(rawPath), rawPath);
+        JsonNode sent = JsonMapper.instance().readTree(body);
+        assertTrue(sent.path("dryRun").asBoolean(false), body);
+        assertEquals(List.of(), new SchemaValidator(document.root, true).validate(operation.requestSchema(), sent));
+        assertEquals(List.of(), readBack(call, example.get("data"), result));
+    }
+
+    @Test
+    void aDryRunAnsweredWithAQueuedSendFails() throws IOException {
+        OpenApiDocument.Operation operation = document.operation("sendTransactional");
+        status = operation.successStatus();
+        responseBody = JsonMapper.instance().writeValueAsString(operation.successContent().get("example"));
+        com.owlat.sdk.exception.OwlatException thrown = assertThrows(com.owlat.sdk.exception.OwlatException.class,
+                () -> client().transactional().dryRun(dryRunParams()));
+        assertEquals("dry_run_unsupported", thrown.getCode());
     }
 
     @Test

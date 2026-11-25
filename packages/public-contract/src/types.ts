@@ -11,6 +11,7 @@
 export * from './deliveryStatus';
 export * from './domainSetup';
 export * from './errorReasons';
+export * from './renderTypes';
 export * from './sendLimits';
 export * from './sendList';
 export * from './templateTypes';
@@ -389,6 +390,12 @@ export interface SendTransactionalRequest {
 	 * Send `content` as plain base64 without line breaks.
 	 */
 	attachments?: TransactionalAttachment[];
+	/**
+	 * `true` composes the email and answers what a send would
+	 * ({@link SendTransactionalDryRun}, status 200) without sending, storing or
+	 * counting anything. An instance older than this field ignores it and sends.
+	 */
+	dryRun?: boolean;
 }
 
 /**

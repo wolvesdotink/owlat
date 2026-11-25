@@ -75,7 +75,7 @@ const DATA_VARIABLES_SHAPE =
  * primitive or a flat object of primitives, and the list is capped at the
  * entries one repeated Block renders.
  */
-const dataVariablesSchema = z
+export const transactionalDataVariablesSchema = z
 	.record(
 		z.string(),
 		z.union(
@@ -117,7 +117,7 @@ export const sendTransactionalRequestSchema = requestBody({
 	email: requiredString('email is required', 'email must be a string'),
 	transactionalId: z.string({ error: 'transactionalId must be a string' }).nullish(),
 	slug: z.string({ error: 'slug must be a string' }).nullish(),
-	dataVariables: dataVariablesSchema.optional(),
+	dataVariables: transactionalDataVariablesSchema.optional(),
 	language: z
 		.string({ error: 'language must be a string' })
 		.regex(LANGUAGE_PATTERN, {
@@ -130,6 +130,10 @@ export const sendTransactionalRequestSchema = requestBody({
 			error: `Maximum ${ATTACHMENT_COMPOSE_LIMITS.maxCount} attachments allowed`,
 		})
 		.optional(),
+	dryRun: z.boolean({ error: 'dryRun must be a boolean' }).optional().meta({
+		description:
+			'true composes the email and answers what a send would, with a 200 instead of the 202 of a send: nothing is sent, stored or counted. An instance older than this field ignores it and sends the email.',
+	}),
 })
 	.refine((body) => !!body.transactionalId || !!body.slug, {
 		error: 'Either transactionalId or slug is required',

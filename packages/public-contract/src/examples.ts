@@ -9,6 +9,7 @@
  */
 
 import { DOMAIN_AND_LIMIT_EXAMPLES } from './domainAndLimitExamples';
+import { RENDER_EXAMPLES, SEND_TRANSACTIONAL_DRY_RUN_EXAMPLE } from './renderExamples';
 import type { PublicOperationId } from './operations';
 import type {
 	AddContactToTopicRequest,
@@ -157,6 +158,8 @@ const FOOTER_BLOCK_SUMMARY: SavedBlockSummary = {
 export interface OperationExample {
 	request?: unknown;
 	response: unknown;
+	/** The answer to the request with `dryRun: true`, for an operation that takes it. */
+	dryRunResponse?: unknown;
 }
 
 export const OPERATION_EXAMPLES = {
@@ -234,6 +237,7 @@ export const OPERATION_EXAMPLES = {
 				language: 'en-US',
 			},
 		} satisfies ApiResponse<SendTransactionalResponse>,
+		dryRunResponse: SEND_TRANSACTIONAL_DRY_RUN_EXAMPLE,
 	},
 	listTransactionalSends: {
 		response: {
@@ -420,4 +424,5 @@ export const OPERATION_EXAMPLES = {
 		} satisfies ApiResponse<DeliveryStatus>,
 	},
 	...DOMAIN_AND_LIMIT_EXAMPLES,
+	...RENDER_EXAMPLES,
 } satisfies Record<PublicOperationId, OperationExample>;
