@@ -145,9 +145,10 @@ export function useCsvImportCompletion(
 	});
 
 	/**
-	 * Reuses the import's own topic-assignment path (`importBatch` with a topicId,
-	 * `skip` so no contact field is rewritten): the rows resolve to the contacts
-	 * that were just created and are subscribed to the topic. The bulk
+	 * Reuses the import's own topic-assignment path (`importBatch` with a topicId):
+	 * the rows resolve to the contacts that were just imported and are subscribed
+	 * to the topic. `update`, because `skip` leaves an existing contact out of the
+	 * topic; the rows carry addresses only, so there is no field to rewrite. The bulk
 	 * `topics.addContacts` mutation is not usable here — it takes contact ids, and
 	 * an import returns counts, not ids.
 	 */
@@ -165,7 +166,7 @@ export function useCsvImportCompletion(
 		for (let i = 0; i < emails.length; i += ADD_TO_TOPIC_BATCH_SIZE) {
 			const outcome = await runAddToTopic({
 				contacts: emails.slice(i, i + ADD_TO_TOPIC_BATCH_SIZE).map((email) => ({ email })),
-				handleDuplicates: 'skip',
+				handleDuplicates: 'update',
 				topicId: topicId as Id<'topics'>,
 			});
 			// A failure has already been surfaced by the operation module.

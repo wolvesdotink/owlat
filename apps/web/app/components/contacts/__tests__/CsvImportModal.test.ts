@@ -357,10 +357,11 @@ describe('CsvImportModal — where the import goes next', () => {
 
 		expect(runOperation).toHaveBeenCalledTimes(1);
 		expect(runOperation).toHaveBeenCalledWith({
-			// The rows carry addresses only — an existing contact must not be
-			// rewritten by a topic assignment. The repeat address is sent once.
+			// The rows carry addresses only, so `update` rewrites no field; `skip`
+			// would leave contacts that already existed out of the topic. The
+			// repeat address is sent once.
 			contacts: [{ email: 'ada@example.com' }, { email: 'grace@example.com' }],
-			handleDuplicates: 'skip',
+			handleDuplicates: 'update',
 			topicId: 'topic-2',
 		});
 		expect(toasts).toEqual(['2 contacts added to Beta']);
