@@ -3,14 +3,12 @@
 # Owlat One-Liner Installer
 #
 # Usage (fresh VPS):
-#   curl -fsSL https://get.owlat.app | bash
-# The same file from GitHub, when get.owlat.app does not answer:
 #   curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/main/install.sh | bash
 #
 # Non-interactive (CI / Ansible): the variable goes on `bash`, which runs the
 # installer, not on `curl`:
-#   curl -fsSL https://get.owlat.app | OWLAT_ASSUME_YES=1 bash
-#   curl -fsSL https://get.owlat.app | OWLAT_CONFIG_FILE=/path/to/answers.json bash
+#   curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/main/install.sh | OWLAT_ASSUME_YES=1 bash
+#   curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/main/install.sh | OWLAT_CONFIG_FILE=/path/to/answers.json bash
 #
 # This script:
 #   1. Checks prerequisites (docker, docker compose v2, curl, git)
