@@ -184,6 +184,16 @@ describe('PUT /api/v1/brand-kit', () => {
 		expect((await t.query(api.workspaces.brandKit.get, {})).design.isConfigured).toBe(false);
 	});
 
+	it('writes nothing for a body that names no field', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['brand-kit:write']);
+		const res = await request(t, key, 'PUT', {});
+		await expectContractSuccess('updateBrandKit', res);
+		expect((await res.json()).data.isConfigured).toBe(false);
+		expect((await t.query(api.workspaces.brandKit.get, {})).design.isConfigured).toBe(false);
+		expect(await settingsAudit(t)).toHaveLength(0);
+	});
+
 	it('changes the fields it names, keeps the rest and the logo, and the dashboard reads the result', async () => {
 		const t = setupTest();
 		const logo = await seedLogo(t);

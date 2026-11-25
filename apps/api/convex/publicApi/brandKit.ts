@@ -65,6 +65,9 @@ type WriteOutcome =
 export const updateForApi = internalMutation({
 	args: { keyId: v.id('apiKeys'), patch: patchValidator },
 	handler: async (ctx, args): Promise<WriteOutcome> => {
+		// A body that names no field changes nothing: storing the kit would mark
+		// it configured, which switches new emails to the kit's defaults.
+		if (Object.keys(args.patch).length === 0) return { ok: true, kit: await readBrandKit(ctx) };
 		const token = await spendWriteToken(ctx, args.keyId);
 		if (!token.ok) return token;
 		const { design, logos } = await loadBrandKit(ctx);
