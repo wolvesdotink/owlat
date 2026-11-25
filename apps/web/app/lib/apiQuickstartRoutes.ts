@@ -35,4 +35,5 @@ export const API_QUICKSTART_ROUTES: readonly ApiQuickstartRoute[] = [
 	},
 	{ methods: ['GET'], path: '/api/v1/health', key: 'health' },
 	{ methods: ['GET'], path: '/api/v1/openapi.json', key: 'openapi' },
+	{ methods: ['GET'], path: '/api/v1/schemas/blocks.json', key: 'blockSchema' },
 ];

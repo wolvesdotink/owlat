@@ -30,6 +30,7 @@ import { getStatus } from './statusHttp';
 import { listDomains } from './domainsHttp';
 import { getLimits } from './limitsHttp';
 import { getOpenApiDocument } from './openApiHttp';
+import { getBlockSchema } from './blockSchemaHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -60,6 +61,20 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/openapi.json',
 		method: 'OPTIONS',
 		handler: getOpenApiDocument,
+	});
+
+	// The JSON Schema of block content (no authentication required), next to
+	// the OpenAPI document and answering its own preflight the same way.
+	http.route({
+		path: '/api/v1/schemas/blocks.json',
+		method: 'GET',
+		handler: getBlockSchema,
+	});
+
+	http.route({
+		path: '/api/v1/schemas/blocks.json',
+		method: 'OPTIONS',
+		handler: getBlockSchema,
 	});
 
 	// CORS preflight handlers for API routes

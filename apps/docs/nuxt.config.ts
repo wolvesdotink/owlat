@@ -1,6 +1,10 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import type { ModuleOptions } from 'nuxt-og-image';
+import { buildLlmsTxt } from './scripts/llmsTxt';
 
 export default defineNuxtConfig({
 	extends: ['../../packages/ui'],
@@ -98,5 +102,27 @@ export default defineNuxtConfig({
 
 	vite: {
 		plugins: [tailwindcss() as PluginOption],
+	},
+
+	nitro: {
+		// The block content schema, published at /schemas/blocks.json (its
+		// `$id`) straight from the file the contract package generates.
+		publicAssets: [
+			{
+				dir: fileURLToPath(new URL('../../packages/public-contract/schemas', import.meta.url)),
+				baseURL: '/schemas',
+				maxAge: 300,
+			},
+		],
+	},
+
+	hooks: {
+		// llms.txt at the site root, built from the English pages' front matter.
+		'nitro:build:public-assets'(nitro) {
+			writeFileSync(
+				join(nitro.options.output.publicDir, 'llms.txt'),
+				buildLlmsTxt(fileURLToPath(new URL('./content/en', import.meta.url)))
+			);
+		},
 	},
 });

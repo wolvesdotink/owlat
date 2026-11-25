@@ -21,6 +21,7 @@ import {
 	type SendingDomainStatusValue,
 } from '@owlat/public-contract/schemas';
 import { buildOpenApiDocument } from '@owlat/public-contract/openapi';
+import blockSchema from '@owlat/public-contract/schemas/blocks.json';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
@@ -3129,6 +3130,34 @@ describe('GET /api/v1/openapi.json (the instance describes its own API)', () => 
 	});
 });
 
+// ─── GET /api/v1/schemas/blocks.json ─────────────────────────────────────────
+
+describe('GET /api/v1/schemas/blocks.json (the JSON Schema of block content)', () => {
+	it('serves the generated block schema without a key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/schemas/blocks.json', { method: 'GET' });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toBe('application/schema+json');
+		expect(res.headers.get('Cache-Control')).toBe('public, max-age=300');
+		expect(await res.json()).toEqual(blockSchema);
+	});
+
+	it('lets a browser on another origin read it', async () => {
+		const t = setupTest();
+		const preflight = await t.fetch('/api/v1/schemas/blocks.json', {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		const res = await t.fetch('/api/v1/schemas/blocks.json', {
+			method: 'GET',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+	});
+});
+
 // ─── A single all-scope key works across every route ─────────────────────────
 
 describe('an all-scope key satisfies every route', () => {
@@ -3199,12 +3228,13 @@ describe('the public contract (@owlat/public-contract)', () => {
 		}
 	});
 
-	it('documents every route other than the CORS preflights and the document itself', () => {
+	it('documents every route other than the CORS preflights and the served documents', () => {
 		for (const [path, method] of router.getRoutes()) {
 			if (method === 'OPTIONS') continue;
-			// The document is served as is, not in the `{ data }` envelope every
-			// operation answers with, so it cannot describe itself as one.
-			if (path === '/api/v1/openapi.json') continue;
+			// The OpenAPI document and the block schema are served as they are,
+			// not in the `{ data }` envelope every operation answers with, so the
+			// document cannot describe them as operations.
+			if (path === '/api/v1/openapi.json' || path === '/api/v1/schemas/blocks.json') continue;
 			const documented = PUBLIC_OPERATIONS.some(
 				(operation) =>
 					operation.method === method &&

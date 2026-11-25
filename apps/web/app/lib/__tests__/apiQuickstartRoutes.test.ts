@@ -50,10 +50,10 @@ describe('API quickstart routes', () => {
 		const table = API_QUICKSTART_ROUTES.flatMap(({ methods, path }) =>
 			methods.map((method) => `${method} ${path}`)
 		);
-		// The OpenAPI document serves the contract and is not an operation of it.
-		expect(table.filter((route) => route !== 'GET /api/v1/openapi.json').sort()).toEqual(
-			contractRoutes()
-		);
+		// The OpenAPI document and the block schema are served as they are and
+		// are not operations of the contract.
+		const served = new Set(['GET /api/v1/openapi.json', 'GET /api/v1/schemas/blocks.json']);
+		expect(table.filter((route) => !served.has(route)).sort()).toEqual(contractRoutes());
 	});
 
 	it('lists every public route the backend registers, and no other', () => {

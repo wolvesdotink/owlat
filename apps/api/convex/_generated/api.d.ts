@@ -1813,6 +1813,7 @@ import type * as providers_composition from '../providers/composition.js';
 import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
+import type * as publicApi_blockSchemaHttp from '../publicApi/blockSchemaHttp.js';
 import type * as publicApi_domains from '../publicApi/domains.js';
 import type * as publicApi_domainsHttp from '../publicApi/domainsHttp.js';
 import type * as publicApi_events from '../publicApi/events.js';
@@ -4081,6 +4082,7 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedback': typeof providers_feedback;
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
+	'publicApi/blockSchemaHttp': typeof publicApi_blockSchemaHttp;
 	'publicApi/domains': typeof publicApi_domains;
 	'publicApi/domainsHttp': typeof publicApi_domainsHttp;
 	'publicApi/events': typeof publicApi_events;

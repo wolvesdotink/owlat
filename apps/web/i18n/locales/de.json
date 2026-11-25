@@ -10821,6 +10821,7 @@
 						"baseUrlTitle": "Deine API-Basis-URL",
 						"createContact": "Einen Kontakt anlegen",
 						"endpoints": {
+							"blockSchema": "Das JSON-Schema des Block-Inhalts, zum Schreiben von Vorlagen und gespeicherten Blöcken",
 							"contact": "Einen Kontakt lesen, aktualisieren oder löschen",
 							"contacts": "Kontakte auflisten oder anlegen",
 							"domains": "Versanddomains und die DNS-Einträge, die jede braucht",
