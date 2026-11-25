@@ -1,5 +1,7 @@
 /**
- * Which channels carried a deliverability regression alert, and what each did.
+ * Which channels carried a deliverability alert, and what each did: a
+ * regression alert, or sending stopping (a `sendingHoldAlerts` row, which
+ * carries the same channel fields).
  *
  * The email is one channel, and it leaves through the mail path the alert may
  * be about. The others (the in-app notice and Web Push, written by the
@@ -22,6 +24,9 @@ import { checklistTraits } from './checklistTraits';
 import { DELIVERABILITY_CHECKLIST, type DeliverabilityCheckId } from '@owlat/shared';
 
 type AlertId = Id<'deliverabilityRegressionAlerts'>;
+/** Either kind of alert record whose channels are counted. */
+export type ChannelAlertId = AlertId | Id<'sendingHoldAlerts'>;
+type ChannelAlert = Doc<'deliverabilityRegressionAlerts'> | Doc<'sendingHoldAlerts'>;
 export type AlertResolution = 'manual' | 'automatic';
 
 /**
@@ -47,7 +52,7 @@ export function isEmailOnAffectedTransport(
  */
 export async function recordAlertInAppNotices(
 	ctx: MutationCtx,
-	alertId: AlertId,
+	alertId: ChannelAlertId,
 	written: number
 ): Promise<void> {
 	const alert = await ctx.db.get(alertId);
@@ -66,7 +71,7 @@ export interface AlertPushTally {
 /** Add one person's push outcomes for an alert's notice. */
 export async function recordAlertPushOutcomes(
 	ctx: MutationCtx,
-	alertId: AlertId,
+	alertId: ChannelAlertId,
 	tally: AlertPushTally
 ): Promise<void> {
 	if (tally.delivered + tally.failed + tally.held === 0) return;
@@ -82,7 +87,7 @@ export async function recordAlertPushOutcomes(
 /** What the Deliverability Center shows per alert about its channels. */
 export interface AlertChannelsView {
 	email: {
-		state: Doc<'deliverabilityRegressionAlerts'>['emailNotificationState'];
+		state: ChannelAlert['emailNotificationState'];
 		isOnAffectedTransport: boolean;
 	};
 	/** People the in-app notice was written for; null when none was attempted yet. */
@@ -94,7 +99,7 @@ export interface AlertChannelsView {
 
 export async function alertChannelsView(
 	ctx: QueryCtx,
-	alert: Doc<'deliverabilityRegressionAlerts'>
+	alert: ChannelAlert
 ): Promise<AlertChannelsView> {
 	return {
 		email: {

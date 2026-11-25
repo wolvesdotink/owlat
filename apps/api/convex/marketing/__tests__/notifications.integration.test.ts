@@ -741,7 +741,15 @@ describe('sending suspended and resumed', () => {
 		await changeStatus(t, 'suspended', NOW);
 
 		expect(await queuedFanOuts(t)).toEqual([
-			{ at: NOW, event: { kind: 'sending_suspended', changedAt: NOW } },
+			{
+				at: NOW,
+				event: {
+					kind: 'sending_suspended',
+					changedAt: NOW,
+					holdStatus: 'suspended',
+					sendingHoldAlertId: expect.any(String),
+				},
+			},
 		]);
 		expect(await fanOut(t, { kind: 'sending_suspended', changedAt: NOW })).toEqual({ written: 2 });
 		expect((await noticesFor(t)).map((notice) => notice.userId).sort()).toEqual([

@@ -77,6 +77,8 @@ export const TENANT_TABLES = [
 	'transactionalEmails',
 
 	// ── Webhooks ──
+	// Sending-hold alert outcomes point at the webhook deliveries below.
+	'sendingHoldAlerts',
 	'mtaCampaignAlertReceipts',
 	'webhookDeliveryLogs',
 	'webhookPayloads',
