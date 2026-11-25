@@ -3159,7 +3159,7 @@
 						"suspended": "It was suspended before."
 					},
 					"heading": "Sending is stopped",
-					"openHealth": "Open Delivery health",
+					"openHealth": "Open delivery health",
 					"subheading": "No new mail goes out from this instance until it lifts.",
 					"title": {
 						"banned": "Sending banned",
