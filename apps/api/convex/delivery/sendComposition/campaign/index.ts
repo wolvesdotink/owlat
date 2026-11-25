@@ -84,8 +84,16 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	if (input.unsubscribeUrl && input.preferenceUrl) {
 		transformConfig.unsubscribeUrl = input.unsubscribeUrl;
 		transformConfig.preferenceUrl = input.preferenceUrl;
-		if (input.footerLanguage) transformConfig.footerLanguage = input.footerLanguage;
 		if (input.senderAddress) transformConfig.senderAddress = input.senderAddress;
+	}
+
+	// Labels the view-in-browser link and the footer's links; set only with one
+	// of them, so it alone never sends the html through the transform.
+	if (
+		input.footerLanguage &&
+		(transformConfig.viewInBrowserUrl || transformConfig.unsubscribeUrl)
+	) {
+		transformConfig.footerLanguage = input.footerLanguage;
 	}
 
 	// A seed shadow copy has no `emailSendId` (that is what keeps it out of

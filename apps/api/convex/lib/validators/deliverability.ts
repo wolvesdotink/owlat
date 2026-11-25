@@ -183,3 +183,7 @@ type ValidatedRampPreset = Infer<typeof rampPresetValidator>;
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 type AssertTrue<T extends true> = T;
 export type _RampPresetValidatorMatchesShared = AssertTrue<Exact<ValidatedRampPreset, RampPreset>>;
+
+/** The abuse statuses that stop sending, as a sending-hold alert names them. */
+export const sendingHoldStatusValidator = v.union(v.literal('suspended'), v.literal('banned'));
+export type SendingHoldStatus = Infer<typeof sendingHoldStatusValidator>;

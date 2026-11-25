@@ -186,6 +186,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'unsubscribeLatencyBuckets',
 
 	// Webhook / form children before parents
+	'sendingHoldAlerts',
 	'webhookDeliveryLogs',
 	'mtaCampaignAlertReceipts',
 	'webhookPayloads',
