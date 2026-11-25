@@ -91,7 +91,9 @@ export {
 export {
 	SIGNED_HEADERS,
 	signMessage,
+	signMessageWithKeys,
 	buildDkimSignatureLine,
+	type DkimSigningAlgorithm,
 	type DkimSigningKey,
 } from './compose/dkim';
 
