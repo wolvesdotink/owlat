@@ -89,6 +89,9 @@ async function mountModal(topics: Array<{ _id: string; name: string }> = []) {
 	});
 	// Opening resets the form, the way the contacts page opens it.
 	await wrapper.setProps({ open: true });
+	// The configure step starts loading on open; settle it, as a page would
+	// have by the time someone picks a provider.
+	await vi.dynamicImportSettled();
 	return wrapper;
 }
 
@@ -131,6 +134,18 @@ describe('IntegrationImportModal — choosing a provider', () => {
 		await wrapper.find('a[href="/dashboard/admin/instance/features"]').trigger('click');
 
 		expect(wrapper.emitted('update:open')).toEqual([[false]]);
+	});
+
+	it('shows the form once the pick settles, with no second fetch of the step', async () => {
+		const wrapper = await mountModal();
+
+		await wrapper
+			.findAll('button')
+			.find((b) => b.text().includes('Stripe'))!
+			.trigger('click');
+		await flushPromises();
+
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
 	});
 
 	it('opens the provider form and checks it before starting', async () => {

@@ -22,8 +22,17 @@ const isOpen = defineModel<boolean>('open', { default: false });
 // The configure form is the largest step and shows only after a provider is
 // picked, so it loads when the modal opens rather than with the contacts page
 // that mounts the modal. Picking a provider waits for it: the step never renders
-// empty, and a chunk that cannot be fetched shows the modal's error line.
-const loadConfigureStep = () => import('./integrationImport/ConfigureStep.vue');
+// empty, and a chunk that cannot be fetched shows the modal's error line. The
+// step renders from the same load the pick awaited: a second import() would
+// leave the step blank until it settles. A failed load is forgotten, so the
+// next pick fetches again.
+const importConfigureStep = () => import('./integrationImport/ConfigureStep.vue');
+let configureStepLoad: ReturnType<typeof importConfigureStep> | undefined;
+const loadConfigureStep = () =>
+	(configureStepLoad ??= importConfigureStep().catch((error: unknown) => {
+		configureStepLoad = undefined;
+		throw error;
+	}));
 const IntegrationImportConfigureStep = defineAsyncComponent(loadConfigureStep);
 /** Counts openings, so a pick still loading when the modal closes cannot touch the next one. */
 let opening = 0;
