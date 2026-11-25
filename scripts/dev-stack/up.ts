@@ -44,6 +44,19 @@ export interface StackOps {
 	runForeground(web: boolean): Promise<number>;
 }
 
+export interface CodegenOps extends Omit<
+	StackOps,
+	'pushOnce' | 'seed' | 'runForeground' | 'writeStageEnv'
+> {
+	/** `convex codegen` in the stage; rejects when it fails. */
+	codegen(): Promise<void>;
+	/**
+	 * Copies the stage's generated files, with the api declaration chunked,
+	 * into apps/api; returns how many changed.
+	 */
+	copyGeneratedBack(): number;
+}
+
 /** Host ports bound by each Compose service. */
 const CONTAINER_PORTS: Record<string, DevService[]> = {
 	convex: ['convex', 'convexSite'],
@@ -78,14 +91,18 @@ export async function findPortConflicts(
 	return conflicts;
 }
 
-export async function runUp(
+/**
+ * Starts the containers (a no-op when they run), stages apps/api and points
+ * the stage and the deployment at each other. Shared by `up` and `codegen`,
+ * so codegen works whether or not the foreground stack is running.
+ */
+async function prepareBackend(
 	config: DevStackConfig,
 	secrets: DevStackSecrets,
-	options: UpOptions,
-	ops: StackOps
-): Promise<number> {
-	ops.log(describePorts(config));
-
+	ops: Omit<StackOps, 'pushOnce' | 'seed' | 'runForeground' | 'writeStageEnv'> &
+		Partial<Pick<StackOps, 'writeStageEnv'>>,
+	options: Pick<UpOptions, 'web'>
+): Promise<void> {
 	const conflicts = await findPortConflicts(config, ops, options);
 	if (conflicts.length > 0) {
 		throw new DevStackConfigError(
@@ -103,12 +120,24 @@ export async function runUp(
 
 	const synced = ops.syncStage();
 	ops.log(`Staged apps/api for Convex (${synced.copied} copied, ${synced.removed} removed).`);
-	ops.writeStageEnv({
+	// `dev:seed` targets whatever the stage env names (convexTarget.ts), so only
+	// `up`, which also pushes the functions, writes it.
+	ops.writeStageEnv?.({
 		CONVEX_SELF_HOSTED_URL: config.urls.convex,
 		CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey,
 		CONVEX_SITE_URL: config.urls.convexSite,
 	});
 	await ops.setDeploymentEnv({ ...deploymentSecretEnv(secrets), ...deploymentUrlEnv(config) });
+}
+
+export async function runUp(
+	config: DevStackConfig,
+	secrets: DevStackSecrets,
+	options: UpOptions,
+	ops: StackOps
+): Promise<number> {
+	ops.log(describePorts(config));
+	await prepareBackend(config, secrets, ops, options);
 
 	ops.log('Pushing Convex functions (the first push takes a minute or two)...');
 	await ops.pushOnce();
@@ -130,4 +159,29 @@ export async function runUp(
 		);
 	}
 	return ops.runForeground(options.web);
+}
+
+/**
+ * `convex codegen` for apps/api. The CLI cannot generate offline: it bundles
+ * the modules and sends them to a backend as an uncommitted push to learn the
+ * component APIs. It runs in the stage because bundling apps/api itself fails
+ * on the Node-only helpers in `__tests__`, and only ever against this
+ * checkout's own backend, never a deployment apps/api or the shell selects.
+ * Nothing is deployed: the push is never finished.
+ */
+export async function runCodegen(
+	config: DevStackConfig,
+	secrets: DevStackSecrets,
+	ops: CodegenOps
+): Promise<number> {
+	await prepareBackend(config, secrets, { ...ops, writeStageEnv: undefined }, { web: false });
+	ops.log('Running convex codegen in the stage...');
+	await ops.codegen();
+	const changed = ops.copyGeneratedBack();
+	ops.log(
+		changed === 0
+			? 'Generated files are up to date.'
+			: `Copied ${changed} generated file(s) into apps/api/convex.`
+	);
+	return 0;
 }

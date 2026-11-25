@@ -6,6 +6,7 @@
  *   bun run dev:stack status             ports and container state
  *   bun run dev:stack ports              the resolved ports only
  *   bun run dev:stack logs [convex|redis] [--follow]   container logs
+ *   bun run dev:stack codegen            regenerate apps/api/convex/_generated
  *
  * `up` starts the Convex backend and Redis in a Compose project of their own,
  * pushes the functions, seeds demo data, then runs the Convex watcher and
@@ -17,7 +18,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { lstatSync, realpathSync } from 'node:fs';
+import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { DEV_STACK_USAGE, parseDevStackArgs } from './dev-stack/args';
@@ -30,7 +31,7 @@ import {
 } from './dev-stack/config';
 import { selfHostedCliEnv } from './dev-stack/convexTarget';
 import { parseAdminKey, writeEnvFile } from './dev-stack/envFile';
-import { syncStage, watchStage } from './dev-stack/stage';
+import { copyGeneratedBack, syncStage, watchStage } from './dev-stack/stage';
 import {
 	composeEnvEntries,
 	devStackPaths,
@@ -39,7 +40,7 @@ import {
 	type DevStackPaths,
 } from './dev-stack/state';
 import { supervise } from './dev-stack/supervise';
-import { runUp, type StackOps } from './dev-stack/up';
+import { runCodegen, runUp, type CodegenOps, type StackOps } from './dev-stack/up';
 
 const root = realpathSync(join(import.meta.dir, '..'));
 const paths: DevStackPaths = devStackPaths(root);
@@ -128,11 +129,11 @@ function cliEnv(adminKey: string): NodeJS.ProcessEnv {
 	return selfHostedCliEnv(process.env, config.urls.convex, adminKey);
 }
 
-async function up(seed: boolean, web: boolean): Promise<number> {
-	const secrets = loadOrCreateSecrets(paths.secretsFile);
-	writeComposeEnv();
+type BackendOps = Omit<StackOps, 'pushOnce' | 'seed' | 'runForeground'>;
+
+function backendOps(): { ops: BackendOps; adminKey: () => string } {
 	let adminKey = '';
-	const ops: StackOps = {
+	const ops: BackendOps = {
 		log: (line) => console.info(line),
 		runningServices: async () => runningServices(),
 		portInUse,
@@ -161,10 +162,21 @@ async function up(seed: boolean, web: boolean): Promise<number> {
 				input: `${input}\n`,
 			});
 		},
+	};
+	return { ops, adminKey: () => adminKey };
+}
+
+async function up(seed: boolean, web: boolean): Promise<number> {
+	const secrets = loadOrCreateSecrets(paths.secretsFile);
+	writeComposeEnv();
+	const backend = backendOps();
+	const cliEnvNow = () => cliEnv(backend.adminKey());
+	const ops: StackOps = {
+		...backend.ops,
 		pushOnce: () =>
 			run(convexBin, ['dev', '--once', '--typecheck', 'disable', '--codegen', 'disable'], {
 				cwd: paths.stageApi,
-				env: cliEnv(adminKey),
+				env: cliEnvNow(),
 			}),
 		seed: () => run(process.execPath, [join(root, 'scripts', 'dev-seed.ts')], { env: process.env }),
 		runForeground: (withWeb) => {
@@ -181,7 +193,7 @@ async function up(seed: boolean, web: boolean): Promise<number> {
 						command: convexBin,
 						args: ['dev', '--typecheck', 'disable', '--codegen', 'disable'],
 						cwd: paths.stageApi,
-						env: cliEnv(adminKey),
+						env: cliEnvNow(),
 					},
 					...(withWeb
 						? [
@@ -200,6 +212,33 @@ async function up(seed: boolean, web: boolean): Promise<number> {
 		},
 	};
 	return runUp(config, secrets, { seed, web }, ops);
+}
+
+async function codegen(): Promise<number> {
+	const secrets = loadOrCreateSecrets(paths.secretsFile);
+	writeComposeEnv();
+	const backend = backendOps();
+	// The CLI stages its output in a temporary directory and renames it into
+	// place, which needs the same filesystem; /tmp is often a separate tmpfs.
+	const tmpDir = join(paths.stateDir, 'tmp');
+	mkdirSync(tmpDir, { recursive: true });
+	const ops: CodegenOps = {
+		...backend.ops,
+		codegen: async () => {
+			await run(convexBin, ['codegen', '--typecheck', 'disable'], {
+				cwd: paths.stageApi,
+				env: { ...cliEnv(backend.adminKey()), CONVEX_TMPDIR: tmpDir },
+			});
+			// The CLI writes fullApi as one map, which TypeScript cannot type at this
+			// size; split it before it reaches the checkout.
+			await run(process.execPath, [
+				join(paths.apiDir, 'scripts', 'codegen-api-chunks.ts'),
+				join(paths.stageApi, 'convex', '_generated', 'api.d.ts'),
+			]);
+		},
+		copyGeneratedBack: () => copyGeneratedBack(paths.stageApi, paths.apiDir),
+	};
+	return runCodegen(config, secrets, ops);
 }
 
 async function down(volumes: boolean): Promise<number> {
@@ -249,6 +288,8 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		case 'logs':
 			return logs(args.service, flags.has('--follow'));
+		case 'codegen':
+			return codegen();
 		default:
 			return up(!flags.has('--no-seed'), !flags.has('--no-web'));
 	}

@@ -219,6 +219,14 @@ describe('check-env.sh', () => {
 			})
 		).toBe(0);
 	});
+
+	it('exempts Convex codegen output, as oxlint does', () => {
+		expect(
+			lintTree('generated', {
+				'betterAuth/_generated/server.ts': 'export const env = (globalThis as any).process.env;\n',
+			})
+		).toBe(0);
+	});
 });
 
 describe('check-env.sh for a Node service', () => {

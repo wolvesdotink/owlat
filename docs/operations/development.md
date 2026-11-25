@@ -90,9 +90,25 @@ mirrors `apps/api/package.json` and `apps/api/convex` without any `__tests__`
 directory into `.owlat-dev/api` and pushes from there, which is what the
 deploy image does too (`docker/convex-deploy.Dockerfile`). The watcher runs
 with codegen off, so a push never rewrites the committed `_generated/`.
-After adding a function module, add its import and `fullApi` entry to
-`convex/_generated/api.d.ts`, then run `bun run --cwd apps/api codegen:chunks`
-(`bun run --cwd apps/api lint` checks both). `fullApi` is split into one
+
+### Regenerating `convex/_generated`
+
+After adding, renaming or removing a function module, run
+`bun run --cwd apps/api codegen` and commit what changes under
+`apps/api/convex/_generated` and `apps/api/convex/betterAuth/_generated`.
+Never edit those files by hand.
+
+The Convex CLI cannot generate offline: it bundles the modules and sends them
+to a backend as a push it never finishes, to learn the component APIs. So the
+command (`bun run dev:stack codegen`, then a typecheck) starts this checkout's
+stack containers if they are not running, runs `convex codegen` in the stage,
+and copies the output back. It only talks to this checkout's local backend,
+never to a deployment `apps/api` or your shell selects, and it works with the
+foreground stack running, stopped or started with `--no-web`. The containers
+keep running afterwards; `bun run dev:stack down` stops them.
+
+`bun run --cwd apps/api lint` checks without a backend that `api.d.ts` lists
+exactly the modules the CLI would. `fullApi` is split into one
 `ApiFromModules` per top-level directory: a single map over all ~1,900 modules
 exceeds TypeScript's relation budget and turns `api` and `internal` into
 `never`. For the same reason every deploy runs with `--codegen disable` and
