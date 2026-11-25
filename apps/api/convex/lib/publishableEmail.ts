@@ -171,6 +171,7 @@ export function duplicateEmailFields<T extends PublishableEmailRow>(
 export interface EditableEmailArgs {
 	name?: string;
 	subject?: string;
+	previewText?: string;
 	content?: string;
 	htmlContent?: string;
 	// text/plain alternative shipped with the html. `plainTextContent` is the
@@ -191,6 +192,7 @@ export interface EditableEmailArgs {
 export interface EditableEmailPatch {
 	name?: string;
 	subject?: string;
+	previewText?: string;
 	content?: string;
 	htmlContent?: string;
 	plainTextContent?: string;
@@ -211,11 +213,13 @@ export interface EditableEmailPatch {
  * The update arguments that change what the rendered HTML and text/plain body
  * are built from, or that carry client-rendered output the server replaces
  * with its own render. `subject` is one: each translation's HTML entry falls
- * back to the default subject.
+ * back to the default subject. `previewText` is rendered into the HTML as its
+ * hidden preheader.
  */
 const RENDER_INPUTS = [
 	'content',
 	'subject',
+	'previewText',
 	'htmlContent',
 	'htmlTranslations',
 	'plainTextContent',
@@ -272,6 +276,7 @@ export async function buildEditablePatch(
 
 	if (args.name !== undefined) patch.name = args.name.trim();
 	if (args.subject !== undefined) patch.subject = args.subject.trim();
+	if (args.previewText !== undefined) patch.previewText = args.previewText.trim();
 	// Text-block HTML is sanitized on every write (lib/emailContentSanitize.ts).
 	if (args.content !== undefined) patch.content = sanitizeStoredBlocksJson(args.content);
 
@@ -306,6 +311,7 @@ export async function buildEditablePatch(
 			{
 				content: patch.content ?? row.content,
 				subject: patch.subject ?? row.subject,
+				previewText: patch.previewText ?? row.previewText,
 				translations: patch.translations ?? row.translations,
 				supportedLanguages: patch.supportedLanguages ?? row.supportedLanguages,
 				defaultLanguage: patch.defaultLanguage ?? row.defaultLanguage,
@@ -353,7 +359,12 @@ export async function buildEditablePatch(
 type TranslationRenderInputs = Partial<
 	Pick<
 		RenderablePublishableEmail,
-		'content' | 'subject' | 'translations' | 'supportedLanguages' | 'defaultLanguage'
+		| 'content'
+		| 'subject'
+		| 'previewText'
+		| 'translations'
+		| 'supportedLanguages'
+		| 'defaultLanguage'
 	>
 >;
 
@@ -384,6 +395,7 @@ export async function withRenderedTranslations<P extends TranslationRenderInputs
 		{
 			content: patch.content ?? row.content,
 			subject: patch.subject ?? row.subject,
+			previewText: patch.previewText ?? row.previewText,
 			translations: patch.translations ?? row.translations,
 			supportedLanguages: patch.supportedLanguages ?? row.supportedLanguages,
 			defaultLanguage: patch.defaultLanguage ?? row.defaultLanguage,

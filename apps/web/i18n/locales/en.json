@@ -4348,6 +4348,7 @@
 					"attachments": "the attachments",
 					"name": "the name",
 					"plainText": "the plain-text version",
+					"previewText": "the preview text",
 					"subject": "the subject",
 					"unsubscribe": "the unsubscribe setting"
 				},

@@ -198,6 +198,7 @@ export const templateTables = {
 		name: v.string(),
 		slug: v.string(), // Unique identifier, used for API identification
 		subject: v.string(),
+		previewText: v.optional(v.string()), // Preview text shown in inbox, as on `emailTemplates`
 		content: v.string(), // JSON string for editor state
 		htmlContent: v.optional(v.string()), // Rendered HTML for sending
 		// text/plain alternative + author override, exactly as on `emailTemplates`.
@@ -233,8 +234,8 @@ export const templateTables = {
 		// Available translation language codes (e.g., ["en", "de", "fr"])
 		supportedLanguages: v.optional(v.array(v.string())),
 		// Translations keyed by language code (JSON string)
-		// Structure: { "de": { "subject": "...", "blocks": {...} }, ... }
-		// Default language content is stored in main subject/content fields
+		// Structure: { "de": { "subject": "...", "previewText": "...", "blocks": {...} }, ... }
+		// Default language content is stored in main subject/previewText/content fields
 		translations: v.optional(v.string()),
 		// Pre-rendered HTML translations keyed by language code (JSON string)
 		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }

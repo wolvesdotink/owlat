@@ -293,10 +293,11 @@ export async function insertEmailTemplate(
 	const name = args.name.trim();
 	const subject = args.subject?.trim() ?? '';
 	const searchableText = buildSearchableText(name, subject);
+	const previewText = args.previewText?.trim();
 	const content = sanitizeStoredBlocksJson(args.content ?? '[]');
 	const rendered = args.render
 		? renderForWrite(
-				{ content, subject, defaultLanguage, supportedLanguages: [defaultLanguage] },
+				{ content, subject, previewText, defaultLanguage, supportedLanguages: [defaultLanguage] },
 				'personalization',
 				await loadEmailTheme(ctx)
 			)
@@ -305,7 +306,7 @@ export async function insertEmailTemplate(
 	const templateId = await ctx.db.insert('emailTemplates', {
 		name,
 		subject,
-		previewText: args.previewText?.trim(),
+		previewText,
 		content,
 		...(rendered
 			? { htmlContent: rendered.html, plainTextContent: rendered.plainTextContent }

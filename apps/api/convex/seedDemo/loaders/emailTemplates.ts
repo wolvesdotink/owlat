@@ -47,7 +47,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 		}
 		const content = sanitizeStoredBlocksJson(rec.content);
 		const rendered = renderPublishableEmail(
-			{ content, subject: rec.subject },
+			{ content, subject: rec.subject, previewText: rec.previewText },
 			'personalization',
 			theme
 		);

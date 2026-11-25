@@ -103,7 +103,6 @@ export const update = authedMutation({
 				variableType: 'personalization',
 				searchableFields: ['name', 'subject'],
 			})),
-			...(args.previewText !== undefined && { previewText: args.previewText.trim() }),
 		};
 
 		await ctx.db.patch(args.templateId, updates);

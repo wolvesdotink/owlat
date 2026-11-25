@@ -192,6 +192,7 @@ export const update = transactionalMutation({
 		name: v.optional(v.string()),
 		slug: v.optional(v.string()),
 		subject: v.optional(v.string()),
+		previewText: v.optional(v.string()),
 		content: v.optional(v.string()),
 		// Accepted for older clients and ignored: the server renders the HTML
 		// from the stored blocks (lib/publishableEmail.ts buildEditablePatch).

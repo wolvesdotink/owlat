@@ -56,6 +56,7 @@ export async function insertShareLink(ctx: MutationCtx, args: ShareLinkTarget, c
 		htmlContent = email.htmlContent;
 		rendererVersion = email.rendererVersion;
 		subject = email.subject;
+		previewText = email.previewText;
 	}
 
 	const token = nanoid(24);

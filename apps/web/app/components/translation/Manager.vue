@@ -145,8 +145,8 @@ const translatableRows = computed((): TranslatableRow[] => {
 		label: t('components.translation.manager.subjectLine'),
 	});
 
-	// Preview text (marketing only)
-	if (props.emailType === 'marketing' && 'previewText' in email.value && email.value.previewText) {
+	// Preview text, when the email has one
+	if (email.value.previewText) {
 		rows.push({
 			id: '_previewText',
 			fieldType: 'previewText',

@@ -4,6 +4,8 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { createTestTransactionalEmail } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { composeForSend } from '../delivery/sendComposition';
+import { selectSendContent } from '../transactional/dispatchContent';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -23,6 +25,14 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 const modules = import.meta.glob('../**/*.*s');
+
+// The renderer's hidden preheader: the first hidden div of the body.
+const preheaderOf = (html: string | undefined) =>
+	/<body[^>]*><div style="display:none[^"]*">([^<]*)<\/div>/.exec(html ?? '')?.[1];
+
+const ORDER_CONTENT = JSON.stringify([
+	{ id: 'b1', type: 'text', content: { html: '<p>Thanks for your order</p>' } },
+]);
 
 // ============ transactionalEmails.create ============
 
@@ -274,6 +284,38 @@ describe('transactionalEmails.update', () => {
 			expect(email!.subject).toBe('New Subject');
 			expect(email!.content).toBe('[]');
 		});
+	});
+
+	it('renders the preview text as the hidden preheader, personalized at send and escaped once', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({ slug: 'order-preview', content: ORDER_CONTENT })
+			)
+		);
+
+		await t.mutation(api.transactional.emails.update, {
+			id: emailId,
+			previewText: "Order {{orderId|'soon'}} & your receipt",
+		});
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email!.previewText).toBe("Order {{orderId|'soon'}} & your receipt");
+		expect(preheaderOf(email!.htmlContent)).toBe(
+			'Order {{orderId|&#39;soon&#39;}} &amp; your receipt'
+		);
+		// A hidden preheader has no place in the text/plain part.
+		expect(email!.plainTextContent).not.toContain('receipt');
+
+		const compose = (dataVariables: Record<string, unknown>) =>
+			composeForSend({
+				kind: 'transactional',
+				template: { subject: email!.subject, htmlContent: email!.htmlContent! },
+				dataVariables,
+			}).html;
+		expect(preheaderOf(compose({ orderId: '<42>' }))).toBe('Order &lt;42&gt; &amp; your receipt');
+		expect(preheaderOf(compose({}))).toBe('Order soon &amp; your receipt');
 	});
 
 	it('should validate slug uniqueness on slug change', async () => {
@@ -1244,6 +1286,54 @@ describe('transactionalEmails.updateTranslation', () => {
 			expect(translations.de.subject).toBe('Willkommen');
 			expect(translations.de.blocks['b1'].html).toBe('Neu');
 		});
+	});
+
+	it("sends a language's own preview text, and the default one where a language has none", async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					slug: 'i18n-preview',
+					content: ORDER_CONTENT,
+					previewText: 'Your order {{orderId}}',
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de', 'fr'],
+					translations: JSON.stringify({
+						de: { subject: 'Hallo', blocks: {} },
+						fr: { subject: 'Bonjour', blocks: {} },
+					}),
+				})
+			)
+		);
+
+		await t.mutation(api.transactional.translations.updateTranslation, {
+			id: emailId,
+			language: 'de',
+			previewText: ' Deine Bestellung {{orderId}} ',
+		});
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(JSON.parse(email!.translations!).de.previewText).toBe('Deine Bestellung {{orderId}}');
+		const preheaderFor = (language: string) => {
+			const content = selectSendContent(email!, language, undefined);
+			return preheaderOf(
+				composeForSend({
+					kind: 'transactional',
+					template: { subject: content.subject, htmlContent: content.html },
+					dataVariables: { orderId: 'A-7' },
+				}).html
+			);
+		};
+		expect(preheaderFor('de')).toBe('Deine Bestellung A-7');
+		expect(preheaderFor('fr')).toBe('Your order A-7');
+		expect(preheaderFor('en')).toBe('Your order A-7');
+
+		const resolved = await t.query(api.transactional.translations.getForLanguage, {
+			id: emailId,
+			language: 'de',
+		});
+		expect(resolved?.previewText).toBe('Deine Bestellung {{orderId}}');
 	});
 
 	it('should update main subject for default language', async () => {

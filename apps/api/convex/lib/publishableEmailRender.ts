@@ -27,6 +27,13 @@ export type PublishableEmailVariableType = 'personalization' | 'data';
 export type RenderablePublishableEmail = {
 	content: string;
 	subject: string;
+	/**
+	 * The inbox preview line, rendered as the hidden preheader at the top of the
+	 * body. Its `{{name}}` tokens stay in the stored HTML, escaped like a block's,
+	 * so the send personalizes them with the body and the missing-variable check
+	 * and the content scan read them there. Never part of the text/plain body.
+	 */
+	previewText?: string;
 	translations?: string;
 	supportedLanguages?: string[];
 	defaultLanguage?: string;
@@ -83,6 +90,7 @@ export function renderPublishableEmail(
 		theme,
 		lang: row.defaultLanguage,
 		assetBaseUrl,
+		preheaderText: row.previewText,
 	});
 	// The text/plain body tracks the blocks exactly as the html does — EXCEPT
 	// when the author wrote their own, which a render must not clobber.
@@ -109,7 +117,14 @@ export function renderPublishableEmail(
 				translationsObj[lang] = {
 					htmlContent: renderEmailHtml(
 						translatedBlocks as unknown as Parameters<typeof renderEmailHtml>[0],
-						{ variableType, theme, lang, assetBaseUrl }
+						{
+							variableType,
+							theme,
+							lang,
+							assetBaseUrl,
+							// Like the subject, a language without its own preview text keeps the default's.
+							preheaderText: langTranslation.previewText ?? row.previewText,
+						}
 					),
 					subject: langTranslation.subject ?? row.subject,
 				};

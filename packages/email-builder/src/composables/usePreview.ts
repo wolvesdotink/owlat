@@ -54,6 +54,11 @@ export interface UsePreviewOptions {
 	renderOptions?: Ref<Partial<PreviewRenderOptions>>;
 	/** Available variables (for default preview values via their labels) */
 	variables?: Ref<Variable[]> | ComputedRef<Variable[]>;
+	/**
+	 * The email's own preview text: the preheader unless the render options set
+	 * one, as the send renders it from the stored email.
+	 */
+	previewText?: Ref<string | undefined> | ComputedRef<string | undefined>;
 }
 
 export interface UsePreviewReturn {
@@ -120,6 +125,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		showMandatoryUnsubscribeFooter,
 		renderOptions,
 		variables,
+		previewText,
 	} = options;
 
 	const previewMode = ref<PreviewMode>('edit');
@@ -184,7 +190,8 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		if (opts.minify !== undefined) merged.minify = opts.minify;
 		if (opts.validationLevel !== undefined) merged.validationLevel = opts.validationLevel;
 		if (opts.title !== undefined) merged.title = opts.title;
-		if (opts.preheaderText !== undefined) merged.preheaderText = opts.preheaderText;
+		const preheaderText = opts.preheaderText ?? previewText?.value;
+		if (preheaderText !== undefined) merged.preheaderText = preheaderText;
 		if (opts.lang !== undefined) merged.lang = opts.lang;
 		if (opts.direction !== undefined) merged.direction = opts.direction;
 
