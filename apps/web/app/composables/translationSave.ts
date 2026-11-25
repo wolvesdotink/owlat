@@ -33,7 +33,17 @@ export interface TranslationOverlay {
 export type TranslationField =
 	| { kind: 'subject' }
 	| { kind: 'previewText' }
-	| { kind: 'block'; blockId: string; property: keyof TranslatableBlockContent };
+	| { kind: 'block'; blockId: string; property: BlockTextProperty }
+	| { kind: 'blockEntry'; blockId: string; map: BlockTextMap; key: string };
+
+/** The overlay fields that hold one string per block. */
+export type BlockTextProperty = 'html' | 'buttonText' | 'alt';
+
+/**
+ * The overlay fields that hold several strings per block: positional text
+ * keyed by its source text, and accordion titles keyed by section id.
+ */
+export type BlockTextMap = 'texts' | 'sectionTitles';
 
 /** One cell's new value. */
 export interface TranslationFieldEdit {
@@ -86,7 +96,12 @@ export function readOverlayField(
 	if (!overlay) return '';
 	if (field.kind === 'subject') return overlay.subject ?? '';
 	if (field.kind === 'previewText') return overlay.previewText ?? '';
-	return overlay.blocks?.[field.blockId]?.[field.property] ?? '';
+	const block = overlay.blocks?.[field.blockId];
+	if (field.kind === 'block') return block?.[field.property] ?? '';
+	const entries = block?.[field.map];
+	return entries && Object.prototype.hasOwnProperty.call(entries, field.key)
+		? (entries[field.key] ?? '')
+		: '';
 }
 
 /** A copy of `overlay` with the edits applied; the input is left untouched. */
@@ -95,8 +110,13 @@ function applyEdits(
 	edits: readonly TranslationFieldEdit[]
 ): TranslationOverlay {
 	const blocks: Record<string, TranslatableBlockContent> = {};
-	for (const [blockId, text] of Object.entries(overlay?.blocks ?? {}))
-		blocks[blockId] = { ...text };
+	for (const [blockId, text] of Object.entries(overlay?.blocks ?? {})) {
+		blocks[blockId] = {
+			...text,
+			...(text.texts && { texts: { ...text.texts } }),
+			...(text.sectionTitles && { sectionTitles: { ...text.sectionTitles } }),
+		};
+	}
 	const next: TranslationOverlay = {
 		subject: overlay?.subject ?? '',
 		...(overlay?.previewText !== undefined ? { previewText: overlay.previewText } : {}),
@@ -105,7 +125,13 @@ function applyEdits(
 	for (const { field, value } of edits) {
 		if (field.kind === 'subject') next.subject = value;
 		else if (field.kind === 'previewText') next.previewText = value;
-		else next.blocks[field.blockId] = { ...next.blocks[field.blockId], [field.property]: value };
+		else if (field.kind === 'block') {
+			next.blocks[field.blockId] = { ...next.blocks[field.blockId], [field.property]: value };
+		} else {
+			const block = { ...next.blocks[field.blockId] };
+			block[field.map] = { ...block[field.map], [field.key]: value };
+			next.blocks[field.blockId] = block;
+		}
 	}
 	return next;
 }

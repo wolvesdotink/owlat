@@ -18,11 +18,13 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type { FunctionReturnType } from 'convex/server';
 import { createTestEmailTemplate } from './factories';
+import { composeForSend } from '../delivery/sendComposition';
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session mock — copy of the chat.integration.test.ts pattern so we can
@@ -310,6 +312,63 @@ describe('emailTemplates.update — audit + behavior', () => {
 		// Remove it again → count decrements.
 		await t.mutation(api.emailTemplates.emails.update, { templateId, linkedBlockIds: [] });
 		expect((await t.run((ctx) => ctx.db.get(blockId)))?.usageCount).toBe(0);
+	});
+});
+
+describe('emailTemplates.update — preview text', () => {
+	// The renderer's hidden preheader: the first hidden div of the body.
+	const preheaderOf = (html: string | undefined) =>
+		/<body[^>]*><div style="display:none[^"]*">([^<]*)<\/div>/.exec(html ?? '')?.[1];
+
+	it('renders the preview text as the hidden preheader of every language a campaign sends', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			status: 'draft',
+			content: CONTENT_EN,
+			supportedLanguages: ['en', 'de'],
+			defaultLanguage: 'en',
+			translations: JSON.stringify({
+				de: { subject: 'Hallo', previewText: 'Hallo {{firstName}}', blocks: {} },
+			}),
+		});
+
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			previewText: "  Hi {{firstName|'there'}} & welcome  ",
+		});
+
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		expect(row?.previewText).toBe("Hi {{firstName|'there'}} & welcome");
+		expect(preheaderOf(row?.htmlContent)).toBe('Hi {{firstName|&#39;there&#39;}} &amp; welcome');
+		expect(row?.plainTextContent).not.toContain('welcome');
+
+		const translated = JSON.parse(row!.htmlTranslations!) as Record<
+			string,
+			{ htmlContent: string }
+		>;
+		expect(preheaderOf(translated['de']?.htmlContent)).toBe('Hallo {{firstName}}');
+
+		// A campaign send personalizes the stored HTML; the value is escaped once.
+		const composed = composeForSend({
+			kind: 'campaign',
+			template: { subject: row!.subject, htmlContent: row!.htmlContent! },
+			contactInfo: { contactId: 'c1' as Id<'contacts'>, email: 'a@example.com', firstName: 'A<b>' },
+			audienceType: 'topic',
+			emailSendId: 's1' as Id<'emailSends'>,
+		});
+		expect(preheaderOf(composed.html)).toBe('Hi A&lt;b&gt; &amp; welcome');
+	});
+
+	it('renders no preheader for an empty preview text', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, { status: 'draft', content: CONTENT_EN });
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, previewText: '   ' });
+
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		expect(row?.previewText).toBe('');
+		expect(row?.htmlContent).toBeDefined();
+		expect(preheaderOf(row?.htmlContent)).toBeUndefined();
 	});
 });
 
@@ -702,6 +761,25 @@ describe('emailTemplates.i18n — translations CRUD', () => {
 // ============================================================================
 
 describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body not wiped', () => {
+	it('promoting a language without its own preview text renders no preheader for it', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			status: 'draft',
+			subject: 'English subject',
+			previewText: 'English preview',
+			content: CONTENT_EN,
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({ de: { subject: 'Deutscher Betreff', blocks: {} } }),
+		});
+
+		await t.mutation(api.emailTemplates.i18n.setDefaultLanguage, { templateId, language: 'de' });
+
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		expect(row?.previewText).toBeUndefined();
+		expect(row?.htmlContent).not.toContain('English preview');
+	});
+
 	it('promotes the German overlay to default, preserves English as a round-trippable overlay', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, {
@@ -882,5 +960,167 @@ describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body
 		expect(translations['de']).toBeUndefined();
 		expect(translations['en'].subject).toBe('English subject');
 		expect(translations['en'].blocks['b1']?.html).toBe('Hello world');
+	});
+});
+
+// ============================================================================
+// list — every sort runs on the server, before pagination
+// ============================================================================
+
+describe('emailTemplates.list — sorted pages', () => {
+	const PAGE_SIZE = 10;
+	const START = Date.UTC(2026, 0, 1);
+	// Mixed case and an accent: an index on the raw name would put "Zebra"
+	// before "apple" and "Émile" after everything.
+	const NAMES = [
+		'Zebra',
+		'apple',
+		'Émile',
+		...Array.from(
+			{ length: 22 },
+			(_, i) => `${i % 2 ? 'Template' : 'template'} ${String((i * 7) % 22).padStart(2, '0')}`
+		),
+	];
+	const byName = new Intl.Collator('en', { sensitivity: 'base' }).compare;
+
+	interface Seeded {
+		id: Id<'emailTemplates'>;
+		name: string;
+		type: 'marketing' | 'transactional';
+		createdAt: number;
+		updatedAt: number;
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// One template per name, a second apart, every fourth one transactional;
+	// then the first five created are edited, so the update order differs from
+	// the creation order.
+	async function seed(t: TestConvex<typeof schema>): Promise<Seeded[]> {
+		vi.useFakeTimers({ toFake: ['Date'], now: START });
+		const seeded: Seeded[] = [];
+		for (const [i, name] of NAMES.entries()) {
+			vi.setSystemTime(START + i * 1000);
+			const type = i % 4 === 3 ? 'transactional' : 'marketing';
+			const id = await t.mutation(api.emailTemplates.emails.create, { name, type });
+			seeded.push({ id, name, type, createdAt: START + i * 1000, updatedAt: START + i * 1000 });
+		}
+		for (const [i, row] of seeded.slice(0, 5).entries()) {
+			const at = START + (NAMES.length + i) * 1000;
+			vi.setSystemTime(at);
+			await t.mutation(api.emailTemplates.emails.update, { templateId: row.id, subject: 'Edited' });
+			row.updatedAt = at;
+		}
+		return seeded;
+	}
+
+	async function walk(
+		t: TestConvex<typeof schema>,
+		args: {
+			sortBy: 'updatedAt' | 'createdAt' | 'name';
+			sortOrder: 'asc' | 'desc';
+			type?: 'marketing';
+		}
+	): Promise<{ first: string[]; all: string[] }> {
+		const pages: string[][] = [];
+		let cursor: string | null = null;
+		for (;;) {
+			const result: FunctionReturnType<typeof api.emailTemplates.emails.list> = await t.query(
+				api.emailTemplates.emails.list,
+				{ ...args, paginationOpts: { numItems: PAGE_SIZE, cursor } }
+			);
+			pages.push(result.page.map((row) => row.name));
+			if (result.isDone) break;
+			cursor = result.continueCursor;
+		}
+		return { first: pages[0] ?? [], all: pages.flat() };
+	}
+
+	const SORTS = [
+		{
+			sortBy: 'updatedAt',
+			sortOrder: 'desc',
+			compare: (a: Seeded, b: Seeded) => b.updatedAt - a.updatedAt,
+		},
+		{
+			sortBy: 'updatedAt',
+			sortOrder: 'asc',
+			compare: (a: Seeded, b: Seeded) => a.updatedAt - b.updatedAt,
+		},
+		{
+			sortBy: 'createdAt',
+			sortOrder: 'desc',
+			compare: (a: Seeded, b: Seeded) => b.createdAt - a.createdAt,
+		},
+		{
+			sortBy: 'createdAt',
+			sortOrder: 'asc',
+			compare: (a: Seeded, b: Seeded) => a.createdAt - b.createdAt,
+		},
+		{ sortBy: 'name', sortOrder: 'asc', compare: (a: Seeded, b: Seeded) => byName(a.name, b.name) },
+		{
+			sortBy: 'name',
+			sortOrder: 'desc',
+			compare: (a: Seeded, b: Seeded) => byName(b.name, a.name),
+		},
+	] as const;
+
+	it.each(SORTS)(
+		'serves the true first page and every later one by $sortBy $sortOrder',
+		async ({ sortBy, sortOrder, compare }) => {
+			const t = convexTest(schema, modules);
+			const seeded = await seed(t);
+			const expected = [...seeded].sort(compare).map((row) => row.name);
+
+			const { first, all } = await walk(t, { sortBy, sortOrder });
+
+			expect(seeded.length).toBeGreaterThan(PAGE_SIZE);
+			expect(first).toEqual(expected.slice(0, PAGE_SIZE));
+			expect(all).toEqual(expected);
+		}
+	);
+
+	it.each(SORTS)(
+		'sorts one template type by $sortBy $sortOrder',
+		async ({ sortBy, sortOrder, compare }) => {
+			const t = convexTest(schema, modules);
+			const seeded = await seed(t);
+			const expected = seeded
+				.filter((row) => row.type === 'marketing')
+				.sort(compare)
+				.map((row) => row.name);
+
+			const { first, all } = await walk(t, { sortBy, sortOrder, type: 'marketing' });
+
+			expect(expected.length).toBeGreaterThan(PAGE_SIZE);
+			expect(first).toEqual(expected.slice(0, PAGE_SIZE));
+			expect(all).toEqual(expected);
+		}
+	);
+
+	it('reports the name sort ready only when no live template lacks its key', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		expect(await t.query(api.emailTemplates.emails.isNameSortReady, {})).toBe(true);
+
+		// A template in Recently deleted is not listed, so it does not count.
+		await seedTemplate(t, { deletedAt: 1, deletedBy: 'user-alice' });
+		expect(await t.query(api.emailTemplates.emails.isNameSortReady, {})).toBe(true);
+
+		await seedTemplate(t, { name: 'Older' });
+		expect(await t.query(api.emailTemplates.emails.isNameSortReady, {})).toBe(false);
+	});
+
+	it('sorts a renamed template under its new name', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		const zebra = seeded.find((row) => row.name === 'Zebra')!;
+		await t.mutation(api.emailTemplates.emails.update, { templateId: zebra.id, name: 'aardvark' });
+
+		const { first } = await walk(t, { sortBy: 'name', sortOrder: 'asc' });
+
+		expect(first.slice(0, 2)).toEqual(['aardvark', 'apple']);
 	});
 });

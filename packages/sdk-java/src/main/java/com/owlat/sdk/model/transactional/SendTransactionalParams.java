@@ -116,6 +116,10 @@ public class SendTransactionalParams {
          * primitive, so numeric and boolean variables are sent as JSON
          * numbers/booleans rather than quoted strings.
          *
+         * <p>A variable that feeds a repeated block is a {@link List} of at
+         * most 500 entries, each a primitive or a {@link Map} of primitives;
+         * the block reads an entry's fields as {@code {{item.field}}}.
+         *
          * @param dataVariables map of variable name to value
          * @return this builder
          */

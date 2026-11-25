@@ -15,6 +15,8 @@ import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.status.SendingHoldLift;
+import com.owlat.sdk.model.template.TransactionalEmail;
+import com.owlat.sdk.model.template.TransactionalEmailWriteOptions;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.topic.Topic;
@@ -55,6 +57,7 @@ class ResourceHttpTest {
     private volatile String query;
     private volatile String body;
     private volatile String authorization;
+    private volatile String ifMatch;
     // Response the handler returns (data shape varies: object vs array).
     private volatile String responseBody = "{\"data\":{}}";
 
@@ -76,6 +79,7 @@ class ResourceHttpTest {
         rawPath = exchange.getRequestURI().getRawPath();
         query = exchange.getRequestURI().getRawQuery();
         authorization = exchange.getRequestHeaders().getFirst("Authorization");
+        ifMatch = exchange.getRequestHeaders().getFirst("If-Match");
         body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
 
         byte[] out = responseBody.getBytes(StandardCharsets.UTF_8);
@@ -143,6 +147,45 @@ class ResourceHttpTest {
         assertTrue(query.contains("limit=10"), query);
         assertTrue(query.contains("cursor=c1"), query);
         assertTrue(query.contains("search=ann"), query);
+    }
+
+    // ── transactional emails ────────────────────────────────────────────────
+
+    private static final String EMAIL_JSON = "{\"id\":\"k57t\",\"slug\":\"order confirmation\",\"name\":\"Order\","
+            + "\"status\":\"published\",\"subject\":\"Hi\",\"defaultLanguage\":\"en\",\"languages\":[\"en\"],"
+            + "\"revision\":4,\"publishedAt\":null,\"createdAt\":\"2026-01-01T00:00:00.000Z\","
+            + "\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"blocks\":[{\"id\":\"b1\",\"type\":\"text\","
+            + "\"content\":{\"html\":\"<p>Hi</p>\",\"fontSize\":14}}],\"translations\":{},"
+            + "\"dataVariablesSchema\":{\"orderNumber\":\"string\"},\"showUnsubscribe\":false}";
+
+    @Test
+    void transactionalEmailUpsertSendsTheRevisionAsIfMatchAndWhilePublishedInTheQuery() throws IOException {
+        responseBody = "{\"data\":" + EMAIL_JSON + "}";
+        TransactionalEmail email = client().transactionalEmails().get("order confirmation");
+        assertEquals("/api/v1/transactional-emails/order%20confirmation", rawPath);
+
+        responseBody = "{\"data\":{\"email\":" + EMAIL_JSON + ",\"issues\":[]}}";
+        client().transactionalEmails().upsert(email.getSlug(), email.toInput(),
+                TransactionalEmailWriteOptions.ifRevision(email.getRevision()).whilePublished());
+        assertEquals("PUT", method);
+        assertEquals("/api/v1/transactional-emails/order%20confirmation", rawPath);
+        assertEquals("whilePublished=true", query);
+        assertEquals("\"4\"", ifMatch);
+
+        // The read is the export: the body carries the editable fields as read.
+        JsonNode sent = JsonMapper.instance().readTree(body);
+        assertEquals(14, sent.at("/blocks/0/content/fontSize").asInt());
+        assertEquals("string", sent.at("/dataVariablesSchema/orderNumber").asText());
+        assertTrue(sent.path("revision").isMissingNode());
+    }
+
+    @Test
+    void transactionalEmailUpsertWithoutOptionsSendsNoIfMatchAndNoQuery() {
+        responseBody = "{\"data\":{\"email\":" + EMAIL_JSON + ",\"issues\":[]}}";
+        client().transactionalEmails().upsert("order", com.owlat.sdk.model.template.TransactionalEmailInput
+                .builder("Order").build());
+        assertNull(ifMatch);
+        assertNull(query);
     }
 
     // ── topics ──────────────────────────────────────────────────────────────

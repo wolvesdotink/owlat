@@ -131,7 +131,14 @@ export async function activePresence(
 /** The fields each editor shares next to its blocks. */
 export const TARGET_FIELDS: Record<CoeditTarget['type'], readonly CoeditField[]> = {
 	emailTemplate: ['name', 'subject', 'plainTextOverride'],
-	transactionalEmail: ['name', 'subject', 'plainTextOverride', 'attachments', 'showUnsubscribe'],
+	transactionalEmail: [
+		'name',
+		'subject',
+		'previewText',
+		'plainTextOverride',
+		'attachments',
+		'showUnsubscribe',
+	],
 };
 
 function parseAttachments(json: string | undefined): unknown[] {
@@ -157,6 +164,7 @@ export function rowFields(target: CoeditTarget, row: CoeditRow): Record<string, 
 		const email = row as Doc<'transactionalEmails'>;
 		fields['attachments'] = parseAttachments(email.attachments);
 		fields['showUnsubscribe'] = email.showUnsubscribe ?? false;
+		fields['previewText'] = email.previewText ?? '';
 	}
 	return fields;
 }
@@ -166,6 +174,7 @@ export function isValidFieldValue(field: CoeditField, value: unknown): boolean {
 	switch (field) {
 		case 'name':
 		case 'subject':
+		case 'previewText':
 		case 'plainTextOverride':
 			return typeof value === 'string';
 		case 'attachments':

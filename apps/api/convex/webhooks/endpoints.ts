@@ -7,8 +7,8 @@ import { randomToken } from '../lib/randomToken';
 import { recordAuditLog } from '../lib/auditLog';
 import { subscribableWebhookEventValidator } from './events';
 import { test as testEventModule } from './events/test';
-import { isDisallowedIpAddress } from '../lib/ipBlocklist';
 import { enqueueWebhookDelivery } from './deliveryAttempts';
+import { assertValidWebhookUrl } from './urlPolicy';
 import type { Doc } from '../_generated/dataModel';
 
 /**
@@ -24,38 +24,6 @@ function stripWebhookSecret({
 	...rest
 }: Doc<'webhooks'>): Omit<Doc<'webhooks'>, 'secret'> {
 	return rest;
-}
-
-function isDisallowedWebhookHost(hostname: string): boolean {
-	const host = hostname.toLowerCase();
-	// Hostname-only rules first (the v8 runtime can't do DNS), then the shared
-	// literal-IP blocklist so this can't diverge from lib/ssrfGuard.
-	if (host === 'localhost' || host.endsWith('.local')) {
-		return true;
-	}
-	return isDisallowedIpAddress(host);
-}
-
-/**
- * Validate a webhook destination URL: must be a well-formed http(s) URL whose
- * host is not localhost / a *.local name / a disallowed literal IP. Throws an
- * invalid-input error on any failure. Shared by create + update so the SSRF
- * front-door check can't drift between the two mutations. The caller passes the
- * already-trimmed string.
- */
-function assertValidWebhookUrl(url: string): void {
-	let parsedUrl: URL;
-	try {
-		parsedUrl = new URL(url);
-	} catch {
-		throwInvalidInput('Invalid webhook URL format');
-	}
-	if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-		throwInvalidInput('Webhook URL must use HTTP or HTTPS protocol');
-	}
-	if (isDisallowedWebhookHost(parsedUrl.hostname)) {
-		throwInvalidInput('Webhook URL host is not allowed');
-	}
 }
 
 // ============ QUERIES ============
@@ -133,7 +101,7 @@ export const create = authedMutation({
 		if (!url.trim()) {
 			throwInvalidInput('Webhook URL is required');
 		}
-		assertValidWebhookUrl(url);
+		assertValidWebhookUrl(url.trim(), events);
 
 		// Validate events
 		if (events.length === 0) {
@@ -213,7 +181,6 @@ export const update = authedMutation({
 			if (!url.trim()) {
 				throwInvalidInput('Webhook URL is required');
 			}
-			assertValidWebhookUrl(url);
 			updates['url'] = url.trim();
 		}
 
@@ -223,6 +190,11 @@ export const update = authedMutation({
 				throwInvalidInput('At least one event must be selected');
 			}
 			updates['events'] = events;
+		}
+		// The stored half of the pair counts too: subscribing an http webhook to
+		// alerts is refused like giving an alert webhook an http URL.
+		if (url !== undefined || events !== undefined) {
+			assertValidWebhookUrl(url?.trim() ?? webhook.url, events ?? webhook.events);
 		}
 
 		await ctx.db.patch(webhookId, updates);

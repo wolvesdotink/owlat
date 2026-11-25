@@ -22,6 +22,7 @@ export type {
 	DividerBlockContent,
 	SpacerBlockContent,
 	ColumnItem,
+	ColumnCount,
 	ColumnRatio,
 	ColumnStyle,
 	ColumnsBlockContent,
