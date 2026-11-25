@@ -284,9 +284,11 @@ a partial publish completes it.
 One-time setup, done by a maintainer with owner rights on npm:
 
 1. Create the `owlat` organization on npmjs.com if it does not exist.
-2. Create a granular access token that may publish `@owlat/provider-kit` and
-   `@owlat/plugin-kit` (scope `@owlat`, read and write), and store it as the
-   repository secret `NPM_TOKEN`.
+2. Create a granular access token with **Read and write** for the `@owlat`
+   scope under **Packages and scopes**, and turn on **Bypass two-factor
+   authentication**: the job publishes unattended, and npm refuses a publish
+   that asks for a one-time password. Store it as the repository secret
+   `NPM_TOKEN`.
 
 Without the secret the job fails with a pointer to this section. The GitHub
 Release, the images and the aliases are already out at that point; set the

@@ -39,23 +39,36 @@ docs walks through every step.
 `;
 }
 
+const OWLAT_SCOPE = '@owlat/';
+
 function standaloneBundlingSection(packageName: PluginPackageName): string {
+	// The default name is in the Owlat project's own npm scope, which an author
+	// cannot publish to; `add` on a workspace package suggests the same rename.
+	const ownedScope = !packageName.startsWith(OWLAT_SCOPE);
+	const publishedName = ownedScope
+		? packageName
+		: `@your-scope/${packageName.slice(OWLAT_SCOPE.length)}`;
+	const rename = ownedScope ? '' : `npm pkg set name=${publishedName}\n`;
+	const renameNote = ownedScope
+		? ''
+		: ` The \`@owlat\` scope belongs to the Owlat project: replace \`@your-scope\`
+with an npm scope you can publish to.`;
 	return `## Bundling it into a deployment
 
 Codegen bundles a plugin only when it is installed from a package registry and
 pinned in \`bun.lock\`. Publish this package from its own folder. Delete
-\`"private": true\` first: a registry refuses a private package.
+\`"private": true\` first: a registry refuses a private package.${renameNote}
 
 \`\`\`sh
-npm pkg delete private
+${rename}npm pkg delete private
 bun publish --access public
 \`\`\`
 
 Then, from the root of the Owlat checkout that builds your deployment:
 
 \`\`\`sh
-bun add --exact ${packageName}@0.0.0
-${CLI_INVOCATION} add ${packageName}
+bun add --exact ${publishedName}@0.0.0
+${CLI_INVOCATION} add ${publishedName}
 bun run plugins:codegen
 \`\`\`
 

@@ -25,6 +25,11 @@ export function cleanPackageLegalFiles(packageRoot: string = pluginKitRoot): voi
 }
 
 if (import.meta.main) {
+	// Staging and cleaning in the repository root would delete its own LICENSE
+	// and NOTICE, which are the copies every package stages from.
+	if (resolve(process.cwd()) === repositoryRoot) {
+		throw new Error('Run packageLegalFiles.ts from a package directory, not the repository root');
+	}
 	const action = process.argv[2];
 	if (action === 'stage') stagePackageLegalFiles(process.cwd());
 	else if (action === 'clean') cleanPackageLegalFiles(process.cwd());

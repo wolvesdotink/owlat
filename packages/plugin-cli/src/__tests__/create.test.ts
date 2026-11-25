@@ -211,7 +211,9 @@ describe('runCreate', () => {
 			}
 			const readme = await readFile(join(dir, 'README.md'), 'utf8');
 			expect(readme).toContain('bun publish --access public');
-			expect(readme).toContain('bun add --exact @owlat/plugin-hello-owlat@0.0.0');
+			// The default name is in the Owlat scope, so the README renames it first.
+			expect(readme).toContain('npm pkg set name=@your-scope/plugin-hello-owlat');
+			expect(readme).toContain('bun add --exact @your-scope/plugin-hello-owlat@0.0.0');
 			expect(lines.at(-1)).toContain('run `bun install` in it first');
 		});
 
