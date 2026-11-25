@@ -101,6 +101,12 @@ describe('0077_backfill_template_name_sort_key', () => {
 		expect((await ledger())?.cursor).toBe(cursor);
 
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		expect(await ledger()).toMatchObject({ status: 'completed', changedCount: PAGE_SIZE + 1 });
+		// Two pages in all: the resumed walk did not start over.
+		expect(await ledger()).toMatchObject({
+			status: 'completed',
+			changedCount: PAGE_SIZE + 1,
+			scannedCount: PAGE_SIZE + 1,
+			pageCount: 2,
+		});
 	});
 });
