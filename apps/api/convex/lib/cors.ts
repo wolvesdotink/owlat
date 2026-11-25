@@ -71,7 +71,9 @@ export function corsHeaders(
 	return {
 		'Access-Control-Allow-Origin': resolveOrigin(requestOrigin ?? null),
 		'Access-Control-Allow-Methods': methods,
-		'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
+		'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key, If-Match',
+		// A template read answers its revision as an ETag for the next If-Match.
+		'Access-Control-Expose-Headers': 'ETag',
 		'Access-Control-Allow-Credentials': 'true',
 		Vary: 'Origin',
 	};

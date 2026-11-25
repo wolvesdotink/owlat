@@ -1816,14 +1816,20 @@ import type * as providers_composition from '../providers/composition.js';
 import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
+import type * as publicApi_blockSchemaHttp from '../publicApi/blockSchemaHttp.js';
 import type * as publicApi_domains from '../publicApi/domains.js';
 import type * as publicApi_domainsHttp from '../publicApi/domainsHttp.js';
 import type * as publicApi_events from '../publicApi/events.js';
 import type * as publicApi_limitsHttp from '../publicApi/limitsHttp.js';
 import type * as publicApi_openApiHttp from '../publicApi/openApiHttp.js';
+import type * as publicApi_savedBlocks from '../publicApi/savedBlocks.js';
+import type * as publicApi_savedBlocksHttp from '../publicApi/savedBlocksHttp.js';
 import type * as publicApi_status from '../publicApi/status.js';
 import type * as publicApi_statusHttp from '../publicApi/statusHttp.js';
+import type * as publicApi_templateContent from '../publicApi/templateContent.js';
 import type * as publicApi_topics from '../publicApi/topics.js';
+import type * as publicApi_transactionalEmails from '../publicApi/transactionalEmails.js';
+import type * as publicApi_transactionalEmailsHttp from '../publicApi/transactionalEmailsHttp.js';
 import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
@@ -1971,6 +1977,7 @@ import type * as transactional_attachmentIntake from '../transactional/attachmen
 import type * as transactional_dispatch from '../transactional/dispatch.js';
 import type * as transactional_dispatchContent from '../transactional/dispatchContent.js';
 import type * as transactional_dispatchDecision from '../transactional/dispatchDecision.js';
+import type * as transactional_editing from '../transactional/editing.js';
 import type * as transactional_emails from '../transactional/emails.js';
 import type * as transactional_lifecycle from '../transactional/lifecycle.js';
 import type * as transactional_lifecycleReducer from '../transactional/lifecycleReducer.js';
@@ -4092,14 +4099,20 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedback': typeof providers_feedback;
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
+	'publicApi/blockSchemaHttp': typeof publicApi_blockSchemaHttp;
 	'publicApi/domains': typeof publicApi_domains;
 	'publicApi/domainsHttp': typeof publicApi_domainsHttp;
 	'publicApi/events': typeof publicApi_events;
 	'publicApi/limitsHttp': typeof publicApi_limitsHttp;
 	'publicApi/openApiHttp': typeof publicApi_openApiHttp;
+	'publicApi/savedBlocks': typeof publicApi_savedBlocks;
+	'publicApi/savedBlocksHttp': typeof publicApi_savedBlocksHttp;
 	'publicApi/status': typeof publicApi_status;
 	'publicApi/statusHttp': typeof publicApi_statusHttp;
+	'publicApi/templateContent': typeof publicApi_templateContent;
 	'publicApi/topics': typeof publicApi_topics;
+	'publicApi/transactionalEmails': typeof publicApi_transactionalEmails;
+	'publicApi/transactionalEmailsHttp': typeof publicApi_transactionalEmailsHttp;
 	'publicApi/v1Http': typeof publicApi_v1Http;
 }> & ApiFromModules<{
 	'push/config': typeof push_config;
@@ -4269,6 +4282,7 @@ declare const fullApi: ApiFromModules<{
 	'transactional/dispatch': typeof transactional_dispatch;
 	'transactional/dispatchContent': typeof transactional_dispatchContent;
 	'transactional/dispatchDecision': typeof transactional_dispatchDecision;
+	'transactional/editing': typeof transactional_editing;
 	'transactional/emails': typeof transactional_emails;
 	'transactional/lifecycle': typeof transactional_lifecycle;
 	'transactional/lifecycleReducer': typeof transactional_lifecycleReducer;

@@ -13,6 +13,7 @@ export * from './domainSetup';
 export * from './errorReasons';
 export * from './sendLimits';
 export * from './sendList';
+export * from './templateTypes';
 export * from './topicList';
 export * from './webhookEvents';
 // ── Shared envelopes and values ─────────────────────────────────────────────

@@ -234,6 +234,20 @@ for (SendingDomainSetup domain : owlat.domains().list()) {
 }
 ```
 
+### Templates
+
+Transactional emails and saved blocks: read, write and publish. Reads need the
+`templates:read` scope, writes `templates:write`. A read is the export, and
+`toInput()` gives what `upsert` takes.
+
+```java
+TransactionalEmail email = owlat.transactionalEmails().get("order-confirmation");
+owlat.transactionalEmails().upsert(email.getSlug(), email.toInput(),
+        TransactionalEmailWriteOptions.ifRevision(email.getRevision()).whilePublished());
+owlat.transactionalEmails().publish("order-confirmation");
+CursorPaginatedResponse<SavedBlockSummary> savedBlocks = owlat.savedBlocks().list();
+```
+
 ## Error Handling
 
 All exceptions extend `OwlatException` (unchecked) and include the HTTP status code and rate limit info.

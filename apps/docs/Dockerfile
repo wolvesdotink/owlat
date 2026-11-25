@@ -39,6 +39,8 @@ COPY packages/shared/ ../../packages/shared/
 COPY packages/mail-message/ ../../packages/mail-message/
 COPY packages/mail-canon/ ../../packages/mail-canon/
 COPY packages/ui/ ../../packages/ui/
+# The block content schema is published as a static file at /schemas/blocks.json.
+COPY packages/public-contract/schemas/ ../../packages/public-contract/schemas/
 
 # Generate packages/ui/.nuxt/tsconfig.json (excluded from Docker context by
 # .dockerignore) so Vite's Vue plugin can resolve the layer's tsconfig when

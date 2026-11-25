@@ -35,6 +35,19 @@ import type {
 	transactionalAttachmentSchema,
 	transactionalSendStatusSchema,
 } from '../transactional';
+import type {
+	contentIssueSchema,
+	createTransactionalEmailRequestSchema,
+	putTransactionalEmailRequestSchema,
+	savedBlockRequestSchema,
+	savedBlockSchema,
+	savedBlockSummarySchema,
+	savedBlockUpdateRequestSchema,
+	savedBlockWriteResultSchema,
+	transactionalEmailSchema,
+	transactionalEmailSummarySchema,
+	transactionalEmailWriteResultSchema,
+} from '../templates';
 import type * as T from '../types';
 import type {
 	deliverabilityAlertRaisedWebhookSchema,
@@ -84,6 +97,19 @@ describe('schema and type agreement', () => {
 		>().toEqualTypeOf<T.CursorPaginationMeta>();
 		expectTypeOf<z.output<typeof apiErrorResponseSchema>>().toEqualTypeOf<T.ApiErrorResponse>();
 		expectTypeOf<z.output<typeof jsonPrimitiveSchema>>().toEqualTypeOf<T.JsonPrimitive>();
+		expectTypeOf<
+			z.output<typeof transactionalEmailSummarySchema>
+		>().toEqualTypeOf<T.TransactionalEmailSummary>();
+		expectTypeOf<z.output<typeof transactionalEmailSchema>>().toEqualTypeOf<T.TransactionalEmail>();
+		expectTypeOf<
+			z.output<typeof transactionalEmailWriteResultSchema>
+		>().toEqualTypeOf<T.TransactionalEmailWriteResult>();
+		expectTypeOf<z.output<typeof contentIssueSchema>>().toEqualTypeOf<T.ContentIssue>();
+		expectTypeOf<z.output<typeof savedBlockSummarySchema>>().toEqualTypeOf<T.SavedBlockSummary>();
+		expectTypeOf<z.output<typeof savedBlockSchema>>().toEqualTypeOf<T.SavedBlock>();
+		expectTypeOf<
+			z.output<typeof savedBlockWriteResultSchema>
+		>().toEqualTypeOf<T.SavedBlockWriteResult>();
 	});
 
 	it('requests agree with their types', () => {
@@ -105,6 +131,18 @@ describe('schema and type agreement', () => {
 		expectTypeOf<
 			RequestAgrees<T.AddContactToTopicRequest, typeof addContactToTopicRequestSchema>
 		>().toEqualTypeOf<true>();
+		expectTypeOf<
+			RequestAgrees<T.CreateTransactionalEmailRequest, typeof createTransactionalEmailRequestSchema>
+		>().toEqualTypeOf<true>();
+		expectTypeOf<
+			RequestAgrees<T.PutTransactionalEmailRequest, typeof putTransactionalEmailRequestSchema>
+		>().toEqualTypeOf<true>();
+		expectTypeOf<
+			RequestAgrees<T.SavedBlockInput, typeof savedBlockRequestSchema>
+		>().toEqualTypeOf<true>();
+		expectTypeOf<
+			RequestAgrees<T.SavedBlockInput, typeof savedBlockUpdateRequestSchema>
+		>().toEqualTypeOf<true>();
 	});
 
 	it('template variables hold primitives and flat lists, event properties primitives only', () => {
@@ -120,6 +158,11 @@ describe('schema and type agreement', () => {
 		expectTypeOf<{ list: string[][] }>().not.toExtend<Variables>();
 		expectTypeOf<{ nested: { a: string } }>().not.toExtend<Properties>();
 		expectTypeOf<{ list: number[] }>().not.toExtend<Properties>();
+	});
+
+	it('a read transactional email is accepted as a write: the export is the import', () => {
+		expectTypeOf<T.TransactionalEmail>().toExtend<T.PutTransactionalEmailRequest>();
+		expectTypeOf<T.SavedBlock>().toExtend<T.SavedBlockInput>();
 	});
 
 	it('a contact source includes inbound', () => {
