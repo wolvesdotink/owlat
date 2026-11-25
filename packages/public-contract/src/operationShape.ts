@@ -21,7 +21,8 @@ export type PublicApiScope =
 	| 'transactional:send'
 	| 'topics:write'
 	| 'topics:read'
-	| 'status:read';
+	| 'status:read'
+	| 'domains:verify';
 
 /** The `scope` of an operation every authenticated key may call, whatever its scopes. */
 export const ANY_KEY = 'any_key';

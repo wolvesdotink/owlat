@@ -21,7 +21,7 @@ import {
 	deleteContactResponseSchema,
 	updateContactRequestSchema,
 } from './contacts';
-import { sendingDomainSetupListSchema } from './domains';
+import { domainCheckRequestSchema, sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { sendLimitsSchema } from './limits';
 import { deliveryStatusSchema } from './status';
@@ -39,6 +39,7 @@ import {
 import { ERROR_REASON_STATUS } from './errors';
 import {
 	API_KEY_ERROR_REASONS,
+	DOMAIN_CHECK_REFUSAL_REASONS,
 	SEND_LIST_MAX_WINDOW_DAYS,
 	TRANSACTIONAL_REFUSAL_REASONS,
 	WRITE_REFUSAL_REASONS,
@@ -398,6 +399,33 @@ export const PUBLIC_OPERATIONS = [
 		},
 		errors: [],
 		reasons: [],
+	},
+	{
+		operationId: 'verifyDomain',
+		method: 'POST',
+		path: '/api/v1/domains/{domain}/verify',
+		tag: 'Domains',
+		summary:
+			'Ask for a fresh DNS check of one sending domain, at most once a minute per domain. The check runs in the background: poll `GET /api/v1/domains` until `lastCheckedAt` is at or after `requestedAt`.',
+		scope: 'domains:verify',
+		pathParameters: [
+			{
+				name: 'domain',
+				description: 'The domain name, or its `id` from `GET /api/v1/domains`.',
+			},
+		],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 202,
+			description: 'The check is queued.',
+			name: 'DomainCheckRequest',
+			data: domainCheckRequestSchema,
+			paginated: false,
+		},
+		errors: [404, 409, 422],
+		reasons: [...DOMAIN_CHECK_REFUSAL_REASONS, ...WRITE_REFUSAL_REASONS],
 	},
 	{
 		operationId: 'getLimits',

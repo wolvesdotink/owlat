@@ -29,8 +29,8 @@ interface RecipientQuery {
 
 /**
  * The pair the query names, null when it names none, or the refusal. An empty
- * `email` is refused like the send list's; an empty template selector counts
- * as absent, as in the send body.
+ * `email` is refused like the send list's; next to an address, an empty
+ * template selector counts as absent, as in the send body.
  */
 function readRecipientQuery(
 	params: URLSearchParams
@@ -40,7 +40,8 @@ function readRecipientQuery(
 	const slug = params.get('slug') || null;
 	const hasTemplate = transactionalId !== null || slug !== null;
 	if (rawEmail === null) {
-		if (!hasTemplate) return { ok: true, value: null };
+		// A selector sent empty still asked for a pair, so it is refused too.
+		if (!params.has('transactionalId') && !params.has('slug')) return { ok: true, value: null };
 		return { ok: false, message: 'email is required with a template', field: 'email' };
 	}
 	const email = normalizeEmail(rawEmail);

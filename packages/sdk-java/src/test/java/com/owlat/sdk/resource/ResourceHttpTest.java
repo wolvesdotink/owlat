@@ -9,6 +9,7 @@ import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.DomainCheckRequest;
 import com.owlat.sdk.model.domain.SendingDomainRecord;
 import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
@@ -296,6 +297,19 @@ class ResourceHttpTest {
         assertEquals(10, record.getPriority());
         assertEquals("wrong", record.getState());
         assertEquals("10 mx.example.net", record.getFoundValue());
+    }
+
+    @Test
+    void domainsVerifyPostsToTheDomainsCheckRoute() {
+        responseBody = "{\"data\":{\"id\":\"d1\",\"domain\":\"news.example.com\",\"status\":\"failed\","
+                + "\"lastCheckedAt\":null,\"requestedAt\":\"2026-11-23T15:30:00.000Z\"}}";
+        DomainCheckRequest request = client().domains().verify("news.example.com");
+        assertEquals("POST", method);
+        assertEquals("/api/v1/domains/news.example.com/verify", rawPath);
+        assertEquals("", body);
+        assertEquals("failed", request.getStatus());
+        assertNull(request.getLastCheckedAt());
+        assertEquals("2026-11-23T15:30:00.000Z", request.getRequestedAt());
     }
 
     // ── status ──────────────────────────────────────────────────────────────

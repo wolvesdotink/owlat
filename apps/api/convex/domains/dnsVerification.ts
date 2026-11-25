@@ -45,6 +45,9 @@ import {
 import { checkReverseDns, normalizeHost } from './reverseDns';
 import type { ReverseDnsResult } from './reverseDns';
 import { recordVerificationPass } from './verificationPass';
+import type { VerificationOutcome } from './lifecycle';
+import type { Doc } from '../_generated/dataModel';
+import type { ActionCtx } from '../_generated/server';
 
 // The verifier's record/result shapes are the PERSISTED ones, derived from the
 // validators the lifecycle checks `recordVerification` against. Re-spelling them
@@ -342,6 +345,42 @@ export async function runDnsLookups(
 // ─── Public verifier action ─────────────────────────────────────────────────
 
 /**
+ * The check behind Verify: the DNS lookups, the verdict landed through the
+ * lifecycle, and, once that landed, the coexisting relay identity of an
+ * own-MTA domain verified against its own records and provider verdict. The
+ * dashboard's Verify and a check requested over the API
+ * (`requestedVerification.ts`) both run it.
+ */
+export async function checkSendingDomain(
+	ctx: ActionCtx,
+	domain: Doc<'domains'>
+): Promise<{ outcome: VerificationOutcome; results: VerificationResults }> {
+	const results = await runDnsLookups(domain.domain, domain.dnsRecords);
+	const outcome = await recordVerificationPass(ctx, domain, results);
+	if (!outcome.ok) return { outcome, results };
+
+	// Never borrow the primary domain's status or DNS proof for the relay
+	// identity. The gate is the sanctioned own-vs-not-own identity, read from
+	// the domain-provider registry, not `providerType !== 'ses'`, which would
+	// name the RELAY rather than the rule and so have to be re-read every time
+	// a second relay kind lands. Same rows either way: the only writers of an
+	// SES sibling with DNS records are the ordinary lifecycle (SES-primary
+	// domains, excluded by both) and the relay provisioning pair, which
+	// provisions own-MTA-primary domains and nothing else. Legacy rows that
+	// never recorded a `providerType` are INCLUDED, exactly as `!== 'ses'`
+	// included them — see `isOwnPrimarySendingDomain`, which owns that reading.
+	const sesIdentity = await ctx.runQuery(internal.domains.queries.getSesIdentity, {
+		domainId: domain._id,
+	});
+	if (isOwnPrimarySendingDomain(domain.providerType) && sesIdentity?.dnsRecords) {
+		await ctx.runAction(internal.domains.sesRelayVerification.refreshSesRelayIdentity, {
+			domainId: domain._id,
+		});
+	}
+	return { outcome, results };
+}
+
+/**
  * Run DNS lookups + the per-provider check, then call
  * `lifecycle.recordVerification` to land the status transition. Returns the
  * synchronous result for the FE: `allVerified` when the check proved every
@@ -375,34 +414,10 @@ export const verifyDomain = authedAction({
 			throwInvalidState('Domain is still being registered. Please wait a moment and try again.');
 		}
 
-		const results = await runDnsLookups(domain.domain, domain.dnsRecords);
-		const outcome = await recordVerificationPass(ctx, domain, results);
+		const { outcome, results } = await checkSendingDomain(ctx, domain);
 
 		if (!outcome.ok) {
 			throwInternal(`Verification failed: ${outcome.reason}`);
-		}
-
-		// A domain whose PRIMARY provider is our own MTA may also carry a
-		// coexisting relay identity. Verify that identity against its own records
-		// and provider verdict; never borrow the primary domain's status or DNS
-		// proof.
-		//
-		// The gate is the sanctioned own-vs-not-own identity, read from the
-		// domain-provider registry, not `providerType !== 'ses'`, which would name
-		// the RELAY rather than the rule and so have to be re-read every time a
-		// second relay kind lands. Same rows either way: the only writers of an SES
-		// sibling with DNS records are the ordinary lifecycle (SES-primary domains,
-		// excluded by both) and the relay provisioning pair, which provisions
-		// own-MTA-primary domains and nothing else. Legacy rows that never recorded
-		// a `providerType` are INCLUDED, exactly as `!== 'ses'` included them — see
-		// `isOwnPrimarySendingDomain`, which owns that reading.
-		const sesIdentity = await ctx.runQuery(internal.domains.queries.getSesIdentity, {
-			domainId: args.domainId,
-		});
-		if (isOwnPrimarySendingDomain(domain.providerType) && sesIdentity?.dnsRecords) {
-			await ctx.runAction(internal.domains.sesRelayVerification.refreshSesRelayIdentity, {
-				domainId: args.domainId,
-			});
 		}
 
 		return {

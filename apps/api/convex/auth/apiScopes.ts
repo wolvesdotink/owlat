@@ -37,6 +37,7 @@ export const ENDPOINT_SCOPES = [
 	'topics:write',
 	'topics:read',
 	'status:read',
+	'domains:verify',
 ] as const;
 
 /**

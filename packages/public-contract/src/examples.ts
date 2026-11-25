@@ -16,6 +16,7 @@ import type {
 	ApiResponse,
 	Contact,
 	DeliveryStatus,
+	DomainCheckRequest,
 	CreateContactRequest,
 	DeleteContactResponse,
 	HealthStatus,
@@ -288,6 +289,17 @@ export const OPERATION_EXAMPLES = {
 				},
 			],
 		} satisfies ApiResponse<SendingDomainSetup[]>,
+	},
+	verifyDomain: {
+		response: {
+			data: {
+				id: 'k57d0ma1n00000000000000000000',
+				domain: 'news.example.com',
+				status: 'failed',
+				lastCheckedAt: '2026-11-21T07:30:00.000Z',
+				requestedAt: '2026-11-23T15:30:00.000Z',
+			},
+		} satisfies ApiResponse<DomainCheckRequest>,
 	},
 	getLimits: {
 		response: {

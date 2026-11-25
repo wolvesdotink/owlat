@@ -234,6 +234,14 @@ for (SendingDomainSetup domain : owlat.domains().list()) {
 }
 ```
 
+After publishing records, ask for a fresh check and poll the list until it has
+run. This needs the `domains:verify` scope; one check per domain per minute.
+
+```java
+DomainCheckRequest check = owlat.domains().verify("news.example.com");
+String requestedAt = check.getRequestedAt();
+```
+
 ## Error Handling
 
 All exceptions extend `OwlatException` (unchecked) and include the HTTP status code and rate limit info.

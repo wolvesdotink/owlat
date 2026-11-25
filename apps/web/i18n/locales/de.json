@@ -10824,6 +10824,7 @@
 							"contact": "Einen Kontakt lesen, aktualisieren oder löschen",
 							"contacts": "Kontakte auflisten oder anlegen",
 							"domains": "Versanddomains und die DNS-Einträge, die jede braucht",
+							"domainVerify": "Eine neue DNS-Prüfung einer Versanddomain anfordern",
 							"events": "Eigene Ereignisse erfassen",
 							"health": "Statusprüfung",
 							"limits": "Die Sendelimits dieses Schlüssels und was davon übrig ist",
@@ -10928,6 +10929,10 @@
 							"contactsWrite": {
 								"description": "Kontakte anlegen, aktualisieren und löschen.",
 								"label": "Kontakte — schreiben"
+							},
+							"domainsVerify": {
+								"description": "Eine neue DNS-Prüfung einer Versanddomain anfordern, die ihren Verifizierungsstatus ändern kann.",
+								"label": "Domains — prüfen"
 							},
 							"eventsWrite": {
 								"description": "Ereignisse einspielen, die Automationen auslösen können.",

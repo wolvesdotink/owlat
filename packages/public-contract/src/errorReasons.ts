@@ -57,5 +57,22 @@ export const WRITE_REFUSAL_REASONS = ['workspace_deletion_in_progress'] as const
 /** Why a write was refused whatever it wrote. */
 export type WriteRefusalReason = (typeof WRITE_REFUSAL_REASONS)[number];
 
+/**
+ * Why `POST /api/v1/domains/{domain}/verify` refused a check: the domain was
+ * checked less than a minute ago, or it is still being registered and has no
+ * records to check yet.
+ */
+export const DOMAIN_CHECK_REFUSAL_REASONS = [
+	'domain_check_rate_limited',
+	'domain_registering',
+] as const;
+
+/** Why a requested domain check was refused. */
+export type DomainCheckRefusalReason = (typeof DOMAIN_CHECK_REFUSAL_REASONS)[number];
+
 /** Every `error.data.reason` the contract declares. */
-export type ApiErrorReason = ApiKeyErrorReason | TransactionalRefusalReason | WriteRefusalReason;
+export type ApiErrorReason =
+	| ApiKeyErrorReason
+	| TransactionalRefusalReason
+	| WriteRefusalReason
+	| DomainCheckRefusalReason;

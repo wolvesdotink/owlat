@@ -45,6 +45,7 @@ export type {
 	// Domains
 	DnsRecordPurpose,
 	DnsRecordState,
+	DomainCheckRequest,
 	DnsRecordType,
 	SendingDomainRecord,
 	SendingDomainSetup,

@@ -19,6 +19,7 @@ import com.owlat.sdk.model.contact.Contact;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.DeleteContactResponse;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.DomainCheckRequest;
 import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.event.SendEventResponse;
@@ -159,6 +160,8 @@ class OpenApiContractTest {
                 owlat -> owlat.limits().get(GetLimitsParams.bySlug("ada@example.com", "password-reset")),
                 type(SendLimits.class), false));
         calls.put("getStatus", new Call(owlat -> owlat.status().get(), type(DeliveryStatus.class), false));
+        calls.put("verifyDomain", new Call(
+                owlat -> owlat.domains().verify("news.example.com"), type(DomainCheckRequest.class), false));
         calls.put("listDomains", new Call(
                 owlat -> owlat.domains().list(),
                 mapper -> mapper.getTypeFactory().constructCollectionType(List.class, SendingDomainSetup.class),

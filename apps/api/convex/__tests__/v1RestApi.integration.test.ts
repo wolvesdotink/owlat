@@ -35,6 +35,7 @@ import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
 import { listDomains } from '../publicApi/domainsHttp';
+import { verifyDomain } from '../publicApi/domainCheckHttp';
 import { getLimits } from '../publicApi/limitsHttp';
 import { rateLimiter } from '../lib/rateLimiter';
 import {
@@ -122,6 +123,7 @@ const ALL_SCOPES = [
 	'topics:write',
 	'topics:read',
 	'status:read',
+	'domains:verify',
 ];
 
 function setupTest() {
@@ -2276,6 +2278,9 @@ describe('GET /api/v1/limits?email=…&slug=… (one template and one address)',
 		['an address without a template', { email: 'ada@example.com' }, 'slug'],
 		['a slug without an address', { slug: 'password-reset' }, 'email'],
 		['a template ID without an address', { transactionalId: 'abc' }, 'email'],
+		['an empty slug without an address', { slug: '' }, 'email'],
+		['an empty template ID without an address', { transactionalId: '' }, 'email'],
+		['an address with an empty slug', { email: 'ada@example.com', slug: '' }, 'slug'],
 		['an empty address', { email: '', slug: 'password-reset' }, 'email'],
 		['a malformed address', { email: 'not-an-address', slug: 'password-reset' }, 'email'],
 	])('400 invalid_input naming the parameter for %s', async (_label, query, field) => {
@@ -3401,6 +3406,210 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 	});
 });
 
+// ─── POST /api/v1/domains/{domain}/verify ─────────────────────────────────────
+
+describe('POST /api/v1/domains/{domain}/verify (verifyDomain → domains:verify)', () => {
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const CHECKED_AT = Date.UTC(2026, 10, 21, 7, 30, 0);
+	const CHECK_JOB = 'domains/requestedVerification:verifyRequested';
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedDomain(
+		t: ReturnType<typeof convexTest>,
+		domain: string,
+		fields: Record<string, unknown> = {}
+	): Promise<Id<'domains'>> {
+		return await t.run(
+			async (ctx) =>
+				await ctx.db.insert('domains', {
+					domain,
+					status: 'pending',
+					providerType: 'mta',
+					dnsRecords: {
+						spf: { type: 'TXT', host: '@', value: 'v=spf1 include:spf.owlat.example ~all' },
+					},
+					lastVerifiedAt: CHECKED_AT,
+					createdAt: CHECKED_AT,
+					updatedAt: CHECKED_AT,
+					...fields,
+				} as never)
+		);
+	}
+
+	function verify(t: ReturnType<typeof convexTest>, key: string, domain: string) {
+		return t.fetch(`/api/v1/domains/${domain}/verify`, {
+			method: 'POST',
+			headers: authHeaders(key),
+		});
+	}
+
+	/** The checks scheduled so far, each with the domain it is for. */
+	async function scheduledChecks(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect())
+				.filter((job) => job.name === CHECK_JOB)
+				.map((job) => job.args[0] as { domainId: string })
+		);
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const res = await t.fetch('/api/v1/domains/mail.example.com/verify', { method: 'POST' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that can read the domains but not check them, and schedules nothing', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'domains:verify')
+		);
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'domains:verify' });
+		expectDocumentedReason('verifyDomain', res, body, 'missing_scope');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('202 and a check scheduled, named by the domain or by its id', async () => {
+		const t = setupTest();
+		const id = await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+
+		const res = await verify(t, key, 'Mail.Example.com');
+		await expectContractSuccess('verifyDomain', res);
+		expect((await res.json()).data).toEqual({
+			id,
+			domain: 'mail.example.com',
+			status: 'pending',
+			lastCheckedAt: new Date(CHECKED_AT).toISOString(),
+			requestedAt: new Date(NOW).toISOString(),
+		});
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }]);
+
+		vi.setSystemTime(NOW + 2 * 60_000);
+		const byId = await verify(t, key, id);
+		expect(byId.status).toBe(202);
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }, { domainId: id }]);
+	});
+
+	it('429 with Retry-After for a second check of one domain within the minute, and none scheduled', async () => {
+		const t = setupTest();
+		const id = await seedDomain(t, 'mail.example.com');
+		const other = await seedDomain(t, 'news.example.com');
+		const key = await seedKey(t, ['domains:verify'], `first${'a'.repeat(40)}`);
+		const otherKey = await seedKey(t, ['domains:verify'], `second${'a'.repeat(40)}`);
+		expect((await verify(t, key, 'mail.example.com')).status).toBe(202);
+
+		vi.setSystemTime(NOW + 20_000);
+		// The limit is the domain's, whichever key asks.
+		const refused = await verify(t, otherKey, 'mail.example.com');
+		expect(refused.status).toBe(429);
+		expect(refused.headers.get('Retry-After')).toBe('40');
+		const body = await refused.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error.category).toBe('rate_limited');
+		expectDocumentedReason('verifyDomain', refused, body, 'domain_check_rate_limited');
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }]);
+
+		// Another domain has its own allowance.
+		expect((await verify(t, key, 'news.example.com')).status).toBe(202);
+
+		vi.setSystemTime(NOW + 60_000);
+		expect((await verify(t, key, 'mail.example.com')).status).toBe(202);
+		expect(await scheduledChecks(t)).toEqual([
+			{ domainId: id },
+			{ domainId: other },
+			{ domainId: id },
+		]);
+	});
+
+	it.each([
+		['an unknown domain', 'unknown'],
+		['a malformed id', 'malformed'],
+		['a segment that does not decode', 'undecodable'],
+		['the id of another kind of record', 'contact'],
+		['a removed domain', 'removed'],
+		['a tracking domain, which is not a sending domain', 'tracking'],
+	])('404 not_found for %s, saying nothing else', async (_label, kind) => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		let ref: string;
+		if (kind === 'unknown') ref = 'other.example.com';
+		else if (kind === 'malformed') ref = 'not-a-domain-id';
+		else if (kind === 'undecodable') ref = '%ZZ';
+		else if (kind === 'contact') {
+			ref = await t.run(async (ctx) => await ctx.db.insert('contacts', createTestContact()));
+		} else if (kind === 'removed') {
+			const id = await seedDomain(t, 'old.example.com');
+			await t.run(async (ctx) => await ctx.db.delete(id));
+			ref = id;
+		} else {
+			await t.run(async (ctx) => {
+				await ctx.db.insert('trackingDomains', {
+					domain: 'click.example.com',
+					cnameTarget: 'track.owlat.example',
+					isVerified: false,
+					createdAt: NOW,
+				});
+			});
+			ref = 'click.example.com';
+		}
+		const res = await verify(t, key, ref);
+		expect(res.status).toBe(404);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toEqual({ category: 'not_found', message: 'Domain not found' });
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('409 for a domain still being registered, with nothing published to check', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com', { status: 'registering', dnsRecords: {} });
+		const key = await seedKey(t, ['domains:verify']);
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(409);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'domain_registering');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('422 while the workspace is being deleted, and schedules nothing', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		await t.run((ctx) => openWorkspaceDeletionFence(ctx));
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(422);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'workspace_deletion_in_progress');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('404 for a path that names no check', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		for (const path of [
+			'/api/v1/domains/mail.example.com',
+			'/api/v1/domains/mail.example.com/check',
+		]) {
+			const res = await t.fetch(path, { method: 'POST', headers: authHeaders(key) });
+			expect(res.status).toBe(404);
+		}
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+});
+
 // ─── GET /api/v1/openapi.json ────────────────────────────────────────────────
 
 describe('GET /api/v1/openapi.json (the instance describes its own API)', () => {
@@ -3508,6 +3717,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	listTopics,
 	getStatus,
 	listDomains,
+	verifyDomain,
 	getLimits,
 };
 
