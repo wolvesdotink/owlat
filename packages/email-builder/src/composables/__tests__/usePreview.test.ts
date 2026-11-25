@@ -137,6 +137,27 @@ describe('usePreview', () => {
 		expect(preview.generatedHtml.value).toContain('code Coupon code');
 	});
 
+	it("renders the email's preview text as the preheader unless a render option sets one", async () => {
+		const canvasBlocks = ref<EditorBlock[]>([textBlock('a', 'Body')]);
+		const renderOptions = ref<Partial<PreviewRenderOptions>>({ variableValues: { name: 'Ada' } });
+		const preview = usePreview({
+			canvasBlocks,
+			theme: computed(() => defaultTheme),
+			variableType: computed<VariableType>(() => 'data'),
+			showMandatoryUnsubscribeFooter: computed(() => false),
+			renderOptions,
+			previewText: ref('Hi {{name}}, your receipt'),
+		});
+		preview.togglePreviewMode();
+		expect(preview.generatedHtml.value).toContain('>Hi Ada, your receipt</div>');
+		expect(preview.plainText.value).not.toContain('receipt');
+
+		renderOptions.value = { ...renderOptions.value, preheaderText: 'Override' };
+		await nextTick();
+		expect(preview.generatedHtml.value).toContain('>Override</div>');
+		expect(preview.generatedHtml.value).not.toContain('your receipt');
+	});
+
 	it('toggles back to edit mode', () => {
 		const { preview } = setup();
 		preview.togglePreviewMode();

@@ -62,7 +62,13 @@ export interface EmailCoeditingOptions {
 }
 
 /** The editor fields a session shares (`lib/validators/coediting.ts` on the server). */
-type CoeditFieldName = 'name' | 'subject' | 'plainTextOverride' | 'attachments' | 'showUnsubscribe';
+type CoeditFieldName =
+	| 'name'
+	| 'subject'
+	| 'previewText'
+	| 'plainTextOverride'
+	| 'attachments'
+	| 'showUnsubscribe';
 
 /** How long local edits gather before they are sent. */
 const SEND_DELAY_MS = 250;
@@ -123,6 +129,7 @@ function isSessionFieldValue(name: string, value: unknown): boolean {
 	switch (name as CoeditFieldName) {
 		case 'name':
 		case 'subject':
+		case 'previewText':
 		case 'plainTextOverride':
 			return typeof value === 'string';
 		case 'attachments':

@@ -145,15 +145,13 @@ const translatableRows = computed((): TranslatableRow[] => {
 		label: t('components.translation.manager.subjectLine'),
 	});
 
-	// Preview text (marketing only)
-	if (props.emailType === 'marketing' && 'previewText' in email.value && email.value.previewText) {
-		rows.push({
-			id: '_previewText',
-			fieldType: 'previewText',
-			sourceText: email.value.previewText,
-			label: t('components.translation.manager.previewText'),
-		});
-	}
+	// Preview text, always: a language can have its own while the default is empty.
+	rows.push({
+		id: '_previewText',
+		fieldType: 'previewText',
+		sourceText: email.value.previewText ?? '',
+		label: t('components.translation.manager.previewText'),
+	});
 
 	// Content blocks, at every depth; unreadable content contributes no rows.
 	rows.push(...translationBlockRows(parseStoredBlocks(email.value.content), t));

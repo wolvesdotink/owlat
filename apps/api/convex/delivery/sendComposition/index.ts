@@ -12,6 +12,7 @@
 
 import { brandFooterTextHtml, POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import { htmlToPlainText } from '@owlat/shared/html';
+import { preheaderTextHtml, stripPreheaderHtml } from '@owlat/email-renderer/preheader';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
 import { composeAutomation } from './automation';
@@ -19,7 +20,12 @@ import { composeCampaign } from './campaign';
 import { composeTest } from './test';
 import { composeTransactional } from './transactional';
 import { addressLines, footerText } from './footer';
-import { automationVariables, personalize, withUnsubscribeLink } from './personalization';
+import {
+	automationVariables,
+	personalize,
+	personalizeBody,
+	withUnsubscribeLink,
+} from './personalization';
 import type {
 	ComposeInput,
 	ComposeInputForKind,
@@ -72,7 +78,7 @@ const COMPOSERS = {
  */
 export function composeForSend(input: ComposeInput): ComposeOutput {
 	const composer = COMPOSERS[input.kind] as ComposerFn<typeof input.kind>;
-	const composed = composer(input);
+	const composed = withoutBlankPreheader(composer(input));
 	// The text/plain alternative, in preference order:
 	//  1. the template's `plainTextContent` — the author's manual override, or
 	//     the body generated from the block document at save time. It is
@@ -88,9 +94,13 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	// The footer `transformHtml` appends to the html is appended here too, so a
 	// reader of the text part has the same visible opt-out.
 	const stored = input.template.plainTextContent?.trim();
+	// A transactional text body resolves its conditions and repeats the way
+	// its html does; no other kind stores region markers.
 	const body = stored
-		? personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
-		: htmlToPlainText(composed.html, { preserveBreaks: true });
+		? input.kind === 'transactional'
+			? personalizeBody(stored, bodyVariablesFor(input), { escape: 'plain' }, variablesFor(input))
+			: personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
+		: htmlTextPart(composed.html);
 	const config = composed.transformConfig;
 	const lines = addressLines(config?.senderAddress);
 	const text =
@@ -113,6 +123,28 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	if (!config || !htmlPrintsAddress) return { ...composed, text };
 	const { senderAddress: _printedByTheBody, ...transformConfig } = config;
 	return { ...composed, transformConfig, text };
+}
+
+/**
+ * A preview text whose tokens all resolved empty leaves only the padding: drop
+ * the whole preheader so neither the HTML nor a text part derived from it
+ * carries it.
+ */
+function withoutBlankPreheader<T extends { html: string }>(composed: T): T {
+	const preheader = preheaderTextHtml(composed.html);
+	if (preheader === undefined || htmlToPlainText(preheader) !== '') return composed;
+	return { ...composed, html: stripPreheaderHtml(composed.html) };
+}
+
+/**
+ * The text part derived from the HTML, without the hidden preheader and its
+ * padding. An email with no visible text (images only) gets the preheader line
+ * instead: an empty text part would make the transport derive one from the
+ * whole HTML, padding included.
+ */
+function htmlTextPart(html: string): string {
+	const visible = htmlToPlainText(stripPreheaderHtml(html), { preserveBreaks: true });
+	return visible || htmlToPlainText(preheaderTextHtml(html) ?? '');
 }
 
 /**

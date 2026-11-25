@@ -5,10 +5,11 @@ import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import VariablePlaceholderTag from '../ui/VariablePlaceholderTag.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+import { DEFAULT_ITEM_ALIAS } from '../../utils/blockRepeat';
 
 const { t } = useBuilderI18n();
 
-type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
+type DataVariableType = 'string' | 'number' | 'boolean' | 'date' | 'array';
 
 const props = defineProps<{
 	show: boolean;
@@ -21,6 +22,9 @@ const emit = defineEmits<{
 	(e: 'close'): void;
 	(e: 'create', variable: { key: string; type: DataVariableType }): void;
 }>();
+
+/** How a repeated block reads an entry's field, with the default item alias. */
+const ITEM_FIELD_EXAMPLE = `{{${DEFAULT_ITEM_ALIAS}.field}}`;
 
 const variableKey = ref('');
 const variableType = ref<DataVariableType>('string');
@@ -105,7 +109,11 @@ watch(
 					<option value="number">{{ t('builder.variableDialog.types.number') }}</option>
 					<option value="boolean">{{ t('builder.variableDialog.types.boolean') }}</option>
 					<option value="date">{{ t('builder.variableDialog.types.date') }}</option>
+					<option value="array">{{ t('builder.variableDialog.types.array') }}</option>
 				</select>
+				<p v-if="variableType === 'array'" class="text-xs text-text-tertiary mt-2">
+					{{ t('builder.variableDialog.arrayHint', { example: ITEM_FIELD_EXAMPLE }) }}
+				</p>
 			</div>
 
 			<div

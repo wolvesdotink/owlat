@@ -4556,7 +4556,31 @@
 							"type": "string"
 						},
 						"additionalProperties": {
-							"type": ["string", "number", "boolean", "null"]
+							"anyOf": [
+								{
+									"type": ["string", "number", "boolean", "null"]
+								},
+								{
+									"type": "array",
+									"items": {
+										"anyOf": [
+											{
+												"type": ["string", "number", "boolean", "null"]
+											},
+											{
+												"type": "object",
+												"propertyNames": {
+													"type": "string"
+												},
+												"additionalProperties": {
+													"type": ["string", "number", "boolean", "null"]
+												}
+											}
+										]
+									},
+									"maxItems": 500
+								}
+							]
 						}
 					},
 					"language": {

@@ -2,8 +2,8 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { softDeleteFields } from '../lib/validators/softDelete';
 import {
+	dataVariablesRecord,
 	dataVariablesSchemaValidator,
-	jsonPrimitiveRecord,
 	emailTemplateTypeValidator,
 } from '../lib/convexValidators';
 import { sendStatusValidator } from '../lib/literalValidators';
@@ -209,6 +209,7 @@ export const templateTables = {
 		name: v.string(),
 		slug: v.string(), // Unique identifier, used for API identification
 		subject: v.string(),
+		previewText: v.optional(v.string()), // Preview text shown in inbox, as on `emailTemplates`
 		content: v.string(), // JSON string for editor state
 		htmlContent: v.optional(v.string()), // Rendered HTML for sending
 		// text/plain alternative + author override, exactly as on `emailTemplates`.
@@ -244,8 +245,8 @@ export const templateTables = {
 		// Available translation language codes (e.g., ["en", "de", "fr"])
 		supportedLanguages: v.optional(v.array(v.string())),
 		// Translations keyed by language code (JSON string)
-		// Structure: { "de": { "subject": "...", "blocks": {...} }, ... }
-		// Default language content is stored in main subject/content fields
+		// Structure: { "de": { "subject": "...", "previewText": "...", "blocks": {...} }, ... }
+		// Default language content is stored in main subject/previewText/content fields
 		translations: v.optional(v.string()),
 		// Pre-rendered HTML translations keyed by language code (JSON string)
 		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }
@@ -348,7 +349,7 @@ export const templateTables = {
 		language: v.optional(v.string()),
 		// Data variables that were used for this send. Removed by the retention
 		// sweep once the send is done (`transactional/sendDataRetention.ts`).
-		dataVariables: v.optional(jsonPrimitiveRecord),
+		dataVariables: v.optional(dataVariablesRecord),
 		// What the retention sweep keeps of `dataVariables`: the names, so the
 		// send page can still say what the caller supplied.
 		dataVariableNames: v.optional(v.array(v.string())),

@@ -16,7 +16,7 @@ import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import {
 	assertEditableForPublishableChange,
 	buildEditablePatch,
-	publishedHtml,
+	publishedRender,
 } from '../lib/publishableEmail';
 import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { brandedNewEmailContent } from '../workspaces/brandKit';
@@ -27,7 +27,7 @@ import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 import { scanPublishedEdit } from './lifecycle';
 
 // Data variable type for schema definition
-export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
+export type DataVariableType = 'string' | 'number' | 'boolean' | 'date' | 'array';
 
 /**
  * List all transactional emails for an organization with optional filtering
@@ -192,6 +192,7 @@ export const update = transactionalMutation({
 		name: v.optional(v.string()),
 		slug: v.optional(v.string()),
 		subject: v.optional(v.string()),
+		previewText: v.optional(v.string()),
 		content: v.optional(v.string()),
 		// Accepted for older clients and ignored: the server renders the HTML
 		// from the stored blocks (lib/publishableEmail.ts buildEditablePatch).
@@ -324,10 +325,12 @@ export const publish = transactionalMutation({
 			throwInvalidState('Transactional email is already published');
 		}
 		assertContentRevision(email, args.expectedContentRevision, 'publish');
-		const html = publishedHtml(email, {
+		const { html, plainTextContent } = publishedRender(email, {
 			variableType: 'data',
 			theme: await loadEmailTheme(ctx),
 		});
+		// The text body goes live with the HTML it was rendered beside.
+		if (plainTextContent !== undefined) await ctx.db.patch(args.id, { plainTextContent });
 
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 			emailId: args.id,
@@ -443,7 +446,7 @@ export const updateSchema = transactionalMutation({
 
 		// Validate schema format
 		const schema = args.dataVariablesSchema;
-		const validTypes: DataVariableType[] = ['string', 'number', 'boolean', 'date'];
+		const validTypes: DataVariableType[] = ['string', 'number', 'boolean', 'date', 'array'];
 
 		for (const [key, type] of Object.entries(schema)) {
 			// Validate key format

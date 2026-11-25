@@ -105,7 +105,6 @@ export const update = authedMutation({
 		const updates = {
 			...patch,
 			...(patch.name !== undefined && { nameSortKey: templateNameSortKey(patch.name) }),
-			...(args.previewText !== undefined && { previewText: args.previewText.trim() }),
 		};
 
 		await ctx.db.patch(args.templateId, updates);

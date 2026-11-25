@@ -24,6 +24,7 @@ import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { createTestEmailTemplate } from './factories';
+import { composeForSend } from '../delivery/sendComposition';
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session mock — copy of the chat.integration.test.ts pattern so we can
@@ -311,6 +312,63 @@ describe('emailTemplates.update — audit + behavior', () => {
 		// Remove it again → count decrements.
 		await t.mutation(api.emailTemplates.emails.update, { templateId, linkedBlockIds: [] });
 		expect((await t.run((ctx) => ctx.db.get(blockId)))?.usageCount).toBe(0);
+	});
+});
+
+describe('emailTemplates.update — preview text', () => {
+	// The renderer's hidden preheader: the first hidden div of the body.
+	const preheaderOf = (html: string | undefined) =>
+		/<body[^>]*><div style="display:none[^"]*">([^<]*)<\/div>/.exec(html ?? '')?.[1];
+
+	it('renders the preview text as the hidden preheader of every language a campaign sends', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			status: 'draft',
+			content: CONTENT_EN,
+			supportedLanguages: ['en', 'de'],
+			defaultLanguage: 'en',
+			translations: JSON.stringify({
+				de: { subject: 'Hallo', previewText: 'Hallo {{firstName}}', blocks: {} },
+			}),
+		});
+
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			previewText: "  Hi {{firstName|'there'}} & welcome  ",
+		});
+
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		expect(row?.previewText).toBe("Hi {{firstName|'there'}} & welcome");
+		expect(preheaderOf(row?.htmlContent)).toBe('Hi {{firstName|&#39;there&#39;}} &amp; welcome');
+		expect(row?.plainTextContent).not.toContain('welcome');
+
+		const translated = JSON.parse(row!.htmlTranslations!) as Record<
+			string,
+			{ htmlContent: string }
+		>;
+		expect(preheaderOf(translated['de']?.htmlContent)).toBe('Hallo {{firstName}}');
+
+		// A campaign send personalizes the stored HTML; the value is escaped once.
+		const composed = composeForSend({
+			kind: 'campaign',
+			template: { subject: row!.subject, htmlContent: row!.htmlContent! },
+			contactInfo: { contactId: 'c1' as Id<'contacts'>, email: 'a@example.com', firstName: 'A<b>' },
+			audienceType: 'topic',
+			emailSendId: 's1' as Id<'emailSends'>,
+		});
+		expect(preheaderOf(composed.html)).toBe('Hi A&lt;b&gt; &amp; welcome');
+	});
+
+	it('renders no preheader for an empty preview text', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, { status: 'draft', content: CONTENT_EN });
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, previewText: '   ' });
+
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		expect(row?.previewText).toBe('');
+		expect(row?.htmlContent).toBeDefined();
+		expect(preheaderOf(row?.htmlContent)).toBeUndefined();
 	});
 });
 
@@ -703,6 +761,25 @@ describe('emailTemplates.i18n — translations CRUD', () => {
 // ============================================================================
 
 describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body not wiped', () => {
+	it('promoting a language without its own preview text renders no preheader for it', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			status: 'draft',
+			subject: 'English subject',
+			previewText: 'English preview',
+			content: CONTENT_EN,
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({ de: { subject: 'Deutscher Betreff', blocks: {} } }),
+		});
+
+		await t.mutation(api.emailTemplates.i18n.setDefaultLanguage, { templateId, language: 'de' });
+
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		expect(row?.previewText).toBeUndefined();
+		expect(row?.htmlContent).not.toContain('English preview');
+	});
+
 	it('promotes the German overlay to default, preserves English as a round-trippable overlay', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, {

@@ -26,6 +26,7 @@ const { t } = useI18n();
 const FIELD_KEYS: Record<string, string> = {
 	name: 'components.email.coeditNotices.fields.name',
 	subject: 'components.email.coeditNotices.fields.subject',
+	previewText: 'components.email.coeditNotices.fields.previewText',
 	plainTextOverride: 'components.email.coeditNotices.fields.plainText',
 	attachments: 'components.email.coeditNotices.fields.attachments',
 	showUnsubscribe: 'components.email.coeditNotices.fields.unsubscribe',
