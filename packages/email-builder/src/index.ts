@@ -70,6 +70,7 @@ export type {
 	EmailBuilderHandlers,
 	EmailBuilderProps,
 	EmailBuilderEmits,
+	CreatedVariable,
 	PreviewDevice,
 	PreviewMode,
 	SlashCommand,

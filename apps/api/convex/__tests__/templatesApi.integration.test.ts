@@ -398,6 +398,75 @@ describe('GET and PUT /api/v1/transactional-emails/{slug}', () => {
 		expect(again.revision).toBe(exported.revision + 1);
 	});
 
+	it('keeps the example values through a read and a write back', async () => {
+		const t = setupTest();
+		const { key } = await seedKey(t, READ_WRITE);
+		const examples = {
+			orderNumber: 'A-1001',
+			items: [{ name: 'Notebook', quantity: 2 }],
+		};
+		const withExamples = {
+			...EMAIL,
+			dataVariablesSchema: { orderNumber: 'string', items: 'array' },
+			dataVariableExamples: examples,
+		};
+		const created = await request(
+			t,
+			key,
+			'PUT',
+			'/api/v1/transactional-emails/order',
+			withExamples
+		);
+		await expectContractSuccess('putTransactionalEmail', created);
+
+		const read = await request(t, key, 'GET', '/api/v1/transactional-emails/order');
+		await expectContractSuccess('getTransactionalEmail', read);
+		const exported = (await read.json()).data;
+		expect(exported.dataVariableExamples).toEqual(examples);
+
+		const imported = await request(t, key, 'PUT', '/api/v1/transactional-emails/order', exported);
+		expect((await imported.json()).data.email.dataVariableExamples).toEqual(examples);
+
+		// A write that leaves them out keeps them; an empty object clears them.
+		const { dataVariableExamples: _left, ...withoutExamples } = withExamples;
+		const kept = await request(
+			t,
+			key,
+			'PUT',
+			'/api/v1/transactional-emails/order',
+			withoutExamples
+		);
+		expect((await kept.json()).data.email.dataVariableExamples).toEqual(examples);
+		const cleared = await request(t, key, 'PUT', '/api/v1/transactional-emails/order', {
+			...withExamples,
+			dataVariableExamples: {},
+		});
+		expect((await cleared.json()).data.email.dataVariableExamples).toEqual({});
+		expect((await rowBySlug(t, 'order'))?.dataVariableExamples).toBeUndefined();
+	});
+
+	it('refuses an example that does not match its variable, naming it', async () => {
+		const t = setupTest();
+		const { key } = await seedKey(t, READ_WRITE);
+
+		const mismatched = await request(t, key, 'PUT', '/api/v1/transactional-emails/order', {
+			...EMAIL,
+			dataVariableExamples: { orderNumber: 1001 },
+		});
+		expect(mismatched.status).toBe(400);
+		const body = (await mismatched.json()).error;
+		expect(body.data?.field).toBe('dataVariableExamples.orderNumber');
+		expect(body.message).toContain('must be a string');
+
+		const unknown = await request(t, key, 'PUT', '/api/v1/transactional-emails/order', {
+			...EMAIL,
+			dataVariableExamples: { couponCode: 'SAVE10' },
+		});
+		expect(unknown.status).toBe(400);
+		expect((await unknown.json()).error.data?.field).toBe('dataVariableExamples.couponCode');
+		expect(await rowBySlug(t, 'order')).toBeNull();
+	});
+
 	it('answers 404 for a slug no email has', async () => {
 		const t = setupTest();
 		const { key } = await seedKey(t, READ_WRITE);

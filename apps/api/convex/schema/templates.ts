@@ -3,6 +3,7 @@ import { v } from 'convex/values';
 import { softDeleteFields } from '../lib/validators/softDelete';
 import {
 	dataVariablesRecord,
+	dataVariableExamplesValidator,
 	dataVariablesSchemaValidator,
 	emailTemplateTypeValidator,
 } from '../lib/convexValidators';
@@ -222,6 +223,9 @@ export const templateTables = {
 		// fallback. A variable not listed here that the content uses without a
 		// fallback must be supplied (`transactional/dispatchContent.ts`).
 		optionalDataVariables: v.optional(v.array(v.string())),
+		// Sample values per variable for the editor preview and test sends, never
+		// used by a real send (`@owlat/shared/dataVariableExamples`).
+		dataVariableExamples: v.optional(dataVariableExamplesValidator),
 		// Sends of this template are not held to the per-recipient cap (one fixed
 		// internal address, such as a shop's new-order notification). The per-key
 		// daily cap still applies.

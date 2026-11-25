@@ -1,5 +1,10 @@
 package com.owlat.sdk.model.template;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonRawValue;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 
@@ -7,9 +12,17 @@ import java.util.Map;
  * The editable fields of a transactional email. A write replaces all of them:
  * a field left {@code null} takes its default (no variables, no translations,
  * {@code en}, no unsubscribe link). Fields the API does not carry (sender,
- * attachments, the text/plain override) keep their value.
+ * attachments, the text/plain override) keep their value, and so do the
+ * example values when {@link Builder#dataVariableExamples} is left
+ * {@code null}.
  */
 public class TransactionalEmailInput {
+
+    /**
+     * Writes the example values with their {@code null} fields. The SDK's mapper leaves nulls out,
+     * and a list entry that loses one is a different list to a condition that compares it as JSON.
+     */
+    private static final ObjectMapper EXAMPLES_MAPPER = new ObjectMapper();
 
     private final String slug;
     private final String name;
@@ -17,6 +30,7 @@ public class TransactionalEmailInput {
     private final List<Map<String, Object>> blocks;
     private final Map<String, EmailTranslation> translations;
     private final Map<String, String> dataVariablesSchema;
+    private final Map<String, Object> dataVariableExamples;
     private final String defaultLanguage;
     private final Boolean showUnsubscribe;
 
@@ -27,6 +41,7 @@ public class TransactionalEmailInput {
         this.blocks = builder.blocks;
         this.translations = builder.translations;
         this.dataVariablesSchema = builder.dataVariablesSchema;
+        this.dataVariableExamples = builder.dataVariableExamples;
         this.defaultLanguage = builder.defaultLanguage;
         this.showUnsubscribe = builder.showUnsubscribe;
     }
@@ -56,6 +71,17 @@ public class TransactionalEmailInput {
         return dataVariablesSchema;
     }
 
+    @JsonIgnore
+    public Map<String, Object> getDataVariableExamples() {
+        return dataVariableExamples;
+    }
+
+    @JsonProperty("dataVariableExamples")
+    @JsonRawValue
+    private String dataVariableExamplesJson() throws JsonProcessingException {
+        return dataVariableExamples == null ? null : EXAMPLES_MAPPER.writeValueAsString(dataVariableExamples);
+    }
+
     public String getDefaultLanguage() {
         return defaultLanguage;
     }
@@ -75,6 +101,7 @@ public class TransactionalEmailInput {
         private List<Map<String, Object>> blocks = List.of();
         private Map<String, EmailTranslation> translations;
         private Map<String, String> dataVariablesSchema;
+        private Map<String, Object> dataVariableExamples;
         private String defaultLanguage;
         private Boolean showUnsubscribe;
 
@@ -103,9 +130,20 @@ public class TransactionalEmailInput {
             return this;
         }
 
-        /** Variable name to type: {@code string}, {@code number}, {@code boolean} or {@code date}. */
+        /** Variable name to type: {@code string}, {@code number}, {@code boolean}, {@code date} or {@code array}. */
         public Builder dataVariablesSchema(Map<String, String> dataVariablesSchema) {
             this.dataVariablesSchema = dataVariablesSchema;
+            return this;
+        }
+
+        /**
+         * Variable name to example value, each matching the variable's type: sample data for the
+         * editor preview and test sends, never a real recipient's and never used by a real send.
+         * Left {@code null}, each stored example stays while it still matches its variable's type; an
+         * empty map clears them.
+         */
+        public Builder dataVariableExamples(Map<String, Object> dataVariableExamples) {
+            this.dataVariableExamples = dataVariableExamples;
             return this;
         }
 

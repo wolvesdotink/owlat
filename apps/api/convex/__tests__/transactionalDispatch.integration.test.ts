@@ -1188,6 +1188,31 @@ describe('transactional.dispatch.dispatch — optional variables', () => {
 	});
 });
 
+describe('transactional.dispatch.dispatch — example values', () => {
+	it('refuses a request that leaves out a required variable the template holds an example for', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t, {
+			htmlContent: '<p>Order {{orderNumber}}</p>',
+			dataVariablesSchema: { orderNumber: 'string' },
+		});
+		await t.mutation(api.transactional.sendOptions.setVariableExample, {
+			id: templateId,
+			key: 'orderNumber',
+			example: 'EXAMPLE-1',
+		});
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: {},
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'invalid_variables' });
+		if (outcome.ok) throw new Error('expected refusal');
+		expect(outcome.detail).toContain('"orderNumber"');
+	});
+});
+
 describe('transactional.dispatch.dispatch — block conditions', () => {
 	const conditionalBlocks = JSON.stringify([
 		{
@@ -1267,6 +1292,31 @@ describe('transactional.dispatch.dispatch — block conditions', () => {
 
 		const published = await t.run((ctx) => ctx.db.get(templateId));
 		expect(published?.plainTextContent).toContain('owlat:if');
+	});
+
+	it('decides a condition from the request alone, never from an example value', async () => {
+		const t = newTest();
+		const templateId = await publishConditional(t);
+		await t.mutation(api.transactional.sendOptions.setVariableExample, {
+			id: templateId,
+			key: 'bookingCode',
+			example: 'EXAMPLE-1',
+		});
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: {},
+		});
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}: ${outcome.detail}`);
+		const queued = vi.mocked(transactionalEmailPool.enqueueAction).mock.calls[0]?.[2] as {
+			envelopeInput: Parameters<typeof buildComposeInput>[0];
+		};
+		const sent = composeForSend(buildComposeInput(queued.envelopeInput));
+
+		expect(sent.html).toContain('We will send your booking code later');
+		expect(sent.html).not.toContain('EXAMPLE-1');
+		expect(sent.text).not.toContain('EXAMPLE-1');
 	});
 
 	it('sends the notExists block and does not require a variable only the dropped block uses', async () => {

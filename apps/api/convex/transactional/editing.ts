@@ -8,6 +8,11 @@
  */
 
 import { isValidSlug } from '@owlat/shared';
+import {
+	dataVariableExamplesFault,
+	examplesForSchema,
+	type DataVariableExamples,
+} from '@owlat/shared/dataVariableExamples';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -33,12 +38,42 @@ import { scanPublishedEdit } from './lifecycle';
 export interface TransactionalEmailEdit extends EditableEmailArgs {
 	slug?: string;
 	dataVariablesSchema?: Doc<'transactionalEmails'>['dataVariablesSchema'];
+	/**
+	 * Every variable's example, replacing the stored ones. Left out, each stored
+	 * example stays while it still matches its variable's type.
+	 */
+	dataVariableExamples?: Doc<'transactionalEmails'>['dataVariableExamples'];
 	showUnsubscribe?: boolean;
 	attachments?: string;
 	/** Allow editing publishable content on a `published` row. */
 	forceWhilePublished?: boolean;
 	/** Refuse the write with `conflict` when the row's revision moved on. */
 	expectedContentRevision?: number;
+}
+
+/**
+ * The examples to store beside `schema`. Given ones replace the stored ones
+ * and are refused, naming the variable, when one does not fit; left out, each
+ * stored one is kept while it still matches its variable's type. `undefined`
+ * when none are left, so the field is cleared.
+ */
+export function examplesToStore(
+	schema: Doc<'transactionalEmails'>['dataVariablesSchema'],
+	given: Readonly<Record<string, unknown>> | undefined,
+	stored: Doc<'transactionalEmails'>['dataVariableExamples']
+): DataVariableExamples | undefined {
+	if (given === undefined) {
+		const kept = examplesForSchema(schema, stored);
+		return Object.keys(kept).length > 0 ? kept : undefined;
+	}
+	const fault = dataVariableExamplesFault(schema, given);
+	if (fault) {
+		throwInvalidInput(fault.message, {
+			reason: 'invalid_example',
+			field: fault.variable ? `dataVariableExamples.${fault.variable}` : 'dataVariableExamples',
+		});
+	}
+	return Object.keys(given).length > 0 ? (given as DataVariableExamples) : undefined;
 }
 
 /**
@@ -82,6 +117,13 @@ export async function applyTransactionalEmailEdit(
 		...(args.slug !== undefined && { slug: args.slug }),
 		...(args.dataVariablesSchema !== undefined && {
 			dataVariablesSchema: args.dataVariablesSchema,
+		}),
+		...((args.dataVariablesSchema !== undefined || args.dataVariableExamples !== undefined) && {
+			dataVariableExamples: examplesToStore(
+				args.dataVariablesSchema ?? email.dataVariablesSchema,
+				args.dataVariableExamples,
+				email.dataVariableExamples
+			),
 		}),
 		...(args.showUnsubscribe !== undefined && { showUnsubscribe: args.showUnsubscribe }),
 		...(args.attachments !== undefined && { attachments: args.attachments }),

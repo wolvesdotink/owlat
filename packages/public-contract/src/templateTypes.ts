@@ -23,6 +23,17 @@ export const TEMPLATE_VARIABLE_TYPES = ['string', 'number', 'boolean', 'date', '
 export type TemplateVariableType = (typeof TEMPLATE_VARIABLE_TYPES)[number];
 
 /**
+ * A variable's example value: a string (also for `date`, as an ISO date), a
+ * number, a boolean, or for `array` a list of plain values or flat objects of
+ * them.
+ */
+export type DataVariableExample =
+	| string
+	| number
+	| boolean
+	| Array<string | number | boolean | null | Record<string, string | number | boolean | null>>;
+
+/**
  * One block of email content, exactly as the editor stores it: an `id`, a
  * `type` such as `text`, `button` or `columns`, and the block's `content`.
  * Blocks such as `columns` and `container` hold further blocks inside their
@@ -108,9 +119,14 @@ export interface TransactionalEmail extends TransactionalEmailSummary {
 	translations: Record<string, EmailTranslation>;
 	/**
 	 * The data variables a send passes, by name, with their type: `string`,
-	 * `number`, `boolean` or `date`. Later releases may add types.
+	 * `number`, `boolean`, `date` or `array`. Later releases may add types.
 	 */
 	dataVariablesSchema: Record<string, TemplateVariableType>;
+	/**
+	 * Sample data per variable for the editor preview and test sends, never
+	 * used by a real send. Empty when the email has none.
+	 */
+	dataVariableExamples: Record<string, DataVariableExample>;
 	/** Whether the email shows an unsubscribe link. */
 	showUnsubscribe: boolean;
 }
@@ -128,6 +144,12 @@ export interface TransactionalEmailInput {
 	blocks: EmailBlockInput[];
 	translations?: Record<string, EmailTranslationInput>;
 	dataVariablesSchema?: Record<string, TemplateVariableType>;
+	/**
+	 * Sample data per variable, each matching the variable's type. Left out,
+	 * each stored example stays while it still matches its variable's type;
+	 * `{}` clears them.
+	 */
+	dataVariableExamples?: Record<string, DataVariableExample>;
 	/** Defaults to `en`. Cannot change while the email has translations. */
 	defaultLanguage?: string;
 	showUnsubscribe?: boolean;

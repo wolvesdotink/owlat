@@ -84,6 +84,7 @@ const ORDER_EMAIL: TransactionalEmail = {
 		},
 	},
 	dataVariablesSchema: { orderNumber: 'string', total: 'number' },
+	dataVariableExamples: { orderNumber: 'A-1001', total: 42.5 },
 	showUnsubscribe: false,
 };
 

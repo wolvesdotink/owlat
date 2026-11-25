@@ -22,7 +22,29 @@ public class TransactionalEmail {
     private final List<Map<String, Object>> blocks;
     private final Map<String, EmailTranslation> translations;
     private final Map<String, String> dataVariablesSchema;
+    private final Map<String, Object> dataVariableExamples;
     private final boolean showUnsubscribe;
+
+    /** An email without example values, as releases before them answered. */
+    public TransactionalEmail(
+            String id,
+            String slug,
+            String name,
+            String status,
+            String subject,
+            String defaultLanguage,
+            List<String> languages,
+            int revision,
+            String publishedAt,
+            String createdAt,
+            String updatedAt,
+            List<Map<String, Object>> blocks,
+            Map<String, EmailTranslation> translations,
+            Map<String, String> dataVariablesSchema,
+            boolean showUnsubscribe) {
+        this(id, slug, name, status, subject, defaultLanguage, languages, revision, publishedAt, createdAt,
+                updatedAt, blocks, translations, dataVariablesSchema, null, showUnsubscribe);
+    }
 
     @JsonCreator
     public TransactionalEmail(
@@ -40,6 +62,7 @@ public class TransactionalEmail {
             @JsonProperty("blocks") List<Map<String, Object>> blocks,
             @JsonProperty("translations") Map<String, EmailTranslation> translations,
             @JsonProperty("dataVariablesSchema") Map<String, String> dataVariablesSchema,
+            @JsonProperty("dataVariableExamples") Map<String, Object> dataVariableExamples,
             @JsonProperty("showUnsubscribe") boolean showUnsubscribe) {
         this.id = id;
         this.slug = slug;
@@ -55,6 +78,7 @@ public class TransactionalEmail {
         this.blocks = blocks;
         this.translations = translations;
         this.dataVariablesSchema = dataVariablesSchema;
+        this.dataVariableExamples = dataVariableExamples;
         this.showUnsubscribe = showUnsubscribe;
     }
 
@@ -125,6 +149,15 @@ public class TransactionalEmail {
         return dataVariablesSchema;
     }
 
+    /**
+     * Sample data per variable for the editor preview and test sends, never used by a real send:
+     * a String (also an ISO date), a Number, a Boolean, or for a list variable a List of plain
+     * values or flat Maps of them. {@code null} from a server older than example values.
+     */
+    public Map<String, Object> getDataVariableExamples() {
+        return dataVariableExamples;
+    }
+
     /** Whether the email shows an unsubscribe link. */
     @JsonProperty("showUnsubscribe")
     public boolean isShowUnsubscribe() {
@@ -138,6 +171,7 @@ public class TransactionalEmail {
                 .blocks(blocks)
                 .translations(translations)
                 .dataVariablesSchema(dataVariablesSchema)
+                .dataVariableExamples(dataVariableExamples)
                 .defaultLanguage(defaultLanguage)
                 .showUnsubscribe(showUnsubscribe)
                 .build();

@@ -7984,7 +7984,12 @@
 			},
 			"sendOptions": {
 				"description": "These apply to the next send right away, also while the email is published.",
+				"exampleDialog": {
+					"label": "Example value",
+					"title": "Example value for {name}"
+				},
 				"operations": {
+					"example": "Update the example value",
 					"recipientLimit": "Update the recipient limit",
 					"variable": "Update the variable"
 				},
@@ -7995,7 +8000,11 @@
 				"title": "Sending",
 				"variables": {
 					"description": "A request that leaves out a variable the email uses without a fallback is refused with an error naming it. Mark a variable optional to let requests leave it out: it then sends empty, or as its fallback.",
+					"editExample": "Edit the example value of {name}",
 					"empty": "This email has no data variables yet.",
+					"example": "Example: {value}",
+					"exampleButton": "Example",
+					"noExample": "No example",
 					"optional": "Optional",
 					"required": "Required unless it has a fallback",
 					"title": "Data variables",

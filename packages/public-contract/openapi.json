@@ -2818,6 +2818,10 @@
 									"orderNumber": "string",
 									"total": "number"
 								},
+								"dataVariableExamples": {
+									"orderNumber": "A-1001",
+									"total": 42.5
+								},
 								"showUnsubscribe": false
 							}
 						}
@@ -2905,6 +2909,10 @@
 											"dataVariablesSchema": {
 												"orderNumber": "string",
 												"total": "number"
+											},
+											"dataVariableExamples": {
+												"orderNumber": "A-1001",
+												"total": 42.5
 											},
 											"showUnsubscribe": false
 										},
@@ -3274,6 +3282,10 @@
 											"orderNumber": "string",
 											"total": "number"
 										},
+										"dataVariableExamples": {
+											"orderNumber": "A-1001",
+											"total": 42.5
+										},
 										"showUnsubscribe": false
 									}
 								}
@@ -3507,6 +3519,10 @@
 									"orderNumber": "string",
 									"total": "number"
 								},
+								"dataVariableExamples": {
+									"orderNumber": "A-1001",
+									"total": 42.5
+								},
 								"showUnsubscribe": false
 							}
 						}
@@ -3600,6 +3616,10 @@
 											"dataVariablesSchema": {
 												"orderNumber": "string",
 												"total": "number"
+											},
+											"dataVariableExamples": {
+												"orderNumber": "A-1001",
+												"total": 42.5
 											},
 											"showUnsubscribe": false
 										},
@@ -3991,6 +4011,10 @@
 											"orderNumber": "string",
 											"total": "number"
 										},
+										"dataVariableExamples": {
+											"orderNumber": "A-1001",
+											"total": 42.5
+										},
 										"showUnsubscribe": false
 									}
 								}
@@ -4325,6 +4349,10 @@
 										"dataVariablesSchema": {
 											"orderNumber": "string",
 											"total": "number"
+										},
+										"dataVariableExamples": {
+											"orderNumber": "A-1001",
+											"total": 42.5
 										},
 										"showUnsubscribe": false
 									}
@@ -7566,6 +7594,46 @@
 							"enum": ["string", "number", "boolean", "date", "array"]
 						}
 					},
+					"dataVariableExamples": {
+						"description": "Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most 500 entries, each a plain value or a flat object of them. At most 16 KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's. Left out, each stored example stays while it still matches its variable's type, also after a retype; an empty object clears them.",
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "array",
+									"items": {
+										"anyOf": [
+											{
+												"type": ["string", "number", "boolean", "null"]
+											},
+											{
+												"type": "object",
+												"propertyNames": {
+													"type": "string"
+												},
+												"additionalProperties": {
+													"type": ["string", "number", "boolean", "null"]
+												}
+											}
+										]
+									},
+									"maxItems": 500
+								}
+							]
+						}
+					},
 					"defaultLanguage": {
 						"type": "string",
 						"pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
@@ -7995,6 +8063,46 @@
 						"additionalProperties": {
 							"type": "string",
 							"enum": ["string", "number", "boolean", "date", "array"]
+						}
+					},
+					"dataVariableExamples": {
+						"description": "Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most 500 entries, each a plain value or a flat object of them. At most 16 KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's. Left out, each stored example stays while it still matches its variable's type, also after a retype; an empty object clears them.",
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "array",
+									"items": {
+										"anyOf": [
+											{
+												"type": ["string", "number", "boolean", "null"]
+											},
+											{
+												"type": "object",
+												"propertyNames": {
+													"type": "string"
+												},
+												"additionalProperties": {
+													"type": ["string", "number", "boolean", "null"]
+												}
+											}
+										]
+									},
+									"maxItems": 500
+								}
+							]
 						}
 					},
 					"defaultLanguage": {
@@ -8732,7 +8840,47 @@
 							"type": "string",
 							"enum": ["string", "number", "boolean", "date", "array"]
 						},
-						"description": "The data variables a send passes, by name, with their type: string, number, boolean or date. Later releases may add types."
+						"description": "The data variables a send passes, by name, with their type: string, number, boolean, date or array. Later releases may add types."
+					},
+					"dataVariableExamples": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "array",
+									"items": {
+										"anyOf": [
+											{
+												"type": ["string", "number", "boolean", "null"]
+											},
+											{
+												"type": "object",
+												"propertyNames": {
+													"type": "string"
+												},
+												"additionalProperties": {
+													"type": ["string", "number", "boolean", "null"]
+												}
+											}
+										]
+									},
+									"maxItems": 500
+								}
+							]
+						},
+						"description": "Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most 500 entries, each a plain value or a flat object of them. At most 16 KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's."
 					},
 					"showUnsubscribe": {
 						"type": "boolean"
@@ -8753,6 +8901,7 @@
 					"blocks",
 					"translations",
 					"dataVariablesSchema",
+					"dataVariableExamples",
 					"showUnsubscribe"
 				],
 				"additionalProperties": false

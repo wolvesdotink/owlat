@@ -14,6 +14,7 @@
  */
 
 import { isValidSlug } from '@owlat/shared';
+import { dataVariableExamplesFault } from '@owlat/shared/dataVariableExamples';
 import type {
 	TransactionalEmail,
 	TransactionalEmailInput,
@@ -108,6 +109,7 @@ type PreparedWrite =
 				translations: string;
 				defaultLanguage: string;
 				dataVariablesSchema: Record<string, 'string' | 'number' | 'boolean' | 'date' | 'array'>;
+				dataVariableExamples?: TransactionalEmail['dataVariableExamples'];
 				showUnsubscribe: boolean;
 			};
 			issues: TransactionalEmailWriteResult['issues'];
@@ -130,6 +132,21 @@ function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
 				`translations.${defaultLanguage}`
 			),
 		};
+	}
+
+	// Checked here as well as by the write, so a field name Convex cannot store
+	// is a 400 naming the variable rather than a refused mutation argument.
+	if (body.dataVariableExamples !== undefined) {
+		const fault = dataVariableExamplesFault(body.dataVariablesSchema, body.dataVariableExamples);
+		if (fault) {
+			return {
+				ok: false,
+				response: invalidInputResponse(
+					fault.message,
+					fault.variable ? `dataVariableExamples.${fault.variable}` : 'dataVariableExamples'
+				),
+			};
+		}
 	}
 
 	const check = checkContent(body.blocks);
@@ -182,6 +199,9 @@ function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
 			translations: translationsJson,
 			defaultLanguage,
 			dataVariablesSchema: { ...body.dataVariablesSchema },
+			...(body.dataVariableExamples !== undefined && {
+				dataVariableExamples: { ...body.dataVariableExamples },
+			}),
 			showUnsubscribe: body.showUnsubscribe ?? false,
 		},
 		issues: check.issues,

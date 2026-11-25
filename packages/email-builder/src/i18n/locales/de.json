@@ -787,6 +787,15 @@
 				"array": "Liste"
 			},
 			"arrayHint": "Eine Liste von Einträgen für einen wiederholten Block. Wähl sie unter „Wiederholen“ des Blocks und nutze darin {example}.",
+			"example": "Beispielwert",
+			"exampleNone": "Kein Beispiel",
+			"exampleHint": "Beispieldaten für die Vorschau und Testmails, nie echte Kundendaten. Echte Sendungen nutzen sie nicht.",
+			"exampleErrors": {
+				"json": "Das ist kein gültiges JSON.",
+				"list": "Gib eine JSON-Liste mit höchstens {max} Einträgen ein, jeder ein einfacher Wert oder ein flaches Objekt aus einfachen Werten.",
+				"number": "Gib eine Zahl ein.",
+				"date": "Gib ein Datum wie 2026-11-25 ein."
+			},
 			"preview": "Vorschau",
 			"usage": "Wird in der API-Nutzlast verwendet",
 			"create": "Variable anlegen"
