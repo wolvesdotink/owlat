@@ -243,7 +243,7 @@ describe('theme colours in the document style block', () => {
 		});
 		expect(html).toContain('background-color:#0a0a0a!important');
 		expect(html).toContain('{color:rgb(240, 240, 240)!important}');
-		expect(html).toContain('a{color:hsl(210 80% 70% / 0.9)!important}');
+		expect(html).toContain('a:not(.owlat-button){color:hsl(210 80% 70% / 0.9)!important}');
 		expect(html).toContain('a{color:rebeccapurple}');
 	});
 });

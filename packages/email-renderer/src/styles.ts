@@ -65,11 +65,14 @@ const darkModeColors = (ctx: RenderContext): { bg: string; text: string; link: s
 export const getDarkModeStyles = (ctx: RenderContext): string => {
 	if (!ctx.darkMode) return '';
 	const { bg, text, link } = darkModeColors(ctx);
+	// The preview shows what a client following `prefers-color-scheme: dark`
+	// shows, and runs in a browser that parses `:where()`.
 	return `
 body{background-color:${bg}!important}
 .body-section{background-color:${bg}!important}
-p,span,div,td,th,h1,h2,h3,h4,h5,h6{color:${text}!important}
-a{color:${link}!important}
+.owlat-dark-bg{background-color:var(--dark-bg)!important}
+${darkTextRules({ text, link }, (exclusions) => `:where(${exclusions})`)}
+.owlat-own-bg,${HIGHLIGHT}{color:${ownTextColor(ctx)}}
 .${ctx.variableClass}{
 background:linear-gradient(135deg,rgba(212,255,0,0.25),rgba(212,255,0,0.15))!important;
 border-color:rgba(212,255,0,0.6)!important;
@@ -91,12 +94,76 @@ const PREFERS_DARK_QUERY = '(prefers-color-scheme:dark)';
 export const forceColorScheme = (html: string, scheme: 'light' | 'dark'): string =>
 	html.replaceAll(PREFERS_DARK_QUERY, scheme === 'dark' ? 'all' : 'not all');
 
+/** Elements whose text colour the dark styles take over. */
+const DARK_TEXT_TAGS = ['p', 'span', 'div', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+
+/**
+ * An inline span that paints a background, such as a highlight. Pasted text
+ * often carries `background-color:transparent`, which paints nothing.
+ */
+const HIGHLIGHT = 'span[style*="background"]:not([style*="transparent"])';
+
+/**
+ * The colour of text without a colour of its own on a surface that keeps its
+ * light-mode background, instead of the forced colour it would inherit.
+ */
+const ownTextColor = (ctx: RenderContext): string => cssColorOr(ctx.theme.bodyTextColor, '#333333');
+
+/**
+ * A surface that paints its own background keeps it in dark mode, so its text
+ * keeps its light-mode colour: whatever is, or sits inside, an
+ * `OWN_BACKGROUND_CLASS` surface (`helpers/table.ts`) or a highlight is left
+ * out of the forced colours.
+ */
+const OWN_COLOR_EXCLUSIONS = `:not(.owlat-own-bg):not(.owlat-own-bg *):not(${HIGHLIGHT}):not(${HIGHLIGHT} *)`;
+
+/**
+ * The forced text colour, a block's own `darkTextColor`, and the link colour.
+ * `.owlat-dark-text <tag>` outranks the forced `<tag>` rule by its class, so
+ * the block's colour reaches the elements that carry the inline text colour.
+ * Button anchors (`.owlat-button`) keep their label colour on their own fill.
+ * `wrap` decides how the exclusions are written; see `getDarkModeMediaQuery`.
+ */
+const darkTextRules = (
+	colors: { text: string; link: string },
+	wrap: (exclusions: string) => string
+): string => {
+	const own = wrap(OWN_COLOR_EXCLUSIONS);
+	const forcedText = DARK_TEXT_TAGS.map((tag) => `${tag}${own}`).join(',');
+	const blockText = [
+		'.owlat-dark-text',
+		...DARK_TEXT_TAGS.map((tag) => `.owlat-dark-text ${tag}${own}`),
+	].join(',');
+	const link = `a${wrap(`:not(.owlat-button)${OWN_COLOR_EXCLUSIONS}`)}`;
+	return `${forcedText}{color:${colors.text}!important}
+${blockText}{color:var(--dark-text)!important}
+${link}{color:${colors.link}!important}`;
+};
+
 /**
  * Real dark mode support via prefers-color-scheme media query.
  * Applied in actual email clients (not the preview toggle).
+ *
+ * The exclusions sit in `:where()`, so the forced rules keep the specificity
+ * of a bare tag and an author's `customCss` dark rules still win over them.
+ * Mail on iOS 13 and macOS 10.15 follows the dark media query but cannot
+ * parse `:where()` and would drop those rules, so it gets the same rules with
+ * bare `:not()` exclusions. Wrapped in parentheses, `selector()` is an unknown
+ * condition such an engine reads as false; an engine that knows `selector()`
+ * and `:where()` skips the block, so the fallback's higher specificity never
+ * meets an author's rules there.
+ *
+ * Outlook.com (`[data-ogsc]`) recolours light backgrounds itself, so its
+ * forced text colour keeps no exclusions for surfaces with their own
+ * background; its rules use only CSS 3 selectors.
  */
 export const getDarkModeMediaQuery = (ctx: RenderContext): string => {
 	const { bg, text, link } = darkModeColors(ctx);
+	const ownText = ownTextColor(ctx);
+	const ogscBlockText = [
+		'[data-ogsc] .owlat-dark-text',
+		...DARK_TEXT_TAGS.map((tag) => `[data-ogsc] .owlat-dark-text ${tag}`),
+	].join(',');
 	return `
 .owlat-light-img{display:block}
 .owlat-dark-img{display:none}
@@ -104,18 +171,20 @@ export const getDarkModeMediaQuery = (ctx: RenderContext): string => {
 body,.body-bg{background-color:${bg}!important}
 .owlat-wrap{background-color:${bg}!important}
 .owlat-dark-bg{background-color:var(--dark-bg)!important}
-.owlat-dark-text{color:var(--dark-text)!important}
-p,span,div,td,th,h1,h2,h3,h4,h5,h6{color:${text}!important}
-a{color:${link}!important}
+${darkTextRules({ text, link }, (exclusions) => `:where(${exclusions})`)}
+.owlat-own-bg,${HIGHLIGHT}{color:${ownText}}
+@supports not (selector(:where(a))){
+${darkTextRules({ text, link }, (exclusions) => exclusions)}
+}
 img{opacity:0.9}
 .owlat-light-img{display:none!important}
 .owlat-dark-img{display:block!important}
 }
 [data-ogsc] body,[data-ogsc] .body-bg{background-color:${bg}!important}
 [data-ogsc] .owlat-dark-bg{background-color:var(--dark-bg)!important}
-[data-ogsc] .owlat-dark-text{color:var(--dark-text)!important}
 [data-ogsc] p,[data-ogsc] span,[data-ogsc] div,[data-ogsc] td{color:${text}!important}
-[data-ogsc] a{color:${link}!important}
+${ogscBlockText}{color:var(--dark-text)!important}
+[data-ogsc] a:not(.owlat-button){color:${link}!important}
 [data-ogsc] .owlat-light-img{display:none!important}
 [data-ogsc] .owlat-dark-img{display:block!important}
 [data-ogsb] body,[data-ogsb] .body-bg{background-color:${bg}!important}
