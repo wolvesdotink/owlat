@@ -23,7 +23,7 @@ export async function recordRunningVersion(
 	appliedBy: 'updater' | 'rollback'
 ): Promise<Step> {
 	try {
-		await writeVersionRecord(OWLAT_DIR, { version, appliedAt: new Date(), appliedBy });
+		await writeVersionRecord(OWLAT_DIR, { version, recordedAt: new Date(), appliedBy });
 		return { step: 'version-record', ok: true, stdout: `VERSION names ${version}`, stderr: '' };
 	} catch (err) {
 		return {

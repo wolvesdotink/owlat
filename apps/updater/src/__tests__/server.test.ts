@@ -700,7 +700,7 @@ describe('POST /update', () => {
 		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
 		expect(record).toMatch(/^version=0\.6\.24$/m);
 		expect(record).toMatch(/^tag=v0\.6\.24$/m);
-		expect(record).toMatch(/^applied_at=\d{4}-\d{2}-\d{2}T[\d:.]+Z$/m);
+		expect(record).toMatch(/^recorded_at=\d{4}-\d{2}-\d{2}T[\d:.]+Z$/m);
 		expect(record).toMatch(/^applied_by=updater$/m);
 		expect(record).toContain('can be older than the code that runs');
 	});

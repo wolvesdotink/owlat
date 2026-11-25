@@ -44,9 +44,9 @@ describe('syncVersionRecord, at startup', () => {
 	});
 
 	it('leaves a VERSION that already names the pinned release alone', async () => {
-		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\napplied_at=earlier\n');
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\nrecorded_at=earlier\n');
 		expect(await syncVersionRecord()).toBeNull();
-		expect(record()).toBe('version=0.6.24\napplied_at=earlier\n');
+		expect(record()).toBe('version=0.6.24\nrecorded_at=earlier\n');
 	});
 
 	it('keeps VERSION, restart after restart, while an update stopped after promoting its release', async () => {

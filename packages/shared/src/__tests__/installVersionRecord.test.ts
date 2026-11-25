@@ -17,17 +17,17 @@ afterEach(async () => {
 });
 
 describe('the install VERSION record', () => {
-	it('names the release, its tag and when it was applied, under a note about the source tree', async () => {
+	it('names the release, its tag and when it was recorded, under a note about the source tree', async () => {
 		await writeVersionRecord(dir, {
 			version: '0.6.24',
-			appliedAt: new Date('2026-11-25T10:00:00.000Z'),
+			recordedAt: new Date('2026-11-25T10:00:00.000Z'),
 			appliedBy: 'updater',
 		});
 		const text = await readFile(join(dir, 'VERSION'), 'utf-8');
 		expect(text.split('\n').filter((line) => !line.startsWith('#'))).toEqual([
 			'version=0.6.24',
 			'tag=v0.6.24',
-			'applied_at=2026-11-25T10:00:00.000Z',
+			'recorded_at=2026-11-25T10:00:00.000Z',
 			'applied_by=updater',
 			'',
 		]);
@@ -40,7 +40,7 @@ describe('the install VERSION record', () => {
 		for (const version of ['dev', 'latest', '', 'v1.2.3', '1.2.3\ntag=x']) {
 			expect(isReleaseVersion(version)).toBe(false);
 			await expect(
-				writeVersionRecord(dir, { version, appliedAt: new Date(0), appliedBy: 'installer' })
+				writeVersionRecord(dir, { version, recordedAt: new Date(0), appliedBy: 'installer' })
 			).rejects.toThrow('not a release version');
 		}
 		await expect(readFile(join(dir, 'VERSION'), 'utf-8')).rejects.toThrow();

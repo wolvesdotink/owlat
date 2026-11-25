@@ -120,7 +120,7 @@ export async function defaultSendingPools(
 export async function recordInstalledVersion(owlatDir: string, env: EnvMap): Promise<boolean> {
 	const version = env['OWLAT_VERSION']?.trim() ?? '';
 	if (!isReleaseVersion(version)) return false;
-	await writeVersionRecord(owlatDir, { version, appliedAt: new Date(), appliedBy: 'installer' });
+	await writeVersionRecord(owlatDir, { version, recordedAt: new Date(), appliedBy: 'installer' });
 	return true;
 }
 

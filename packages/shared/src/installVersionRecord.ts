@@ -1,6 +1,7 @@
 /**
  * The `VERSION` file in a self-hosted install directory: which release the
- * stack runs, its tag, and when that release was applied.
+ * install is configured to run (the `OWLAT_VERSION` `.env` pins), its tag, and
+ * when that was recorded.
  *
  * NODE-ONLY: uses `node:fs`. Exposed via the `@owlat/shared/installVersionRecord`
  * subpath ONLY; it must never be re-exported from the `.` barrel, which has to
@@ -31,7 +32,7 @@ export type VersionRecordWriter = 'installer' | 'updater' | 'rollback';
 export interface VersionRecord {
 	/** Bare release version, without the `v`. */
 	version: string;
-	appliedAt: Date;
+	recordedAt: Date;
 	appliedBy: VersionRecordWriter;
 }
 
@@ -46,16 +47,17 @@ function formatVersionRecord(record: VersionRecord): string {
 	}
 	const tag = `v${record.version}`;
 	return [
-		'# The Owlat release this install runs. The installer writes this file, and',
-		'# the updater rewrites it after every update and rollback.',
+		'# The Owlat release this install is configured to run (OWLAT_VERSION in',
+		'# .env). The installer writes this file, and the updater rewrites it after',
+		'# every update and rollback.',
 		'#',
 		'# The source tree in this directory is the checkout this install started',
 		'# from. Updates replace docker-compose.yml and .env, not the source, so the',
-		'# code here can be older than the code that runs. The running release:',
+		'# code here can be older than the code that runs. The configured release:',
 		`# https://github.com/wolvesdotink/owlat/tree/${tag}`,
 		`version=${record.version}`,
 		`tag=${tag}`,
-		`applied_at=${record.appliedAt.toISOString()}`,
+		`recorded_at=${record.recordedAt.toISOString()}`,
 		`applied_by=${record.appliedBy}`,
 		'',
 	].join('\n');
