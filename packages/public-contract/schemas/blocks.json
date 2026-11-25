@@ -970,12 +970,19 @@
 						"columnCount": {
 							"description": "How many columns render. Extra entries in `columns` are ignored.",
 							"type": "integer",
-							"enum": [1, 2, 3, 4]
+							"enum": [1, 2, 3, 4, 5]
 						},
 						"ratio": {
 							"description": "Width preset for the columns. One column always takes the full width.",
 							"type": "string",
 							"enum": ["equal", "left-wide", "right-wide", "left-narrow", "right-narrow"]
+						},
+						"columnWidths": {
+							"description": "Custom column widths in whole percent, one per column, summing to 100. When valid they win over `ratio`; see `getColumnWidths`.",
+							"type": "array",
+							"items": {
+								"type": "number"
+							}
 						},
 						"mobileStacking": {
 							"description": "Stack the columns on top of each other on mobile.",

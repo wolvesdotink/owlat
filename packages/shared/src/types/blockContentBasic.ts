@@ -274,6 +274,9 @@ export interface ColumnItem {
  */
 export type ColumnRatio = 'equal' | 'left-wide' | 'right-wide' | 'left-narrow' | 'right-narrow';
 
+/** How many columns a columns Block holds. */
+export type ColumnCount = 1 | 2 | 3 | 4 | 5;
+
 /**
  * Styling of one column, by position.
  */
@@ -313,9 +316,14 @@ export interface ColumnsBlockContent
 		CssClassOption,
 		ConditionalOption {
 	/** How many columns render. Extra entries in `columns` are ignored. */
-	columnCount: 1 | 2 | 3 | 4;
+	columnCount: ColumnCount;
 	/** Width preset for the columns. One column always takes the full width. */
 	ratio: ColumnRatio;
+	/**
+	 * Custom column widths in whole percent, one per column, summing to 100.
+	 * When valid they win over `ratio`; see `getColumnWidths`.
+	 */
+	columnWidths?: number[];
 	/** Stack the columns on top of each other on mobile. */
 	mobileStacking: boolean;
 	/** The blocks of each column, one array per column, left to right. */

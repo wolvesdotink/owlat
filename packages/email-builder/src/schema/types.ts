@@ -30,7 +30,9 @@ export type FieldType =
 	| 'array'
 	| 'condition'
 	| 'repeat'
-	| 'fontFamily';
+	| 'fontFamily'
+	/** Custom per-column widths of a columns Block (`columnWidths`) */
+	| 'columnWidths';
 
 /**
  * A single property field in the panel.

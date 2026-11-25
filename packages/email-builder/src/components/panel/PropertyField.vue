@@ -7,6 +7,7 @@ import type {
 	EditorBlock,
 	Variable,
 	EmailTheme,
+	ColumnsBlockContent,
 	GradientBackground,
 	ImageUploadResult,
 } from '../../types';
@@ -21,6 +22,7 @@ import ToggleField from './fields/ToggleField.vue';
 import SelectField from './fields/SelectField.vue';
 import TextField from './fields/TextField.vue';
 import AltTextField from './fields/AltTextField.vue';
+import ColumnWidthsField from './fields/ColumnWidthsField.vue';
 
 // Complex editors
 import RichTextEditor from './RichTextEditor.vue';
@@ -175,8 +177,11 @@ function emitDate(raw: string) {
 		class="flex flex-col gap-[5px]"
 		:class="{ 'flex-row items-center justify-between gap-3 min-h-[34px]': isInlineLayout }"
 	>
-		<!-- Label: always shown except for toggle (which has its own label) -->
-		<FieldLabel v-if="field.type !== 'toggle'" :class="{ 'shrink-0 min-w-0': isInlineLayout }">
+		<!-- Label: always shown except for fields that carry their own (toggle, column widths) -->
+		<FieldLabel
+			v-if="field.type !== 'toggle' && field.type !== 'columnWidths'"
+			:class="{ 'shrink-0 min-w-0': isInlineLayout }"
+		>
 			{{ fieldLabel }}
 		</FieldLabel>
 
@@ -184,6 +189,14 @@ function emitDate(raw: string) {
 		<ToggleField
 			v-if="field.type === 'toggle'"
 			:value="booleanValue"
+			:label="fieldLabel"
+			@update="(val) => emit('update', val)"
+		/>
+
+		<!-- Column widths: renders its own legend, and nothing for a single column -->
+		<ColumnWidthsField
+			v-else-if="field.type === 'columnWidths'"
+			:content="block.content as ColumnsBlockContent"
 			:label="fieldLabel"
 			@update="(val) => emit('update', val)"
 		/>
@@ -398,8 +411,7 @@ function emitDate(raw: string) {
 				/>
 				<p class="text-2xs leading-[1.4] text-text-tertiary m-0">
 					{{ t('builder.panel.repeat.referenceBefore') }}
-					<code>{{ itemRefExample }}</code
-					>{{ t('builder.panel.repeat.referenceAfter') }}
+					<code>{{ itemRefExample }}</code>{{ t('builder.panel.repeat.referenceAfter') }}
 				</p>
 			</div>
 			<div class="flex flex-col gap-[5px]">

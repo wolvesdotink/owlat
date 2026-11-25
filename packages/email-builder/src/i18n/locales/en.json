@@ -483,6 +483,12 @@
 			},
 			"select": {
 				"placeholder": "Choose..."
+			},
+			"columnWidths": {
+				"customize": "Set custom widths",
+				"usePreset": "Use the ratio preset",
+				"column": "Column {index} width",
+				"help": "Whole percent, at least {min}% per column. Changing a column resizes the one next to it."
 			}
 		},
 		"richText": {
@@ -612,6 +618,7 @@
 			"rightWide": "Right Wide",
 			"leftNarrow": "Left Narrow",
 			"rightNarrow": "Right Narrow",
+			"columnWidths": "Column Widths",
 			"columnGap": "Column Gap",
 			"verticalAlign": "Vertical Align",
 			"top": "Top",

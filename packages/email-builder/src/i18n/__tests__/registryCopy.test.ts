@@ -71,6 +71,7 @@ const SAME_IN_GERMAN = new Set([
 	'2',
 	'3',
 	'4',
+	'5',
 	// Key chips that read the same on a German keyboard.
 	'Mod',
 	'Alt',

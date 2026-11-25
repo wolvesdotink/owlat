@@ -80,7 +80,7 @@ describe('what the generator reads from the types', () => {
 			'left-narrow',
 			'right-narrow',
 		]);
-		expect(columns['columnCount']).toMatchObject({ type: 'integer', enum: [1, 2, 3, 4] });
+		expect(columns['columnCount']).toMatchObject({ type: 'integer', enum: [1, 2, 3, 4, 5] });
 		const social = contentOf('social')['properties'] as Record<string, JsonObject>;
 		expect(social['iconStyle']!['enum']).toEqual(['filled', 'outline']);
 	});
