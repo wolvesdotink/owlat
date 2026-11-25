@@ -153,7 +153,7 @@ const transactionalEmailInputShape = {
 		.record(z.string(), dataVariableExampleSchema, { error: DATA_VARIABLE_EXAMPLES_SHAPE })
 		.optional()
 		.meta({
-			description: `${dataVariableExamplesDescription} Left out, the stored examples stay for the variables that keep their type; an empty object clears them.`,
+			description: `${dataVariableExamplesDescription} Left out, each stored example stays while it still matches its variable's type, also after a retype; an empty object clears them.`,
 		}),
 	defaultLanguage: languageCode('defaultLanguage must be a language code such as en').optional(),
 	showUnsubscribe: z.boolean({ error: 'showUnsubscribe must be a boolean' }).optional(),

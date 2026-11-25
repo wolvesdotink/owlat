@@ -16,6 +16,7 @@ describe('dataVariableExampleError', () => {
 		['date', '2026-11-25T09:30:00Z'],
 		['date', '2026-11-25T09:30:00.123+01:00'],
 		['date', '2028-02-29'],
+		['date', '0000-02-29'],
 		['array', []],
 		['array', ['a', 1, true, null, { name: 'Notebook', quantity: 2, note: null }]],
 	])('accepts %s %j', (type, value) => {

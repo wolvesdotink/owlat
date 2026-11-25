@@ -39,8 +39,8 @@ export interface TransactionalEmailEdit extends EditableEmailArgs {
 	slug?: string;
 	dataVariablesSchema?: Doc<'transactionalEmails'>['dataVariablesSchema'];
 	/**
-	 * Every variable's example, replacing the stored ones. Left out, the stored
-	 * examples stay for the variables that keep their type.
+	 * Every variable's example, replacing the stored ones. Left out, each stored
+	 * example stays while it still matches its variable's type.
 	 */
 	dataVariableExamples?: Doc<'transactionalEmails'>['dataVariableExamples'];
 	showUnsubscribe?: boolean;
@@ -53,8 +53,8 @@ export interface TransactionalEmailEdit extends EditableEmailArgs {
 
 /**
  * The examples to store beside `schema`. Given ones replace the stored ones
- * and are refused, naming the variable, when one does not fit; left out, the
- * stored ones are kept for the variables that keep their type. `undefined`
+ * and are refused, naming the variable, when one does not fit; left out, each
+ * stored one is kept while it still matches its variable's type. `undefined`
  * when none are left, so the field is cleared.
  */
 export function examplesToStore(

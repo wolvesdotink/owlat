@@ -51,7 +51,9 @@ const ISO_DATE =
 function isCalendarDate(value: string): boolean {
 	if (!ISO_DATE.test(value) || Number.isNaN(Date.parse(value))) return false;
 	const [year, month, day] = value.slice(0, 10).split('-').map(Number) as [number, number, number];
-	const date = new Date(Date.UTC(year, month - 1, day));
+	// `setUTCFullYear`, not `Date.UTC`, which reads the years 0 to 99 as 1900 to 1999.
+	const date = new Date(0);
+	date.setUTCFullYear(year, month - 1, day);
 	return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 

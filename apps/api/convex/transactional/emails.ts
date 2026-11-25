@@ -345,8 +345,8 @@ export const remove = transactionalMutation({
 
 /**
  * Update data variables schema. `dataVariableExamples`, when given, replaces
- * every variable's example; left out, the stored examples stay for the
- * variables that keep their type.
+ * every variable's example; left out, each stored example stays while it
+ * still matches its variable's type.
  */
 export const updateSchema = transactionalMutation({
 	args: {

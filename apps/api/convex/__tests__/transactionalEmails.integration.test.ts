@@ -1256,6 +1256,15 @@ describe('transactionalEmails data variable examples', () => {
 				example: 'SAVE10',
 			})
 		).rejects.toThrow(/couponCode\W+ names a variable the email does not declare/);
+		// Clearing one is refused too, and changes nothing.
+		await expect(
+			t.mutation(api.transactional.sendOptions.setVariableExample, {
+				id: emailId,
+				key: 'couponCode',
+			})
+		).rejects.toThrow(/couponCode\W+ names a variable/);
+		const audit = await t.run((ctx) => ctx.db.query('auditLogs').collect());
+		expect(audit.filter((row) => row.resourceId === emailId)).toHaveLength(0);
 	});
 
 	it('refuses examples larger than the cap', async () => {

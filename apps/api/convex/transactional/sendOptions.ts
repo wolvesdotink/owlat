@@ -111,6 +111,12 @@ export const setVariableExample = transactionalMutation({
 			'Only owners and admins can change the example values of a transactional email'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
+		if (!Object.prototype.hasOwnProperty.call(email.dataVariablesSchema ?? {}, args.key)) {
+			throwInvalidInput(
+				`The example for "${args.key}" names a variable the email does not declare`,
+				{ reason: 'invalid_example', field: `dataVariableExamples.${args.key}` }
+			);
+		}
 		const { [args.key]: _previous, ...rest } = examplesForSchema(
 			email.dataVariablesSchema,
 			email.dataVariableExamples

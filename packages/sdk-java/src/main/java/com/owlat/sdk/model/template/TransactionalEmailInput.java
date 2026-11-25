@@ -1,5 +1,10 @@
 package com.owlat.sdk.model.template;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonRawValue;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 
@@ -12,6 +17,12 @@ import java.util.Map;
  * {@code null}.
  */
 public class TransactionalEmailInput {
+
+    /**
+     * Writes the example values with their {@code null} fields. The SDK's mapper leaves nulls out,
+     * and a list entry that loses one is a different list to a condition that compares it as JSON.
+     */
+    private static final ObjectMapper EXAMPLES_MAPPER = new ObjectMapper();
 
     private final String slug;
     private final String name;
@@ -60,8 +71,15 @@ public class TransactionalEmailInput {
         return dataVariablesSchema;
     }
 
+    @JsonIgnore
     public Map<String, Object> getDataVariableExamples() {
         return dataVariableExamples;
+    }
+
+    @JsonProperty("dataVariableExamples")
+    @JsonRawValue
+    private String dataVariableExamplesJson() throws JsonProcessingException {
+        return dataVariableExamples == null ? null : EXAMPLES_MAPPER.writeValueAsString(dataVariableExamples);
     }
 
     public String getDefaultLanguage() {
@@ -121,7 +139,7 @@ public class TransactionalEmailInput {
         /**
          * Variable name to example value, each matching the variable's type: sample data for the
          * editor preview and test sends, never a real recipient's and never used by a real send.
-         * Left {@code null}, the stored examples stay for the variables that keep their type; an
+         * Left {@code null}, each stored example stays while it still matches its variable's type; an
          * empty map clears them.
          */
         public Builder dataVariableExamples(Map<String, Object> dataVariableExamples) {

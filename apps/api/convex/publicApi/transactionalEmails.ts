@@ -161,7 +161,7 @@ const editableFields = {
 	translations: v.string(),
 	defaultLanguage: v.string(),
 	dataVariablesSchema: dataVariablesSchemaValidator,
-	/** Left out, the stored examples stay for the variables that keep their type. */
+	/** Left out, each stored example stays while it still matches its variable's type. */
 	dataVariableExamples: v.optional(dataVariableExamplesValidator),
 	showUnsubscribe: v.boolean(),
 };

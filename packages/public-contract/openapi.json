@@ -7595,7 +7595,7 @@
 						}
 					},
 					"dataVariableExamples": {
-						"description": "Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most 500 entries, each a plain value or a flat object of them. At most 16 KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's. Left out, the stored examples stay for the variables that keep their type; an empty object clears them.",
+						"description": "Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most 500 entries, each a plain value or a flat object of them. At most 16 KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's. Left out, each stored example stays while it still matches its variable's type, also after a retype; an empty object clears them.",
 						"type": "object",
 						"propertyNames": {
 							"type": "string"
@@ -8066,7 +8066,7 @@
 						}
 					},
 					"dataVariableExamples": {
-						"description": "Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most 500 entries, each a plain value or a flat object of them. At most 16 KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's. Left out, the stored examples stay for the variables that keep their type; an empty object clears them.",
+						"description": "Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most 500 entries, each a plain value or a flat object of them. At most 16 KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's. Left out, each stored example stays while it still matches its variable's type, also after a retype; an empty object clears them.",
 						"type": "object",
 						"propertyNames": {
 							"type": "string"

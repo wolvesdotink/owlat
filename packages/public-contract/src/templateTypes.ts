@@ -146,8 +146,8 @@ export interface TransactionalEmailInput {
 	dataVariablesSchema?: Record<string, TemplateVariableType>;
 	/**
 	 * Sample data per variable, each matching the variable's type. Left out,
-	 * the stored examples stay for the variables that keep their type; `{}`
-	 * clears them.
+	 * each stored example stays while it still matches its variable's type;
+	 * `{}` clears them.
 	 */
 	dataVariableExamples?: Record<string, DataVariableExample>;
 	/** Defaults to `en`. Cannot change while the email has translations. */
