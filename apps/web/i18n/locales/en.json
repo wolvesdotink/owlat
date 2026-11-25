@@ -3153,6 +3153,19 @@
 				"heading": "Deliverability regression detected | Deliverability regressions detected",
 				"openCheck": "Open check",
 				"resolve": "Resolve alert",
+				"sendingHold": {
+					"changedFrom": {
+						"banned": "It was banned before.",
+						"suspended": "It was suspended before."
+					},
+					"heading": "Sending is stopped",
+					"openHealth": "Open delivery health",
+					"subheading": "No new mail goes out from this instance until it lifts.",
+					"title": {
+						"banned": "Sending banned",
+						"suspended": "Sending suspended"
+					}
+				},
 				"statusLabel": "Status:",
 				"subheading": "A check that previously passed is failing again. Review it before your next send."
 			},
@@ -14182,6 +14195,7 @@
 				"pageTitle": "Templates — Owlat",
 				"searchPlaceholder": "Search templates...",
 				"sortLabel": "Sort templates",
+				"sortedByRelevance": "Sorted by relevance",
 				"subtitle": "Email designs you reuse in campaigns and automations.",
 				"toasts": {
 					"duplicated": "Template duplicated successfully"
@@ -19519,6 +19533,11 @@
 				"bodyDomain": "{domain}: {check} stopped passing",
 				"bodyNoCheck": "A check stopped passing",
 				"private": "A deliverability check stopped passing"
+			},
+			"sendingBanned": {
+				"body": "No new mail goes out from this instance until a platform admin lifts the ban. Open Delivery health to see why",
+				"private": "No new mail goes out from this instance",
+				"title": "Sending banned"
 			},
 			"sendingSuspended": {
 				"body": "No new mail goes out from this instance. Open Delivery health to see why",

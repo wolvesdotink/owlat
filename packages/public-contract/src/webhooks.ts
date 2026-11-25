@@ -25,6 +25,7 @@ export const deliverabilityAlertRaisedDataSchema = z.strictObject({
 	emailMayNotArrive: z.boolean(),
 	isTest: z.boolean(),
 	holdStatus: z.enum(['suspended', 'banned']).optional(),
+	previousHoldStatus: z.enum(['suspended', 'banned']).optional(),
 	// The status endpoint's lift object as JSON text: event data is flat.
 	lift: z
 		.string()

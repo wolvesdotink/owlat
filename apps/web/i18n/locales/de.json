@@ -3153,6 +3153,19 @@
 				"heading": "Verschlechterung der Zustellbarkeit erkannt | Verschlechterungen der Zustellbarkeit erkannt",
 				"openCheck": "Prüfung öffnen",
 				"resolve": "Alarm auflösen",
+				"sendingHold": {
+					"changedFrom": {
+						"banned": "Vorher war er gesperrt.",
+						"suspended": "Vorher war er ausgesetzt."
+					},
+					"heading": "Versand gestoppt",
+					"openHealth": "Zustellungsgesundheit öffnen",
+					"subheading": "Von dieser Instanz geht keine neue Mail raus, bis die Sperre aufgehoben ist.",
+					"title": {
+						"banned": "Versand gesperrt",
+						"suspended": "Versand ausgesetzt"
+					}
+				},
 				"statusLabel": "Status:",
 				"subheading": "Eine zuvor bestandene Prüfung schlägt wieder fehl. Sieh sie dir vor deinem nächsten Versand an."
 			},
@@ -14182,6 +14195,7 @@
 				"pageTitle": "Vorlagen — Owlat",
 				"searchPlaceholder": "Vorlagen suchen...",
 				"sortLabel": "Vorlagen sortieren",
+				"sortedByRelevance": "Nach Relevanz sortiert",
 				"subtitle": "E-Mail-Designs, die du in Kampagnen und Automationen wiederverwendest.",
 				"toasts": {
 					"duplicated": "Vorlage erfolgreich dupliziert"
@@ -19519,6 +19533,11 @@
 				"bodyDomain": "{domain}: „{check}“ besteht nicht mehr",
 				"bodyNoCheck": "Eine Prüfung besteht nicht mehr",
 				"private": "Eine Zustellbarkeitsprüfung besteht nicht mehr"
+			},
+			"sendingBanned": {
+				"body": "Von dieser Instanz geht keine neue Mail raus, bis ein Plattform-Admin die Sperre aufhebt. Unter Zustellungsgesundheit siehst du, warum",
+				"private": "Von dieser Instanz geht keine neue Mail raus",
+				"title": "Versand gesperrt"
 			},
 			"sendingSuspended": {
 				"body": "Von dieser Instanz geht keine neue Mail raus. Unter Zustellungsgesundheit siehst du, warum",

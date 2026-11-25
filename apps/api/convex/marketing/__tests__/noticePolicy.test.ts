@@ -171,6 +171,20 @@ describe('marketing push copy', () => {
 		);
 	});
 
+	it("says a ban is a ban, in the reader's language", () => {
+		expect(marketingPayload(notice({ kind: 'sending_suspended' }), 'en', false, 0).title).toBe(
+			'Sending suspended'
+		);
+		expect(
+			marketingPayload(notice({ kind: 'sending_suspended', holdStatus: 'banned' }), 'en', false, 0)
+				.title
+		).toBe('Sending banned');
+		expect(
+			marketingPayload(notice({ kind: 'sending_suspended', holdStatus: 'banned' }), 'de', false, 0)
+				.title
+		).toBe('Versand gesperrt');
+	});
+
 	it('keeps names off the lock screen when notifications are private', () => {
 		const payload = marketingPayload(
 			notice({ kind: 'automation_stalled', name: 'Secret launch', count: 12 }),

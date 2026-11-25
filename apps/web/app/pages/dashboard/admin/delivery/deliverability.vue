@@ -332,6 +332,7 @@ async function copyReport() {
 
 				<DeliveryDeliverabilityRegressionAlerts
 					:alerts="center.alerts"
+					:sending-hold="center.sendingHold ?? null"
 					:groups="center.groups"
 					:active-operation="activeAlertOperation"
 					@view="openRegressionCheck"

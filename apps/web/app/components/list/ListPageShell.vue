@@ -75,6 +75,11 @@ const props = withDefaults(
 		sort?: string;
 		sortLabel?: string;
 		sortListboxId?: string;
+		/**
+		 * Set while the rows come in an order the menu cannot change (a
+		 * relevance-ordered search): the menu is disabled and shows this instead.
+		 */
+		sortDisabledLabel?: string;
 		/** `v-model:viewMode`. Leave unset for a page without a grid view. */
 		viewMode?: ViewMode;
 		/**
@@ -101,6 +106,7 @@ const props = withDefaults(
 		sort: undefined,
 		sortLabel: undefined,
 		sortListboxId: undefined,
+		sortDisabledLabel: undefined,
 		viewMode: undefined,
 		layout: 'table',
 		deleteCopy: undefined,
@@ -179,6 +185,7 @@ const onDeleteOpenChange = (open: boolean) => {
 					:model-value="sort"
 					:label="sortLabel"
 					:listbox-id="sortListboxId"
+					:disabled-label="sortDisabledLabel"
 					@update:model-value="emit('update:sort', $event)"
 				/>
 

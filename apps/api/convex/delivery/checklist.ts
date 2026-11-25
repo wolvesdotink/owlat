@@ -43,6 +43,7 @@ import type { ChecklistRelayIdentity } from './checklistValidatorTypes';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import { readInstanceCounter } from '../lib/instanceCounters';
 import { readSndsIpStandings } from './sndsStanding';
+import { readStandingSendingHold } from './sendingHoldAlerts';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -359,6 +360,8 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 					channels: await alertChannelsView(ctx, alert),
 				}))
 		),
+		// Sending stopped: not a regressed check, so beside the alerts, with the same channel summary.
+		sendingHold: await readStandingSendingHold(ctx, settings),
 		nextItem,
 		groups,
 		ipv6: { enabled: ipv6Enabled, addresses: ipv6Addresses },
