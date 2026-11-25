@@ -13,7 +13,7 @@ import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { pickHtmlTranslation } from '../lib/emailJson';
 import { repeatVariablesIn } from '@owlat/shared/sendRegions';
 import {
-	personalizeBody,
+	personalizedBodyExceeds,
 	resolvedTemplate,
 	variablesWithoutFallback,
 } from '../delivery/sendComposition/personalization';
@@ -250,7 +250,7 @@ export function oversizedRepeatVariables(
 	for (const [body, escape] of bodies) {
 		const repeats = repeatVariablesIn(body, sent);
 		if (repeats.length === 0) continue;
-		if (personalizeBody(body, sent, { escape }).length > MAX_REPEATED_BODY_CHARS) {
+		if (personalizedBodyExceeds(body, sent, { escape }, MAX_REPEATED_BODY_CHARS)) {
 			for (const name of repeats) names.add(name);
 		}
 	}

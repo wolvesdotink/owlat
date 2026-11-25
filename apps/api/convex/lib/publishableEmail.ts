@@ -80,6 +80,22 @@ export function publishedHtml(
 	row: Pick<PublishableEmailRow, 'htmlRenderState'> & RenderablePublishableEmail,
 	render: { variableType: PublishableEmailVariableType; theme: EmailTheme | undefined }
 ): { htmlContent: string; htmlTranslations?: string; rendererVersion: number } {
+	return publishedRender(row, render).html;
+}
+
+/**
+ * `publishedHtml` and the text/plain body rendered with it, absent when the
+ * author wrote their own. A transactional email stores both: its text carries
+ * the same condition and repeat regions as its HTML, and a text body rendered
+ * by an older server would not.
+ */
+export function publishedRender(
+	row: Pick<PublishableEmailRow, 'htmlRenderState'> & RenderablePublishableEmail,
+	render: { variableType: PublishableEmailVariableType; theme: EmailTheme | undefined }
+): {
+	html: { htmlContent: string; htmlTranslations?: string; rendererVersion: number };
+	plainTextContent: string | undefined;
+} {
 	if (row.htmlRenderState?.stale) {
 		throwInvalidState(
 			'A saved block this email uses changed and its HTML is still being updated, so it was not published. Try again in a moment.',
@@ -91,9 +107,12 @@ export function publishedHtml(
 	}
 	const rendered = renderForWrite(row, render.variableType, render.theme);
 	return {
-		htmlContent: rendered.html,
-		htmlTranslations: rendered.htmlTranslations,
-		rendererVersion: CURRENT_RENDERER_VERSION,
+		html: {
+			htmlContent: rendered.html,
+			htmlTranslations: rendered.htmlTranslations,
+			rendererVersion: CURRENT_RENDERER_VERSION,
+		},
+		plainTextContent: rendered.plainTextContent,
 	};
 }
 
@@ -153,6 +172,9 @@ export function duplicateEmailFields<T extends PublishableEmailRow>(
 		copy['htmlContent'] = rendered.html;
 		copy['htmlTranslations'] = rendered.htmlTranslations;
 		copy['rendererVersion'] = CURRENT_RENDERER_VERSION;
+		if (rendered.plainTextContent !== undefined) {
+			copy['plainTextContent'] = rendered.plainTextContent;
+		}
 	} catch {
 		// Blocks the renderer cannot handle: the copy starts unrendered, like a
 		// row created outside the editor, and its publish is refused until it

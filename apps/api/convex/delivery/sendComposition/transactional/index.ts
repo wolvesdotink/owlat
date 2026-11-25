@@ -22,11 +22,13 @@ export function composeTransactional(input: TransactionalComposeInput): Composer
 	const vars = input.dataVariables ?? {};
 	const subject = personalize(input.template.subject, vars, { escape: 'header' });
 	// The stored body carries the email's conditions and repeats as regions;
-	// they resolve against this request's data before its tokens are filled.
+	// they resolve against this request's data, as its intake checked them,
+	// before its tokens are filled.
 	const html = personalizeBody(
 		input.template.htmlContent,
 		withUnsubscribeLink(vars, input.unsubscribeUrl),
-		{ escape: 'html' }
+		{ escape: 'html' },
+		vars
 	);
 
 	// Gmail FBL: the `txn` stream token keeps transactional + automation spam

@@ -95,9 +95,10 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	const stored = input.template.plainTextContent?.trim();
 	// A transactional text body resolves its conditions and repeats the way
 	// its html does; no other kind stores region markers.
-	const personalizeText = input.kind === 'transactional' ? personalizeBody : personalize;
 	const body = stored
-		? personalizeText(stored, bodyVariablesFor(input), { escape: 'plain' })
+		? input.kind === 'transactional'
+			? personalizeBody(stored, bodyVariablesFor(input), { escape: 'plain' }, variablesFor(input))
+			: personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
 		: htmlToPlainText(composed.html, { preserveBreaks: true });
 	const config = composed.transformConfig;
 	const lines = addressLines(config?.senderAddress);

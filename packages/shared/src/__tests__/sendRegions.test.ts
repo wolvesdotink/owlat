@@ -159,3 +159,37 @@ describe('repeatVariablesIn', () => {
 		expect(repeatVariablesIn('<p>plain</p>', {})).toEqual([]);
 	});
 });
+
+describe('resolveSendRegions options', () => {
+	const lines = { variable: 'lines', itemAlias: 'l' };
+	const variables = { lines: Array.from({ length: 400 }, (_, i) => ({ name: `n${i}` })) };
+
+	it('writes a repeated region for its first entry only when asked', () => {
+		const body = eachRegion(lines, '#;');
+		expect(resolveSendRegions(body, variables, tagged, { firstEntryOnly: true })).toBe('0:n0;');
+	});
+
+	it('stops at maxLength instead of building the rest', () => {
+		let filled = 0;
+		const out = resolveSendRegions(
+			eachRegion(lines, 'xxxxxxxxxx'),
+			variables,
+			(segment) => {
+				filled++;
+				return segment;
+			},
+			{ maxLength: 95 }
+		);
+		expect(out).toBeNull();
+		expect(filled).toBe(10);
+	});
+});
+
+describe('variable lookup', () => {
+	it('reads only the variables the request sent, not Object.prototype', () => {
+		expect(evaluateBlockCondition({ variable: 'constructor', operator: 'exists' }, {})).toBe(false);
+		expect(
+			resolveSendRegions(eachRegion({ variable: 'toString', itemAlias: 'i' }, 'x'), {}, (s) => s)
+		).toBe('');
+	});
+});

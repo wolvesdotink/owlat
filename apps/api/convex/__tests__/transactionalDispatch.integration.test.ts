@@ -1225,6 +1225,25 @@ describe('transactional.dispatch.dispatch — block conditions', () => {
 		expect(sent.text).not.toContain('owlat:');
 	});
 
+	it('publishes the text body rendered with the HTML, not one an older render stored', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t, {
+			templateStatus: 'draft',
+			dataVariablesSchema: { bookingCode: 'string' },
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(templateId, {
+				content: conditionalBlocks,
+				plainTextContent:
+					'Your booking code is {{bookingCode}}\n\nWe will send your booking code later',
+			})
+		);
+		await t.mutation(api.transactional.emails.publish, { id: templateId });
+
+		const published = await t.run((ctx) => ctx.db.get(templateId));
+		expect(published?.plainTextContent).toContain('owlat:if');
+	});
+
 	it('sends the notExists block and does not require a variable only the dropped block uses', async () => {
 		const sent = await sentMessage({});
 

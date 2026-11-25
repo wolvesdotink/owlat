@@ -16,7 +16,7 @@ import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import {
 	assertEditableForPublishableChange,
 	buildEditablePatch,
-	publishedHtml,
+	publishedRender,
 } from '../lib/publishableEmail';
 import { loadEmailTheme } from '../lib/publishableEmailRender';
 import { brandedNewEmailContent } from '../workspaces/brandKit';
@@ -324,10 +324,12 @@ export const publish = transactionalMutation({
 			throwInvalidState('Transactional email is already published');
 		}
 		assertContentRevision(email, args.expectedContentRevision, 'publish');
-		const html = publishedHtml(email, {
+		const { html, plainTextContent } = publishedRender(email, {
 			variableType: 'data',
 			theme: await loadEmailTheme(ctx),
 		});
+		// The text body goes live with the HTML it was rendered beside.
+		if (plainTextContent !== undefined) await ctx.db.patch(args.id, { plainTextContent });
 
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 			emailId: args.id,

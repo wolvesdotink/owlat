@@ -439,3 +439,67 @@ describe('personalizeBody — conditions and repeats a send resolves', () => {
 		);
 	});
 });
+
+describe('personalizeBody — request data the send cannot trust', () => {
+	const repeated = (html: string, extra: Record<string, unknown> = {}) =>
+		renderEmailHtml(
+			[
+				{
+					id: 'r',
+					type: 'text',
+					content: { html, repeat: { variable: 'items', itemAlias: 'item' }, ...extra },
+				},
+			] as unknown as EditorBlock[],
+			{ variableType: 'data', sendTimeBlockLogic: true }
+		);
+
+	it('fills a field whose name is not a word, as the preview does', () => {
+		const html = personalizeBody(
+			repeated('<p>{{item.unit-price}}</p>'),
+			{ items: [{ 'unit-price': '9.50' }] },
+			{ escape: 'html' }
+		);
+		expect(html).toContain('9.50');
+		expect(html).not.toContain('{{item.');
+	});
+
+	it('leaves a field the entry does not hold empty, even one Object.prototype has', () => {
+		const html = personalizeBody(
+			repeated('<p>[{{item.toString}}]</p>'),
+			{ items: [{ name: 'a' }] },
+			{ escape: 'html' }
+		);
+		expect(html).toContain('[]');
+	});
+
+	it('writes a list used as a plain token as its JSON instead of throwing', () => {
+		const items = [{ toString: 'not a function' }];
+		expect(personalize('Items: {{items}}', { items }, { escape: 'header' })).toBe(
+			'Items: [{"toString":"not a function"}]'
+		);
+	});
+
+	it('decides regions on the request data, not on the unsubscribe link the send adds', () => {
+		const stored = renderEmailHtml(
+			[
+				{
+					id: 'u',
+					type: 'text',
+					content: {
+						html: '<p>Opt out: {{unsubscribe_link}}</p>',
+						condition: { variable: 'unsubscribe_link', operator: 'exists' },
+					},
+				},
+			] as unknown as EditorBlock[],
+			{ variableType: 'data', sendTimeBlockLogic: true }
+		);
+		const html = composeTransactional({
+			kind: 'transactional',
+			template: { subject: 's', htmlContent: stored },
+			dataVariables: {},
+			unsubscribeUrl: 'https://owlat.example/u/1',
+			preferenceUrl: 'https://owlat.example/p/1',
+		}).html;
+		expect(html).not.toContain('Opt out');
+	});
+});

@@ -55,6 +55,14 @@ export function stripSendRegionMarkers(content: string): string {
 export type SendRegionVariables = Readonly<Record<string, unknown>>;
 
 /**
+ * The value `record` holds under `name` itself. A name such as `constructor`
+ * must not reach `Object.prototype`, or a missing variable would exist.
+ */
+export function ownValue(record: Readonly<Record<string, unknown>>, name: string): unknown {
+	return Object.prototype.hasOwnProperty.call(record, name) ? record[name] : undefined;
+}
+
+/**
  * A value as the condition compares it: the preview holds every value as the
  * text the author typed, so a number or boolean compares as its JSON text and
  * a list as its JSON. `null` is no value at all, as for a missing variable.
@@ -77,7 +85,7 @@ export function evaluateBlockCondition(
 	condition: Pick<BlockCondition, 'variable' | 'operator' | 'value'>,
 	variables: SendRegionVariables
 ): boolean {
-	const text = conditionText(variables[condition.variable]);
+	const text = conditionText(ownValue(variables, condition.variable));
 	switch (condition.operator) {
 		case 'exists':
 			return text !== undefined && text !== '';
@@ -187,44 +195,59 @@ function parseRegions(content: string): RegionNode[] {
 	return stack[0]!.children;
 }
 
+/** Where a resolution is: its output so far and how far it may grow. */
+interface ResolveState {
+	readonly parts: string[];
+	length: number;
+	readonly maxLength: number;
+	readonly firstEntryOnly: boolean;
+}
+
+/** Appends `text`; false once the output has passed its budget. */
+function emit(state: ResolveState, text: string): boolean {
+	state.parts.push(text);
+	state.length += text.length;
+	return state.length <= state.maxLength;
+}
+
+/** Writes `nodes`; false once the output has passed its budget. */
 function resolveNodes(
 	nodes: readonly RegionNode[],
 	variables: SendRegionVariables,
 	fill: SendRegionFill,
-	item: RepeatItemScope | undefined
-): string {
-	let out = '';
+	item: RepeatItemScope | undefined,
+	state: ResolveState
+): boolean {
 	for (const node of nodes) {
 		if (node.kind === 'text') {
-			out += fill(node.text, item);
+			if (!emit(state, fill(node.text, item))) return false;
 		} else if (node.kind === 'if') {
 			// A condition that does not decode shows its region, as the renderer
 			// shows a Block whose condition it cannot evaluate.
 			if (!isCondition(node.condition) || evaluateBlockCondition(node.condition, variables)) {
-				out += resolveNodes(node.children, variables, fill, item);
+				if (!resolveNodes(node.children, variables, fill, item, state)) return false;
 			}
 		} else if (isRepeat(node.repeat)) {
-			const items = repeatItems(variables[node.repeat.variable]);
+			const items = repeatItems(ownValue(variables, node.repeat.variable));
 			const max = node.repeat.maxItems;
 			const limit = Math.min(
 				typeof max === 'number' && max >= 1 ? Math.floor(max) : items.length,
-				MAX_REPEAT_ITEMS
+				MAX_REPEAT_ITEMS,
+				items.length,
+				state.firstEntryOnly ? 1 : items.length
 			);
-			for (let index = 0; index < Math.min(items.length, limit); index++) {
+			for (let index = 0; index < limit; index++) {
 				const entry = items[index];
 				const fields =
 					entry && typeof entry === 'object' && !Array.isArray(entry)
 						? (entry as Record<string, unknown>)
 						: {};
-				out += resolveNodes(node.children, variables, fill, {
-					alias: node.repeat.itemAlias,
-					fields,
-					index,
-				});
+				const scope = { alias: node.repeat.itemAlias, fields, index };
+				if (!resolveNodes(node.children, variables, fill, scope, state)) return false;
 			}
 		}
 	}
-	return out;
+	return true;
 }
 
 function collectRepeatVariables(
@@ -265,7 +288,33 @@ export function resolveSendRegions(
 	content: string,
 	variables: SendRegionVariables,
 	fill: SendRegionFill
-): string {
-	if (!hasSendRegions(content)) return fill(content, undefined);
-	return resolveNodes(parseRegions(content), variables, fill, undefined);
+): string;
+/**
+ * With `maxLength`, `null` once the output passes that many characters: the
+ * resolution stops there instead of building the rest. With `firstEntryOnly`,
+ * a repeated region is written for its first entry alone, which is all a scan
+ * of the template's tokens needs.
+ */
+export function resolveSendRegions(
+	content: string,
+	variables: SendRegionVariables,
+	fill: SendRegionFill,
+	options: { readonly maxLength?: number; readonly firstEntryOnly?: boolean }
+): string | null;
+export function resolveSendRegions(
+	content: string,
+	variables: SendRegionVariables,
+	fill: SendRegionFill,
+	options: { readonly maxLength?: number; readonly firstEntryOnly?: boolean } = {}
+): string | null {
+	const state: ResolveState = {
+		parts: [],
+		length: 0,
+		maxLength: options.maxLength ?? Infinity,
+		firstEntryOnly: options.firstEntryOnly === true,
+	};
+	const done = hasSendRegions(content)
+		? resolveNodes(parseRegions(content), variables, fill, undefined, state)
+		: emit(state, fill(content, undefined));
+	return done ? state.parts.join('') : null;
 }
