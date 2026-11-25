@@ -26,12 +26,18 @@ describe('parseDevStackArgs', () => {
 		expect(parseDevStackArgs(['logs'])).toMatchObject({ kind: 'run', service: undefined });
 	});
 
+	it('takes codegen with no arguments', () => {
+		expect(parseDevStackArgs(['codegen'])).toMatchObject({ kind: 'run', command: 'codegen' });
+	});
+
 	it.each([
 		[['up', 'extra']],
 		[['status', 'extra']],
 		[['logs', 'convex', 'redis']],
 		[['logs', 'web']],
 		[['down', '--no-seed']],
+		[['codegen', 'extra']],
+		[['codegen', '--no-seed']],
 		[['deploy']],
 	])('rejects %j with usage and exit 2', (argv) => {
 		expect(parseDevStackArgs(argv)).toEqual({ kind: 'usage', exitCode: 2 });

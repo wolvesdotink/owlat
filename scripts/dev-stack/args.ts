@@ -5,7 +5,7 @@
  */
 
 export const DEV_STACK_USAGE =
-	'Usage: bun run dev:stack [up [--no-seed] | down [--volumes] | status | ports | logs [convex|redis] [--follow]]';
+	'Usage: bun run dev:stack [up [--no-seed] | down [--volumes] | status | ports | logs [convex|redis] [--follow] | codegen]';
 
 const SERVICES: ReadonlySet<string> = new Set(['convex', 'redis']);
 
@@ -15,6 +15,7 @@ const KNOWN_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	status: [],
 	ports: [],
 	logs: ['--follow'],
+	codegen: [],
 };
 
 export type DevStackArgs =

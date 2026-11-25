@@ -6,7 +6,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { DevStackConfigError, resolveDevStackConfig } from '../dev-stack/config';
-import { findPortConflicts, runUp, type StackOps } from '../dev-stack/up';
+import {
+	findPortConflicts,
+	runCodegen,
+	runUp,
+	type CodegenOps,
+	type StackOps,
+} from '../dev-stack/up';
 
 const config = resolveDevStackConfig({ root: '/work/wt', linkedWorktree: true, explicit: '20000' });
 const secrets = {
@@ -136,6 +142,54 @@ describe('runUp', () => {
 	});
 });
 
+function codegenOps(fake: Fake, overrides: Partial<CodegenOps> = {}): CodegenOps {
+	return {
+		...fake.ops,
+		codegen: async () => {
+			fake.calls.push('codegen');
+		},
+		copyGeneratedBack: () => {
+			fake.calls.push('copyGeneratedBack');
+			return 2;
+		},
+		...overrides,
+	};
+}
+
+describe('runCodegen', () => {
+	it('prepares the backend, generates in the stage and copies the output back', async () => {
+		const fake = fakeOps();
+		await expect(runCodegen(config, secrets, codegenOps(fake))).resolves.toBe(0);
+		expect(fake.calls).toEqual([
+			'composeUp',
+			'adminKey',
+			'syncStage',
+			'writeStageEnv',
+			'setDeploymentEnv',
+			'codegen',
+			'copyGeneratedBack',
+		]);
+		expect(fake.stageEnv['CONVEX_SELF_HOSTED_URL']).toBe('http://127.0.0.1:23210');
+	});
+
+	it('runs while the stack holds the web port', async () => {
+		const fake = fakeOps({ busy: [23000, 23210, 23211, 26379], running: ['convex', 'redis'] });
+		await expect(runCodegen(config, secrets, codegenOps(fake))).resolves.toBe(0);
+		expect(fake.calls).toContain('codegen');
+	});
+
+	it('copies nothing back when codegen fails', async () => {
+		const fake = fakeOps();
+		const ops = codegenOps(fake, {
+			codegen: async () => {
+				throw new Error('convex codegen failed');
+			},
+		});
+		await expect(runCodegen(config, secrets, ops)).rejects.toThrow('convex codegen failed');
+		expect(fake.calls).not.toContain('copyGeneratedBack');
+	});
+});
+
 describe('findPortConflicts', () => {
 	it('ignores ports held by this checkout’s own running containers', async () => {
 		const busy = [23210, 23211, 26379];
@@ -151,5 +205,6 @@ describe('findPortConflicts', () => {
 	it('always checks the web port, which no container owns', async () => {
 		const ops = fakeOps({ busy: [23000], running: ['convex', 'redis'] }).ops;
 		expect(await findPortConflicts(config, ops)).toEqual(['web port 23000']);
+		expect(await findPortConflicts(config, ops, { web: false })).toEqual([]);
 	});
 });

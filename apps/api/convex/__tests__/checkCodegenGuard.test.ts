@@ -83,4 +83,41 @@ describe('Convex codegen guard', () => {
 			})
 		);
 	});
+
+	function chunked(...modules: string[]): string {
+		return [
+			...modules.map(
+				(key) => `import type * as ${key.replaceAll(/\W/g, '_')} from '../${key}.js';`
+			),
+			...FULL_API_COMMENT,
+			'declare const fullApi: ApiFromModules<{',
+			...modules.map((key) => `\t'${key}': typeof ${key.replaceAll(/\W/g, '_')};`),
+			'}>;',
+		].join('\n');
+	}
+
+	it('does not ask for files the Convex CLI never treats as modules', () => {
+		const { source, declaration } = fixture(chunked('delivery/example'));
+		writeFileSync(join(source, 'delivery', 'catalog.generated.ts'), 'export const a = 1;\n');
+		writeFileSync(join(source, 'delivery', 'schema.ts'), 'export const a = 1;\n');
+		writeFileSync(join(source, 'delivery', 'notes.ts'), '// no import or export\n');
+		mkdirSync(join(source, 'auth'), { recursive: true });
+		writeFileSync(join(source, 'auth', 'convex.config.ts'), 'export default 1;\n');
+		writeFileSync(join(source, 'auth', 'adapter.ts'), 'export const a = 1;\n');
+		mkdirSync(join(source, '__tests__'), { recursive: true });
+		writeFileSync(join(source, '__tests__', 'factories.ts'), 'export const a = 1;\n');
+		expect(runGuard(source, declaration)).toContain('imports and maps every Convex module');
+	});
+
+	it('rejects an entry for a file that is not a module', () => {
+		const { source, declaration } = fixture(
+			chunked('delivery/catalog.generated', 'delivery/example')
+		);
+		writeFileSync(join(source, 'delivery', 'catalog.generated.ts'), 'export const a = 1;\n');
+		expect(() => runGuard(source, declaration)).toThrow(
+			expect.objectContaining({
+				stdout: expect.stringContaining('not a Convex module: delivery/catalog.generated'),
+			})
+		);
+	});
 });
