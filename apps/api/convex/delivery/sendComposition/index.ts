@@ -19,7 +19,12 @@ import { composeCampaign } from './campaign';
 import { composeTest } from './test';
 import { composeTransactional } from './transactional';
 import { addressLines, footerText } from './footer';
-import { automationVariables, personalize, withUnsubscribeLink } from './personalization';
+import {
+	automationVariables,
+	personalize,
+	personalizeBody,
+	withUnsubscribeLink,
+} from './personalization';
 import type {
 	ComposeInput,
 	ComposeInputForKind,
@@ -88,8 +93,11 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	// The footer `transformHtml` appends to the html is appended here too, so a
 	// reader of the text part has the same visible opt-out.
 	const stored = input.template.plainTextContent?.trim();
+	// A transactional text body resolves its conditions and repeats the way
+	// its html does; no other kind stores region markers.
+	const personalizeText = input.kind === 'transactional' ? personalizeBody : personalize;
 	const body = stored
-		? personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
+		? personalizeText(stored, bodyVariablesFor(input), { escape: 'plain' })
 		: htmlToPlainText(composed.html, { preserveBreaks: true });
 	const config = composed.transformConfig;
 	const lines = addressLines(config?.senderAddress);

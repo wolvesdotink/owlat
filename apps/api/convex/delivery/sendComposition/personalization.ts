@@ -1,5 +1,10 @@
 import { escapeHtml } from '@owlat/shared/html';
 import { matchTemplateVariables, replaceTemplateVariables } from '@owlat/shared/templateVariables';
+import {
+	hasSendRegions,
+	resolveSendRegions,
+	type RepeatItemScope,
+} from '@owlat/shared/sendRegions';
 /**
  * Send composition (module) — personalization leaf.
  *
@@ -90,6 +95,67 @@ export function personalize(
 		},
 		{ html: options.escape === 'html' }
 	);
+}
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * A segment inside a repeated region: `{{alias.field}}` takes the entry's
+ * field (empty when the entry has none) and `{{$index}}` its position from 0,
+ * under the same escape policy as every other value. The rest of the segment is
+ * personalized as usual. The segment is split around the entry's tokens before
+ * anything is filled, so no substituted value is read as a token.
+ */
+function personalizeRepeatItem(
+	segment: string,
+	item: RepeatItemScope,
+	variables: Record<string, unknown>,
+	options: { escape: EscapePolicy }
+): string {
+	const itemToken = new RegExp(
+		String.raw`\{\{(?:${escapeRegExp(item.alias)}\.(\w+)|\$index)\}\}`,
+		'g'
+	);
+	let out = '';
+	let last = 0;
+	for (const match of segment.matchAll(itemToken)) {
+		out += personalize(segment.slice(last, match.index), variables, options);
+		const field = match[1];
+		const value = field === undefined ? item.index : item.fields[field];
+		out += value === undefined || value === null ? '' : applyEscape(String(value), options.escape);
+		last = match.index + match[0].length;
+	}
+	return out + personalize(segment.slice(last), variables, options);
+}
+
+/**
+ * `personalize` for a body that may carry the region markers of a transactional
+ * email's conditions and repeats (`@owlat/shared/sendRegions`): each region is
+ * kept, dropped or repeated against `variables`, and no marker reaches the
+ * output. A body without markers is personalized exactly as `personalize` does.
+ * A text body with markers is trimmed, because a dropped region at either end
+ * leaves its blank line behind.
+ */
+export function personalizeBody(
+	content: string,
+	variables: Record<string, unknown>,
+	options: { escape: EscapePolicy }
+): string {
+	if (!hasSendRegions(content)) return personalize(content, variables, options);
+	const body = resolveSendRegions(content, variables, (segment, item) =>
+		item
+			? personalizeRepeatItem(segment, item, variables, options)
+			: personalize(segment, variables, options)
+	);
+	return options.escape === 'html' ? body : body.trim();
+}
+
+/**
+ * The template a send renders once its regions are resolved, with the tokens
+ * still in it: what decides which variables the send needs.
+ */
+export function resolvedTemplate(content: string, variables: Record<string, unknown>): string {
+	return resolveSendRegions(content, variables, (segment) => segment);
 }
 
 /**

@@ -24,6 +24,8 @@ import {
 	createTestTransactionalEmail,
 } from './factories';
 import { readInstanceCounter } from '../lib/instanceCounters';
+import { composeForSend } from '../delivery/sendComposition';
+import { buildComposeInput } from '../delivery/worker';
 import { mtaSendProvider } from '../lib/sendProviders/mta';
 import { resolveSendTransport } from '../lib/sendProviders/transports';
 import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
@@ -1158,5 +1160,77 @@ describe('transactional.dispatch.dispatch — optional variables', () => {
 		expect(outcome.detail).toContain('"orderNumber"');
 		expect(outcome.detail).not.toContain('giftNote');
 		expect(outcome.detail).toContain('mark it optional');
+	});
+});
+
+describe('transactional.dispatch.dispatch — block conditions', () => {
+	const conditionalBlocks = JSON.stringify([
+		{
+			id: 'with-code',
+			type: 'text',
+			content: {
+				html: '<p>Your booking code is {{bookingCode}}</p>',
+				condition: { variable: 'bookingCode', operator: 'exists' },
+			},
+		},
+		{
+			id: 'without-code',
+			type: 'text',
+			content: {
+				html: '<p>We will send your booking code later</p>',
+				condition: { variable: 'bookingCode', operator: 'notExists' },
+			},
+		},
+	]);
+
+	async function publishConditional(t: TestConvex<typeof schema>) {
+		const { templateId } = await seedBaseline(t, {
+			templateStatus: 'draft',
+			dataVariablesSchema: { bookingCode: 'string' },
+		});
+		await t.mutation(api.transactional.emails.update, {
+			id: templateId,
+			content: conditionalBlocks,
+		});
+		const saved = await t.run((ctx) => ctx.db.get(templateId));
+		expect(saved?.plainTextContent).toContain('owlat:if');
+		await t.mutation(api.transactional.emails.publish, { id: templateId });
+		return templateId;
+	}
+
+	async function sentMessage(dataVariables: Record<string, string>) {
+		const t = newTest();
+		const templateId = await publishConditional(t);
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables,
+		});
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}: ${outcome.detail}`);
+		const queued = vi.mocked(transactionalEmailPool.enqueueAction).mock.calls[0]?.[2] as {
+			envelopeInput: Parameters<typeof buildComposeInput>[0];
+		};
+		return composeForSend(buildComposeInput(queued.envelopeInput));
+	}
+
+	it('keeps the exists block and drops the notExists block when the request sends the variable', async () => {
+		const sent = await sentMessage({ bookingCode: 'BK-42' });
+
+		expect(sent.html).toContain('Your booking code is BK-42');
+		expect(sent.html).not.toContain('We will send your booking code later');
+		expect(sent.text).toContain('Your booking code is BK-42');
+		expect(sent.text).not.toContain('We will send your booking code later');
+		expect(sent.html).not.toContain('owlat:');
+		expect(sent.text).not.toContain('owlat:');
+	});
+
+	it('sends the notExists block and does not require a variable only the dropped block uses', async () => {
+		const sent = await sentMessage({});
+
+		expect(sent.html).toContain('We will send your booking code later');
+		expect(sent.html).not.toContain('Your booking code is');
+		expect(sent.text).toContain('We will send your booking code later');
+		expect(sent.text).not.toContain('Your booking code is');
 	});
 });

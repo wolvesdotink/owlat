@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { stripSendRegionMarkers } from '@owlat/shared/sendRegions';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
@@ -53,7 +54,9 @@ export async function insertShareLink(ctx: MutationCtx, args: ShareLinkTarget, c
 		if (!email.htmlContent) {
 			throwInvalidState('Email must be saved at least once before sharing');
 		}
-		htmlContent = email.htmlContent;
+		// A share shows the email as written: every conditional and repeated
+		// Block once, without the region markers a send resolves.
+		htmlContent = stripSendRegionMarkers(email.htmlContent);
 		rendererVersion = email.rendererVersion;
 		subject = email.subject;
 	}

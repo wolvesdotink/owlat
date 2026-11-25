@@ -11,7 +11,10 @@
 import { v } from 'convex/values';
 import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { pickHtmlTranslation } from '../lib/emailJson';
-import { variablesWithoutFallback } from '../delivery/sendComposition/personalization';
+import {
+	resolvedTemplate,
+	variablesWithoutFallback,
+} from '../delivery/sendComposition/personalization';
 
 /** A template-side attachment as the template's `attachments` JSON stores it. */
 const templateAttachmentsValidator = v.array(
@@ -201,10 +204,13 @@ export function missingDataVariables(
 	variables: Record<string, unknown> | undefined,
 	optionalVariables: readonly string[] = []
 ): string[] {
+	// Only what this request's data keeps of the email's conditional and
+	// repeated Blocks counts: a variable used in a dropped Block is not needed.
+	const sent = variables ?? {};
 	const used = new Set([
 		...variablesWithoutFallback(content.subject),
-		...variablesWithoutFallback(content.html, { html: true }),
-		...variablesWithoutFallback(content.plainText ?? ''),
+		...variablesWithoutFallback(resolvedTemplate(content.html, sent), { html: true }),
+		...variablesWithoutFallback(resolvedTemplate(content.plainText ?? '', sent)),
 	]);
 	const optional = new Set(optionalVariables);
 	return [...used].filter((name) => !optional.has(name) && variables?.[name] == null);
