@@ -13,6 +13,7 @@ import {
 	writeVersionRecord,
 } from '@owlat/shared/installVersionRecord';
 import { OWLAT_DIR } from './http.js';
+import { readRecord } from './rolloutState.js';
 
 type Step = { step: string; ok?: boolean; stdout: string; stderr: string };
 
@@ -39,11 +40,17 @@ export async function recordRunningVersion(
  * names another. Run once at startup: the updater is recreated after every
  * update, and on the first update of an install that predates VERSION it is
  * the previous release's updater that applies it, which never writes the
- * file. Not after an interrupted rollout (the caller skips it then): `.env`
- * may pin a release whose containers were never recreated. Nothing to do on a
- * `dev` stack or an unreadable `.env`.
+ * file. Not while the last rollout stopped after promoting its release
+ * without finishing `up` (interrupted, or `up` failed halfway): `.env` then
+ * pins a release whose containers may never have been recreated, until the
+ * next rollout settles it. Nothing to do on a `dev` stack or an unreadable
+ * `.env`.
  */
 export async function syncVersionRecord(): Promise<Step | null> {
+	const last = readRecord();
+	if (last?.committed && (last.outcome === 'interrupted' || last.outcome === 'partially-applied')) {
+		return null;
+	}
 	const env = await readEnvFile(join(OWLAT_DIR, '.env')).catch(() => ({}) as EnvMap);
 	const pinned = env['OWLAT_VERSION']?.trim() ?? '';
 	if (!isReleaseVersion(pinned)) return null;

@@ -11,6 +11,7 @@ const record = () => readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
 
 beforeEach(() => {
 	rmSync(join(OWLAT_DIR, 'VERSION'), { force: true });
+	rmSync(join(OWLAT_DIR, '.owlat-last-rollout.json'), { force: true });
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.6.24\n');
 });
 afterAll(() => rmSync(OWLAT_DIR, { recursive: true, force: true }));
@@ -46,6 +47,38 @@ describe('syncVersionRecord, at startup', () => {
 		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\napplied_at=earlier\n');
 		expect(await syncVersionRecord()).toBeNull();
 		expect(record()).toBe('version=0.6.24\napplied_at=earlier\n');
+	});
+
+	it('keeps VERSION, restart after restart, while an update stopped after promoting its release', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+		writeFileSync(
+			join(OWLAT_DIR, '.owlat-last-rollout.json'),
+			JSON.stringify({
+				targetVersion: '0.6.24',
+				startedAt: 1,
+				phase: 'done',
+				committed: true,
+				outcome: 'interrupted',
+			})
+		);
+		expect(await syncVersionRecord()).toBeNull();
+		expect(await syncVersionRecord()).toBeNull();
+		expect(record()).toBe('version=0.4.19\n');
+	});
+
+	it('writes VERSION after an update that finished, as the hand-over leaves it', async () => {
+		writeFileSync(
+			join(OWLAT_DIR, '.owlat-last-rollout.json'),
+			JSON.stringify({
+				targetVersion: '0.6.24',
+				startedAt: 1,
+				phase: 'done',
+				committed: true,
+				outcome: 'healthy',
+			})
+		);
+		expect(await syncVersionRecord()).toMatchObject({ ok: true });
+		expect(record()).toMatch(/^version=0\.6\.24$/m);
 	});
 
 	it('writes nothing for a dev stack or without .env', async () => {

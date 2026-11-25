@@ -552,7 +552,7 @@ print_install_version() {
 	[[ "$head" == "$tag_commit" ]] && return 0
 	at="$(git -c safe.directory="$PWD" describe --tags --exact-match HEAD 2>/dev/null)" || at="commit ${head:0:12}"
 	printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} The source tree in $OWLAT_DIR is ${at}, not ${tag}: updates do not move it." \
-		"       The running source: https://github.com/wolvesdotink/owlat/tree/${tag}" >&2
+		"       Source for the configured release: https://github.com/wolvesdotink/owlat/tree/${tag}" >&2
 }
 
 # ── Subcommands ───────────────────────────────────────────────────────────────
