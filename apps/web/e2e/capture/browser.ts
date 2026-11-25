@@ -1,30 +1,40 @@
 /**
  * The browser half of `bun run capture`: one Chrome context with the pair's
- * presentation, a real sign-in through the login form, then every planned shot
- * in order. Nothing is mocked: the app, its Convex backend and Better Auth are
+ * presentation, a real sign-in through the login form (unless the pair is
+ * signed out), then every planned shot in order. Nothing is mocked: the app, its Convex backend and Better Auth are
  * the ones `bun run dev:stack` runs.
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { WELCOMED_STORAGE_PREFIX } from '../../app/lib/welcomedCache';
-import type { CaptureManifest, PlannedShot } from './options';
-import { QUIET_MS, SETTLE_TIMEOUT_MS, shootWhenSettled, type PageChecks } from './settle';
-import { BOOT_TIMEOUT_MS, CaptureFailure, openRoute, SURFACES } from './surfaces';
+import type { AppLocale } from '@owlat/shared/appLocales';
+import { LOCALE_COOKIE } from '../../i18n/areaRuntime';
+import type { CaptureManifest } from './manifest';
+import type { CaptureStep, Credentials, PlannedShot } from './options';
+import {
+	QUIET_MS,
+	SETTLE_TIMEOUT_MS,
+	shootWhenSettled,
+	TICK_GRACE_MS,
+	type PageChecks,
+} from './settle';
+import { BOOT_TIMEOUT_MS, CaptureFailure, openRoute, READY_TIMEOUT_MS, SURFACES } from './surfaces';
 
-export interface Credentials {
-	readonly email: string;
-	readonly password: string;
-}
+/** The browser's own language for each app locale, which dates and numbers follow. */
+const BROWSER_LOCALES: Readonly<Record<AppLocale, string>> = { en: 'en-US', de: 'de-DE' };
 
 /**
- * Mirrors the owner `scripts/dev-seed.ts` creates. OWLAT_CAPTURE_EMAIL and
- * OWLAT_CAPTURE_PASSWORD override it for a stack whose owner predates the seed.
+ * The app picks its language from the `owlat-locale` cookie, then from the
+ * browser's languages (`I18N_OPTIONS` in i18n/catalogModule.ts); the
+ * language stored on the account only reaches emails. Setting the cookie is
+ * what the language picker does, so the whole UI switches.
  */
-export function captureCredentials(env: NodeJS.ProcessEnv): Credentials {
-	return {
-		email: env['OWLAT_CAPTURE_EMAIL'] || 'dev@example.com',
-		password: env['OWLAT_CAPTURE_PASSWORD'] || 'devpassword12345',
-	};
+async function setAppLocale(
+	context: BrowserContext,
+	appUrl: string,
+	locale: AppLocale
+): Promise<void> {
+	await context.addCookies([{ name: LOCALE_COOKIE, value: locale, url: appUrl }]);
 }
 
 /** `nuxt dev`'s own overlays: present in dev only, never part of the product. */
@@ -52,7 +62,7 @@ async function newContext(browser: Browser, manifest: CaptureManifest): Promise<
 		deviceScaleFactor: 1,
 		colorScheme: manifest.theme,
 		reducedMotion: 'reduce',
-		locale: 'en-US',
+		locale: BROWSER_LOCALES[manifest.locale],
 		timezoneId: 'UTC',
 	});
 	// The app's own theme preference (@nuxtjs/color-mode, storageKey in
@@ -61,7 +71,8 @@ async function newContext(browser: Browser, manifest: CaptureManifest): Promise<
 		localStorage.setItem('owlat-theme', theme);
 	}, manifest.theme);
 	// Shifted, not frozen: time keeps running from the pair's recorded start, so
-	// timers and token refreshes behave normally.
+	// timers and token refreshes behave normally. A page that keeps ticking is
+	// frozen only for its own shot (`freezeTimers`).
 	await context.clock.setSystemTime(new Date(manifest.clock));
 	return context;
 }
@@ -137,10 +148,14 @@ function pageLoaded(): boolean {
  * element marked aria-busy.
  */
 function pageChecks(page: Page, manifest: CaptureManifest): PageChecks {
+	/** The page's own time when its timers were frozen, restored when they run again. */
+	let frozenAt = 0;
 	return {
 		async blocker() {
 			const path = new URL(page.url()).pathname;
-			if (path.startsWith('/auth')) return `the app sent the browser back to sign-in (${path}).`;
+			if (manifest.account !== 'signed-out' && path.startsWith('/auth')) {
+				return `the app sent the browser back to sign-in (${path}).`;
+			}
 			const error = await renderedError(page);
 			return error ? `the app rendered its error page (${error}).` : null;
 		},
@@ -150,10 +165,15 @@ function pageChecks(page: Page, manifest: CaptureManifest): PageChecks {
 				.waitForFunction(pageLoaded, undefined, { timeout: SETTLE_TIMEOUT_MS })
 				.then(() => true)
 				.catch(() => false),
-		waitQuiet: () =>
+		// The quiet and paint waits use the browser's own timers: the app's are
+		// Playwright's clock (`context.clock`), which `freezeTimers` stops.
+		waitQuiet: (timeoutMs) =>
 			page.evaluate(
 				({ quietMs, timeoutMs }) =>
 					new Promise<boolean>((done) => {
+						const { setTimeout, clearTimeout } =
+							(globalThis as { __pwClock?: { builtins: typeof globalThis } }).__pwClock?.builtins ??
+							globalThis;
 						const finish = (settled: boolean) => {
 							observer.disconnect();
 							clearTimeout(quietTimer);
@@ -173,14 +193,33 @@ function pageChecks(page: Page, manifest: CaptureManifest): PageChecks {
 							characterData: true,
 						});
 					}),
-				{ quietMs: QUIET_MS, timeoutMs: SETTLE_TIMEOUT_MS }
+				{ quietMs: QUIET_MS, timeoutMs }
 			),
+		async freezeTimers() {
+			// A little ahead of the page's clock: pausing cannot move it backwards.
+			frozenAt = (await page.evaluate(() => Date.now())) + 1_000;
+			await page.clock.pauseAt(frozenAt);
+			// Then fixed at the pair's recorded start plus one second, whatever
+			// each run spent getting here, and one second of timers runs so every
+			// ticking label renders that moment: both labels of a pair show the
+			// same seconds on a countdown.
+			await page.clock.setFixedTime(new Date(Date.parse(manifest.clock) + 1_000));
+			await page.clock.runFor(1_000);
+		},
+		async thawTimers() {
+			// Back to the time this run had reached, so later shots are not rewound.
+			await page.clock.setSystemTime(new Date(frozenAt));
+			await page.clock.resume();
+		},
 		paint: () =>
 			page.evaluate(
 				() =>
-					new Promise<void>((done) =>
-						requestAnimationFrame(() => requestAnimationFrame(() => done()))
-					)
+					new Promise<void>((done) => {
+						const { requestAnimationFrame } =
+							(globalThis as { __pwClock?: { builtins: typeof globalThis } }).__pwClock?.builtins ??
+							globalThis;
+						requestAnimationFrame(() => requestAnimationFrame(() => done()));
+					})
 			),
 		screenshot: () =>
 			page.screenshot({
@@ -192,21 +231,89 @@ function pageChecks(page: Page, manifest: CaptureManifest): PageChecks {
 	};
 }
 
+function describeStep(step: CaptureStep): string {
+	switch (step.action) {
+		case 'press':
+			return `--press ${step.key}`;
+		case 'fill':
+			return `--fill ${step.target}`;
+		default:
+			return `--${step.action} ${step.target}`;
+	}
+}
+
 /**
- * The shot of the page the browser is on, once it has loaded. Focus and the
- * mouse are moved off every control first, so no focus ring, hover state or
- * focus-only control of the last clicked element is captured.
+ * A `--path` shot's steps, in order. A selector that matches more than one
+ * element fails the step (Playwright's strict mode) instead of acting on
+ * whichever comes first.
  */
-async function shoot(page: Page, name: string, manifest: CaptureManifest): Promise<Uint8Array> {
+async function runSteps(page: Page, name: string, steps: readonly CaptureStep[]): Promise<void> {
+	for (const step of steps) {
+		try {
+			if (step.action === 'click') {
+				await page.locator(step.target).click({ timeout: READY_TIMEOUT_MS });
+			} else if (step.action === 'fill') {
+				await page.locator(step.target).fill(step.value, { timeout: READY_TIMEOUT_MS });
+			} else if (step.action === 'press') {
+				await page.keyboard.press(step.key);
+			} else {
+				await page.locator(step.target).waitFor({ state: 'visible', timeout: READY_TIMEOUT_MS });
+			}
+		} catch (error) {
+			const matches =
+				'target' in step
+					? await page
+							.locator(step.target)
+							.count()
+							.catch(() => null)
+					: null;
+			const reason =
+				matches === 0
+					? 'no element matches the selector'
+					: matches !== null && matches > 1
+						? `${matches} elements match the selector; it must match one`
+						: (error instanceof Error ? error.message : String(error)).split('\n')[0];
+			throw new CaptureFailure(`${name}: ${describeStep(step)} failed: ${reason}`);
+		}
+	}
+}
+
+/**
+ * The shot of the page the browser is on, once it has loaded. The mouse is
+ * moved off every control first, and so is focus unless the shot took steps
+ * (a typed value or an open menu can depend on it), so no focus ring, hover
+ * state or focus-only control of the last clicked element is captured.
+ */
+async function shoot(
+	page: Page,
+	shot: PlannedShot,
+	manifest: CaptureManifest
+): Promise<Uint8Array> {
 	await page.locator('.owlat-spa').waitFor({ state: 'detached', timeout: BOOT_TIMEOUT_MS });
+	const checks = pageChecks(page, manifest);
+	const steps = shot.steps ?? [];
+	if (steps.length > 0) {
+		// Steps act on the loaded page, not on what shows while it loads: an
+		// empty state can carry a second copy of the button a step clicks.
+		// A page that keeps ticking is acted on once the grace period is over.
+		if (!(await checks.waitLoaded())) {
+			throw new CaptureFailure(
+				`${shot.name}: the page was still loading after ${SETTLE_TIMEOUT_MS / 1000}s; no step was taken.`
+			);
+		}
+		await checks.waitQuiet(TICK_GRACE_MS);
+		await runSteps(page, shot.name, steps);
+	}
 	await page.mouse.move(0, manifest.viewport.height - 1);
-	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-	return shootWhenSettled(name, pageChecks(page, manifest));
+	if (steps.length === 0) {
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	}
+	return shootWhenSettled(shot.name, checks);
 }
 
 export async function shootAll(
 	appUrl: string,
-	credentials: Credentials,
+	credentials: Credentials | null,
 	shots: readonly PlannedShot[],
 	manifest: CaptureManifest,
 	log: (line: string) => void
@@ -215,8 +322,15 @@ export async function shootAll(
 	try {
 		const context = await newContext(browser, manifest);
 		const page = await context.newPage();
-		log(`Signing in to ${appUrl} as ${credentials.email}...`);
-		await signIn(page, appUrl, credentials);
+		if (credentials) {
+			// The sign-in form is found by its English labels, whatever the pair's language.
+			await setAppLocale(context, appUrl, 'en');
+			log(`Signing in to ${appUrl} as ${credentials.email}...`);
+			await signIn(page, appUrl, credentials);
+		} else {
+			log(`Capturing ${appUrl} signed out...`);
+		}
+		await setAppLocale(context, appUrl, manifest.locale);
 		const images: Uint8Array[] = [];
 		for (const shot of shots) {
 			log(`Capturing ${shot.name}...`);
@@ -227,7 +341,7 @@ export async function shootAll(
 				if (!surface) throw new CaptureFailure(`Unknown surface ${shot.name}.`);
 				await surface.open(page, appUrl);
 			}
-			images.push(await shoot(page, shot.name, manifest));
+			images.push(await shoot(page, shot, manifest));
 		}
 		return images;
 	} finally {

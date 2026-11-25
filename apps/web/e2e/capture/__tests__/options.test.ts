@@ -1,7 +1,7 @@
 /**
  * The rules `bun run capture` applies before a browser starts: what the
- * command line accepts, where the PNGs may go (never into the checkout), which
- * app it signs in to, and how a pair shares one presentation.
+ * command line accepts, which shots and steps a run plans, where the PNGs may
+ * go (never into the checkout), and which app it signs in to.
  */
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,19 +15,24 @@ import {
 import {
 	appRouteUrl,
 	CaptureUsageError,
-	DEFAULT_VIEWPORT,
 	parseCaptureArgs,
-	parseManifest,
+	parseFill,
 	pathShotName,
 	planShots,
 	resolveAppUrl,
 	resolveOutputDir,
-	settleManifest,
-	type CaptureManifest,
+	type PathRequest,
 } from '../options';
 import { SURFACE_NAMES, SURFACES } from '../surfaces';
 
 const KNOWN = ['dashboard', 'postbox', 'contacts'];
+
+const route = (path: string, overrides: Partial<PathRequest> = {}): PathRequest => ({
+	path,
+	name: undefined,
+	steps: [],
+	...overrides,
+});
 
 function request(overrides: Partial<Parameters<typeof planShots>[0]> = {}) {
 	return { label: 'before', surfaces: ['contacts'], paths: [], force: false, ...overrides };
@@ -52,12 +57,70 @@ describe('parseCaptureArgs', () => {
 		expect(parsed).toMatchObject({
 			label: 'before',
 			surfaces: ['postbox', 'contacts', 'dashboard'],
-			paths: ['/dashboard/files'],
+			paths: [route('/dashboard/files')],
 			theme: 'dark',
 			viewport: { width: 1280, height: 800 },
 			fullPage: true,
 			force: false,
 		});
+	});
+
+	it('attaches --name and the steps to the --path before them, in command-line order', () => {
+		const parsed = parseCaptureArgs([
+			'before',
+			'--path',
+			'/dashboard/campaigns',
+			'--click',
+			'role=button[name="New campaign"]',
+			'--fill',
+			'role=textbox[name="Name"]=Spring sale',
+			'--wait-for',
+			'role=dialog',
+			'--name',
+			'new-campaign',
+			'--press',
+			'Tab',
+			'--path',
+			'/dashboard/files',
+		]);
+		expect(parsed.paths).toEqual([
+			{
+				path: '/dashboard/campaigns',
+				name: 'new-campaign',
+				steps: [
+					{ action: 'click', target: 'role=button[name="New campaign"]' },
+					{ action: 'fill', target: 'role=textbox[name="Name"]', value: 'Spring sale' },
+					{ action: 'wait-for', target: 'role=dialog' },
+					{ action: 'press', key: 'Tab' },
+				],
+			},
+			route('/dashboard/files'),
+		]);
+	});
+
+	it('reads the language and the account', () => {
+		expect(parseCaptureArgs(['before', '--path', '/', '--locale', 'de'])).toMatchObject({
+			locale: 'de',
+			account: undefined,
+		});
+		expect(parseCaptureArgs(['before', '--path', '/', '--as', 'member']).account).toBe('member');
+		expect(parseCaptureArgs(['before', '--path', '/auth/login', '--signed-out']).account).toBe(
+			'signed-out'
+		);
+	});
+
+	it.each([
+		[['before', '--click', 'button', '--path', '/'], /put it after the --path/],
+		[['before', '--surface', 'contacts', '--press', 'Escape'], /put it after the --path/],
+		[['before', '--path', '/', '--name', 'Big Shot'], /--name must be/],
+		[['before', '--path', '/', '--name', 'a', '--name', 'b'], /two --name values/],
+		[['before', '--path', '/', '--fill', 'input'], /--fill must be <selector>=<value>/],
+		[['before', '--path', '/', '--click', ' '], /--click needs a value/],
+		[['before', '--path', '/', '--locale', 'fr'], /--locale must be one of en, de/],
+		[['before', '--path', '/', '--as', 'guest'], /--as must be owner, admin or member/],
+		[['before', '--path', '/', '--as', 'owner', '--signed-out'], /exclude each other/],
+	])('refuses %j', (argv, message) => {
+		expect(() => parseCaptureArgs(argv)).toThrow(message);
 	});
 
 	it.each([['before-x'], ['Before'], ['']])('refuses the label %j', (label) => {
@@ -79,6 +142,24 @@ describe('parseCaptureArgs', () => {
 		[['before', 'after', '--surface', 'x']],
 	])('refuses %j', (argv) => {
 		expect(() => parseCaptureArgs(argv)).toThrow(CaptureUsageError);
+	});
+});
+
+describe('parseFill', () => {
+	it.each([
+		['role=textbox[name="Search"]=owlat', 'role=textbox[name="Search"]', 'owlat'],
+		['input[name=q]=a=b', 'input[name=q]', 'a=b'],
+		['role=textbox[name="a=b"]=', 'role=textbox[name="a=b"]', ''],
+		['#subject=Hello', '#subject', 'Hello'],
+		['#card >> input >> nth=0=Ada', '#card >> input >> nth=0', 'Ada'],
+		['#card >> role=textbox[name="Name"]=Ada', '#card >> role=textbox[name="Name"]', 'Ada'],
+		[
+			'text=Sign up >> role=textbox[name=Email]=a@b',
+			'text=Sign up >> role=textbox[name=Email]',
+			'a@b',
+		],
+	])('splits %j at the first = outside the selector', (raw, target, value) => {
+		expect(parseFill(raw)).toEqual({ target, value });
 	});
 });
 
@@ -120,7 +201,7 @@ describe('appRouteUrl', () => {
 describe('planShots', () => {
 	it('names each file <label>-<shot>.png and runs surfaces in registry order', () => {
 		const shots = planShots(
-			request({ surfaces: ['contacts', 'dashboard'], paths: ['/dashboard/files'] }),
+			request({ surfaces: ['contacts', 'dashboard'], paths: [route('/dashboard/files')] }),
 			'/out',
 			KNOWN,
 			() => false
@@ -131,8 +212,26 @@ describe('planShots', () => {
 			{
 				name: 'path-dashboard-files',
 				path: '/dashboard/files',
+				steps: [],
 				file: '/out/before-path-dashboard-files.png',
 			},
+		]);
+	});
+
+	it('names a --path shot after its --name, so one route can be captured twice', () => {
+		const steps = [{ action: 'click' as const, target: 'role=button[name="New"]' }];
+		const shots = planShots(
+			request({
+				surfaces: [],
+				paths: [route('/dashboard/files'), route('/dashboard/files', { name: 'new', steps })],
+			}),
+			'/out',
+			KNOWN,
+			() => false
+		);
+		expect(shots.map((shot) => [shot.name, shot.steps])).toEqual([
+			['path-dashboard-files', []],
+			['path-new', steps],
 		]);
 	});
 
@@ -144,7 +243,12 @@ describe('planShots', () => {
 			planShots(request({ surfaces: ['contacts', 'contacts'] }), '/out', KNOWN, () => false)
 		).toThrow(/requested twice/);
 		expect(() =>
-			planShots(request({ surfaces: [], paths: ['/a/b', '/a-b'] }), '/out', KNOWN, () => false)
+			planShots(
+				request({ surfaces: [], paths: [route('/a/b'), route('/a-b')] }),
+				'/out',
+				KNOWN,
+				() => false
+			)
 		).toThrow(/requested twice/);
 	});
 
@@ -262,59 +366,5 @@ describe('resolveAppUrl', () => {
 		expect(() => resolveAppUrl('https://app.owlat.example', root, true, {})).toThrow(/local app/);
 		expect(() => resolveAppUrl('ftp://localhost', root, true, {})).toThrow(/http or https/);
 		expect(() => resolveAppUrl('localhost:3000', root, true, {})).toThrow(CaptureUsageError);
-	});
-});
-
-describe('the pair manifest', () => {
-	const now = new Date('2026-10-24T12:00:00.000Z');
-	const recorded: CaptureManifest = {
-		version: 1,
-		clock: '2026-10-20T09:30:00.000Z',
-		theme: 'dark',
-		viewport: { width: 1280, height: 800 },
-		fullPage: false,
-	};
-
-	it('is recorded from the flags on the first run, with defaults', () => {
-		expect(
-			settleManifest(null, { theme: undefined, viewport: undefined, fullPage: false }, now)
-		).toEqual({
-			manifest: {
-				version: 1,
-				clock: now.toISOString(),
-				theme: 'light',
-				viewport: DEFAULT_VIEWPORT,
-				fullPage: false,
-			},
-			created: true,
-		});
-	});
-
-	it('is reused as recorded by later runs, clock included', () => {
-		expect(
-			settleManifest(recorded, { theme: 'dark', viewport: undefined, fullPage: false }, now)
-		).toEqual({ manifest: recorded, created: false });
-	});
-
-	it.each([
-		[{ theme: 'light' as const, viewport: undefined, fullPage: false }, /--theme light/],
-		[
-			{ theme: undefined, viewport: { width: 1440, height: 900 }, fullPage: false },
-			/--viewport 1440x900/,
-		],
-		[{ theme: undefined, viewport: undefined, fullPage: true }, /--full-page/],
-	])('refuses a flag that disagrees with the recorded pair (%j)', (flags, message) => {
-		expect(() => settleManifest(recorded, flags, now)).toThrow(message);
-	});
-
-	it('reads only a well-formed manifest', () => {
-		expect(parseManifest(JSON.stringify(recorded), 'capture.json')).toEqual(recorded);
-		expect(() => parseManifest('{', 'capture.json')).toThrow(/not valid JSON/);
-		expect(() =>
-			parseManifest(JSON.stringify({ ...recorded, theme: 'blue' }), 'capture.json')
-		).toThrow(/not a capture manifest/);
-		expect(() =>
-			parseManifest(JSON.stringify({ ...recorded, clock: 'later' }), 'capture.json')
-		).toThrow(/not a capture manifest/);
 	});
 });

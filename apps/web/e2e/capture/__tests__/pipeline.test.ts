@@ -5,12 +5,8 @@
  * recorded presentation.
  */
 import { describe, expect, it, vi } from 'vitest';
-import {
-	CaptureUsageError,
-	MANIFEST_FILE,
-	type CaptureManifest,
-	type CaptureRequest,
-} from '../options';
+import { CaptureUsageError, type CaptureRequest, type PathRequest } from '../options';
+import { MANIFEST_FILE, type CaptureManifest } from '../manifest';
 import { runCapture, type CaptureIO, type Shooter } from '../pipeline';
 
 const OUT = '/captures/pair';
@@ -27,6 +23,8 @@ function captureRequest(overrides: Partial<CaptureRequest> = {}): CaptureRequest
 		theme: undefined,
 		viewport: undefined,
 		fullPage: false,
+		locale: undefined,
+		account: undefined,
 		force: false,
 		list: false,
 		help: false,
@@ -53,6 +51,13 @@ function png(name: string): Uint8Array {
 	return new TextEncoder().encode(`png:${name}`);
 }
 
+const FILES_SHOT = { name: 'path-files', path: '/dashboard/files' };
+const OPEN_UPLOAD = [{ action: 'click' as const, target: 'role=button[name="Upload"]' }];
+
+function filesRoute(overrides: Partial<PathRequest> = {}): PathRequest {
+	return { path: FILES_SHOT.path, name: 'files', steps: [], ...overrides };
+}
+
 const shootNames: Shooter = async (shots) => shots.map((shot) => png(shot.name));
 
 describe('runCapture', () => {
@@ -65,11 +70,14 @@ describe('runCapture', () => {
 		expect(writeAll).toHaveBeenCalledOnce();
 		expect(files.get(`${OUT}/before-postbox.png`)).toEqual(png('postbox'));
 		expect(JSON.parse(String(files.get(`${OUT}/${MANIFEST_FILE}`)))).toEqual({
-			version: 1,
+			version: 2,
 			clock: NOW.toISOString(),
 			theme: 'light',
 			viewport: { width: 1440, height: 900 },
 			fullPage: false,
+			locale: 'en',
+			account: 'owner',
+			shots: {},
 		});
 	});
 
@@ -108,21 +116,27 @@ describe('runCapture', () => {
 
 	it('captures "after" with the recorded settings and leaves "before" untouched', async () => {
 		const recorded: CaptureManifest = {
-			version: 1,
+			version: 2,
 			clock: '2026-10-23T08:00:00.000Z',
 			theme: 'dark',
 			viewport: { width: 1280, height: 800 },
 			fullPage: true,
+			locale: 'de',
+			account: 'member',
+			shots: {},
 		};
-		const manifestText = JSON.stringify(recorded);
+		const manifestText = JSON.stringify({
+			...recorded,
+			shots: { 'path-files': { path: FILES_SHOT.path, steps: OPEN_UPLOAD } },
+		});
 		const { io, files } = memoryIO({
 			[`${OUT}/${MANIFEST_FILE}`]: manifestText,
-			[`${OUT}/before-dashboard.png`]: png('before'),
+			[`${OUT}/before-path-files.png`]: png('before'),
 		});
 		const shoot = vi.fn<Shooter>(shootNames);
 
 		const result = await runCapture(
-			captureRequest({ label: 'after', surfaces: ['dashboard'] }),
+			captureRequest({ label: 'after', surfaces: [], paths: [filesRoute()] }),
 			OUT,
 			KNOWN,
 			shoot,
@@ -130,22 +144,41 @@ describe('runCapture', () => {
 		);
 
 		expect(shoot).toHaveBeenCalledWith(
-			[{ name: 'dashboard', file: `${OUT}/after-dashboard.png` }],
-			recorded
+			[{ ...FILES_SHOT, steps: OPEN_UPLOAD, file: `${OUT}/after-path-files.png` }],
+			JSON.parse(manifestText)
 		);
 		expect(result.manifestCreated).toBe(false);
 		expect(files.get(`${OUT}/${MANIFEST_FILE}`)).toBe(manifestText);
-		expect(files.get(`${OUT}/before-dashboard.png`)).toEqual(png('before'));
-		expect(files.get(`${OUT}/after-dashboard.png`)).toEqual(png('dashboard'));
+		expect(files.get(`${OUT}/before-path-files.png`)).toEqual(png('before'));
+		expect(files.get(`${OUT}/after-path-files.png`)).toEqual(png('path-files'));
+	});
+
+	it('records the steps of a --path shot the pair did not have yet', async () => {
+		const { io, files } = memoryIO();
+
+		await runCapture(
+			captureRequest({ surfaces: [], paths: [filesRoute({ steps: OPEN_UPLOAD })] }),
+			OUT,
+			KNOWN,
+			shootNames,
+			io
+		);
+
+		expect(JSON.parse(String(files.get(`${OUT}/${MANIFEST_FILE}`))).shots).toEqual({
+			'path-files': { path: FILES_SHOT.path, steps: OPEN_UPLOAD },
+		});
 	});
 
 	it('refuses a run whose flags disagree with the recorded pair before the browser starts', async () => {
 		const recorded: CaptureManifest = {
-			version: 1,
+			version: 2,
 			clock: '2026-10-23T08:00:00.000Z',
 			theme: 'light',
 			viewport: { width: 1440, height: 900 },
 			fullPage: false,
+			locale: 'en',
+			account: 'owner',
+			shots: {},
 		};
 		const { io } = memoryIO({ [`${OUT}/${MANIFEST_FILE}`]: JSON.stringify(recorded) });
 		const shoot = vi.fn<Shooter>(shootNames);

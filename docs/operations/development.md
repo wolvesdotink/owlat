@@ -193,9 +193,10 @@ whatever `apps/api` selects. It refuses any site URL that is not localhost.
 ## Screenshots for a UI pull request
 
 A PR that changes the UI carries before/after screenshots. `bun run capture`
-takes them from the running stack: it signs in as the seeded owner through the
-login form and screenshots named surfaces in system Chrome (Playwright's
-Chromium if Chrome is missing). Start the stack and leave it running, then:
+takes them from the running stack: it signs in through the login form (as the
+seeded owner unless told otherwise) and screenshots named surfaces or any
+route in system Chrome (Playwright's Chromium if Chrome is missing). Start the
+stack and leave it running, then:
 
 ```sh
 bun run capture --list                        # the named surfaces
@@ -204,25 +205,66 @@ bun run capture before --surface postbox,contacts
 bun run capture after --surface postbox,contacts
 ```
 
+`bun run capture --help` lists every option. The shots a UI change usually
+needs:
+
+```sh
+# a German page, as the seeded member
+bun run capture before --out ~/.cache/owlat-captures/files-de \
+  --locale de --as member --path /dashboard/files
+# the login page, signed out
+bun run capture before --out ~/.cache/owlat-captures/login --signed-out --path /auth/login
+# a dialog: open it, type into it, then shoot
+bun run capture before --path /dashboard/audience/topics --name new-topic \
+  --click 'role=button[name="New topic"]' \
+  --fill 'role=textbox[name="Name"]=Release notes' \
+  --wait-for 'role=dialog'
+```
+
 - **Surfaces.** Each one reaches a seeded page the way a person would (the
   shared Team inbox with a message open, a contact, the sent campaign's
   report, the draft campaign's editor, ...) and waits for its seeded content.
-  `--path /dashboard/admin/team` captures any other route as it renders.
+  They find their controls by English text and need a signed-in account, so a
+  German or signed-out pair uses `--path`.
+- **Routes.** `--path /dashboard/admin/team` captures any route as
+  `path-<route>`. The options after a `--path`, up to the next one, belong to
+  it and run in order once the route has loaded: `--click <selector>`,
+  `--fill <selector>=<value>`, `--press <key>` and `--wait-for <selector>`. A
+  selector is a Playwright selector: `role=button[name="Save"]` finds a control
+  by role and its whole accessible name, `name=/verify now/i` by part of it,
+  `#some-card >> role=button[name="Save"]` looks only inside an element, and
+  CSS works too. It must match exactly one element; a step that matches none
+  or several fails and says so. `--name <name>` calls the shot `path-<name>`, so one route can be
+  captured with and without its dialog open. After steps, focus stays where
+  they left it.
+- **Accounts and language.** `--as owner|admin|member` signs in as one of the
+  seeded accounts (`dev@example.com`, `taylor@example.com`,
+  `jordan@example.com`, all with `devpassword12345`), `--signed-out` does not
+  sign in at all. `--locale de` switches the whole UI the way the language
+  picker does, through the `owlat-locale` cookie, and gives the browser the
+  same language for dates and numbers.
 - **Output.** `<label>-<shot>.png` in `~/.cache/owlat-captures/<checkout>/`,
   or `--out <dir>`. A directory inside the checkout is refused, also through a
   symlink. Nothing is written unless every shot succeeded, so a failed sign-in,
   a missing fixture or a page that never finished loading never leaves a PNG
   behind. An existing capture is never replaced without `--force`.
 - **Pairs.** The first run in a directory records the theme
-  (`--theme light|dark`), the viewport (`--viewport 1440x900`), `--full-page`
-  and the app's clock in `capture.json`. Later runs reuse them, so relative
-  times such as "5m ago" match, and a flag that disagrees is refused. Use a new
-  `--out` for a new pair.
+  (`--theme light|dark`), the viewport (`--viewport 1440x900`), `--full-page`,
+  the language, the account, the app's clock and the steps of each `--path`
+  shot in `capture.json`. Later runs reuse them, so relative times such as
+  "5m ago" match and `after` takes the same steps as `before` without
+  repeating them; a flag that disagrees is refused. Use a new `--out` for a new
+  pair.
+- **Settling.** A shot is taken once the page shows no loading placeholder and
+  its DOM has stopped changing. A page that keeps changing for five seconds
+  after loading (a live countdown, a ticking clock) has its timers frozen for
+  that shot, so it can settle; anything else that keeps changing it still has
+  to stop.
 - **Target.** The app URL follows this checkout's ports, so run it with the
   same `OWLAT_PORT_OFFSET` as `dev:stack`. `--url http://localhost:<port>`
   points it at another local app; remote hosts are refused.
-  `OWLAT_CAPTURE_EMAIL` and `OWLAT_CAPTURE_PASSWORD` sign in as an owner the
-  seed did not create.
+  `OWLAT_CAPTURE_EMAIL` and `OWLAT_CAPTURE_PASSWORD` replace the owner's
+  credentials, for an owner the seed did not create.
 - **Postbox.** The `postbox` surfaces need the Email client feature, which a
   fresh stack has off: turn it on once under Settings > Features. The
   "Services out of sync" banner there does not matter for the dev stack.
