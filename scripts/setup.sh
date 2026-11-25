@@ -1890,8 +1890,7 @@ show_summary() {
 
   if [[ "$EMAIL_PROVIDER" == "mta" ]]; then
     echo ""
-    echo -e "  ${YELLOW}MTA:${RESET} dev:stack does not start the mail server. Run it with ${BOLD}bun run --cwd apps/mta dev${RESET}"
-    echo -e "  ${DIM}and the MTA variables from .env.selfhost.example, on the port bun run dev:stack ports prints.${RESET}"
+    echo -e "  ${YELLOW}MTA:${RESET} dev:stack does not start the mail server."
   fi
 
   echo ""

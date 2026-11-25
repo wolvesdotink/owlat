@@ -352,20 +352,24 @@ attach_terminal() {
 
 # A run that answers everything up front (--assume-yes, a config file) needs
 # no terminal in the containerized wizard. The legacy bash wizard prompts
-# whatever it is passed. An empty config path is no config file: scripts/owlat
-# drops `--config=` and `--config ""` as if they were absent, so they must not
-# skip the terminal here either.
+# whatever it is passed. The config path is the one scripts/owlat ends up with:
+# OWLAT_CONFIG_FILE, replaced by each `--config` flag in turn. An empty one
+# (`--config=`, `--config ""`) is no config file there, so not here either.
 wizard_answers_up_front() {
-	[[ "$OWLAT_ASSUME_YES" == "1" || -n "$OWLAT_CONFIG_FILE" ]] && return 0
+	[[ "$OWLAT_ASSUME_YES" == "1" ]] && return 0
+	local config="$OWLAT_CONFIG_FILE"
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
 			--assume-yes | -y) return 0 ;;
-			--config) [[ -n "${2:-}" ]] && return 0 ;;
-			--config=?*) return 0 ;;
+			--config)
+				config="${2:-}"
+				[[ $# -gt 1 ]] && shift
+				;;
+			--config=*) config="${1#*=}" ;;
 		esac
 		shift
 	done
-	return 1
+	[[ -n "$config" ]]
 }
 
 # As of v0.2, the wizard lives in the owlat/setup Docker container (built from

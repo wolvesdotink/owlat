@@ -58,6 +58,8 @@ export async function loadBackendContext(
 	const baseUrl =
 		baseUrlOverride ||
 		(process.env['OWLAT_LOCAL_HOST'] ? `http://${resolveLocalHost()}:${sitePort}` : '') ||
+		// A moved port wins over the URLs, as in resolveLocalUrls().
+		(env['CONVEX_SITE_PORT']?.trim() ? `http://localhost:${sitePort}` : '') ||
 		env['CONVEX_SITE_URL'] ||
 		env['NUXT_PUBLIC_CONVEX_SITE_URL'] ||
 		`http://localhost:${sitePort}`;

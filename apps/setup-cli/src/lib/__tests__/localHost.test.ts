@@ -90,6 +90,15 @@ describe('resolveLocalUrls', () => {
 		const env = { CONVEX_PORT: '13210', CONVEX_SITE_PORT: '13211' };
 		const moved = { localCloud: 'http://localhost:13210', localSite: 'http://localhost:13211' };
 		expect(resolveLocalUrls({ network: false, env, localHost: 'localhost' })).toEqual(moved);
+		// The URLs a copied .env.selfhost.example still holds at the old ports.
+		const template = {
+			NUXT_PUBLIC_CONVEX_URL: 'http://localhost:3210',
+			NUXT_PUBLIC_CONVEX_SITE_URL: 'http://localhost:3211',
+			CONVEX_SITE_URL: 'http://localhost:3211',
+		};
+		expect(
+			resolveLocalUrls({ network: false, env: { ...template, ...env }, localHost: 'localhost' })
+		).toEqual(moved);
 		expect(
 			resolveLocalUrls({
 				network: true,

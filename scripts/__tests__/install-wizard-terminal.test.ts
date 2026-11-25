@@ -50,6 +50,10 @@ describe('install.sh wizard_answers_up_front', () => {
 		expect(answers(['--config='])).toBe(false);
 		expect(answers(['--config', ''])).toBe(false);
 		expect(answers(['--config'])).toBe(false);
+		// The last path wins, as in scripts/owlat.
+		expect(answers(['--config='], { OWLAT_CONFIG_FILE: '/root/answers.json' })).toBe(false);
+		expect(answers(['--config=/root/answers.json', '--config='])).toBe(false);
+		expect(answers(['--config=', '--config=/root/answers.json'])).toBe(true);
 	});
 
 	it('needs a terminal for a run that asks', () => {

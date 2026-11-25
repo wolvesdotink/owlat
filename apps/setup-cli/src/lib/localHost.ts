@@ -65,11 +65,15 @@ export function resolveLocalUrls(opts: {
 	const localHost = opts.localHost ?? resolveLocalHost();
 	const publishedCloud = `http://${localHost}:${publishedPort(opts.env, 'CONVEX_PORT')}`;
 	const publishedSite = `http://${localHost}:${publishedPort(opts.env, 'CONVEX_SITE_PORT')}`;
-	const localCloud = opts.network
-		? publishedCloud
-		: opts.env['NUXT_PUBLIC_CONVEX_URL'] || publishedCloud;
-	const localSite = opts.network
-		? publishedSite
-		: opts.env['CONVEX_SITE_URL'] || opts.env['NUXT_PUBLIC_CONVEX_SITE_URL'] || publishedSite;
+	// A port set in `.env` is what compose publishes now, so it wins over the
+	// URLs, which a copied .env.selfhost.example holds at the default ports.
+	const localCloud =
+		opts.network || opts.env['CONVEX_PORT']?.trim()
+			? publishedCloud
+			: opts.env['NUXT_PUBLIC_CONVEX_URL'] || publishedCloud;
+	const localSite =
+		opts.network || opts.env['CONVEX_SITE_PORT']?.trim()
+			? publishedSite
+			: opts.env['CONVEX_SITE_URL'] || opts.env['NUXT_PUBLIC_CONVEX_SITE_URL'] || publishedSite;
 	return { localCloud, localSite };
 }

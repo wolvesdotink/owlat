@@ -183,7 +183,10 @@ describe('site URL for the success messages', () => {
 	it('loadBackendContext follows the site port .env moved', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'owlat-backend-'));
 		try {
-			writeFileSync(join(dir, '.env'), 'INSTANCE_SECRET=abc\nCONVEX_SITE_PORT=13211\n');
+			writeFileSync(
+				join(dir, '.env'),
+				'INSTANCE_SECRET=abc\nNUXT_PUBLIC_CONVEX_SITE_URL=http://localhost:3211\nCONVEX_SITE_PORT=13211\n'
+			);
 			expect((await loadBackendContext(dir)).baseUrl).toBe('http://localhost:13211');
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
