@@ -6,8 +6,8 @@
  *     each opening that exact list in this inbox, and nothing for empty kinds;
  *   - the scope header names the inbox and jumps to its bands;
  *   - with no inbox, the empty state offers a way to add one only where that
- *     page opens; with mail switched off it says so, and links an admin to
- *     Features;
+ *     page opens, and sends a member where a member may add one; with mail
+ *     switched off it says so, and links an admin to Features;
  *   - none of them has axe violations.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -323,14 +323,27 @@ describe('TodayNoInbox', () => {
 	const hrefs = (w: ReturnType<typeof mountEmpty>) =>
 		w.findAll('a').map((a) => a.attributes('href'));
 
-	it.each([
-		['an admin', 'postbox', true],
-		['a member', 'mail.external', false],
-	] as const)('offers to connect a mailbox to %s while %s is on', (_who, flag, admin) => {
-		const w = mountEmpty({ mail: flag, admin });
+	it.each(['postbox', 'mail.external'] as const)(
+		'sends an admin to set up a mailbox while %s is on',
+		(flag) => {
+			const w = mountEmpty({ mail: flag, admin: true });
+			expect(w.find('h2').text()).toBe('No inbox to work from yet');
+			expect(hrefs(w)).toEqual(['/dashboard/preferences/add-account']);
+			expect(w.text()).toContain('Connect a mailbox');
+		}
+	);
+
+	it('sends a member to the connect wizard, not to a form the server refuses them', () => {
+		const w = mountEmpty({ mail: 'mail.external', admin: false });
 		expect(w.find('h2').text()).toBe('No inbox to work from yet');
-		expect(hrefs(w)).toEqual(['/dashboard/preferences/add-account']);
-		expect(w.text()).toContain('Connect a mailbox');
+		expect(hrefs(w)).toEqual(['/dashboard/postbox/migrate']);
+		expect(w.text()).toContain('Connect an account');
+	});
+
+	it('sends a member without external accounts to ask an admin for a mailbox', () => {
+		const w = mountEmpty({ mail: 'postbox', admin: false });
+		expect(hrefs(w)).toEqual(['/dashboard/postbox']);
+		expect(w.text()).toContain('Ask an admin for a mailbox');
 	});
 
 	it('says mail is off and links an admin to Features, not to a page that bounces', () => {

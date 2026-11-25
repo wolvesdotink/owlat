@@ -12,6 +12,7 @@ import type { BlockModule, Placement } from '../_module';
 import { toPixelWidth } from '../../helpers/dimensions';
 import { escapeAttr, sanitizeUrl } from '../../sanitize';
 import { px } from '../../helpers/padding';
+import { wrapNestedItem } from '../../helpers/table';
 import { transformUrl } from '../../helpers/linkTransform';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
@@ -78,13 +79,16 @@ const renderRoot = (content: ImageBlockContent, baseWidth: number): string => {
 	return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"><tr><td>${renderImgElement(content, baseWidth)}</td></tr></table>`;
 };
 
-/** Column/container placement: padding cell + alignment table. */
+/** Column/container placement: the nested item cell + alignment table. */
 const renderInColumn = (content: ImageBlockContent, baseWidth: number): string => {
 	if (!content.src) return '';
 	const tableAlign = (['center', 'right', 'left'] as const).includes(content.align as never)
 		? content.align
 		: 'center';
-	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0"><table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"><tr><td>${renderImgElement(content, baseWidth)}</td></tr></table></td></tr></table>`;
+	return wrapNestedItem(
+		content,
+		`<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"><tr><td>${renderImgElement(content, baseWidth)}</td></tr></table>`
+	);
 };
 
 export const imageModule: BlockModule<'image'> = {

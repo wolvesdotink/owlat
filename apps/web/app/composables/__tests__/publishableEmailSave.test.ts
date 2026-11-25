@@ -86,7 +86,7 @@ describe('publishableEmailSave', () => {
 
 		const payload = await saveAndCapture(draft({ blocks }), base());
 
-		expect(renderBlocksToHtml).toHaveBeenCalledWith(blocks, renderOptions);
+		expect(renderBlocksToHtml).toHaveBeenCalledWith(blocks, { ...renderOptions, lang: 'en' });
 		expect(payload).toEqual({
 			name: 'Welcome',
 			subject: 'Hello',

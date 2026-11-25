@@ -26,6 +26,8 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { applyUsageCountDelta } from '../emailBlocks/module';
+import { parseContentBlocks } from '../emailBlocks/consumers';
+import { mergeTranslationWithContent, parseTranslations } from '../lib/emailTranslations';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 
 // Stub the workpool — the component isn't wired into convexTest and the
@@ -635,5 +637,273 @@ describe('Saved block module — walker covers both consumer tables', () => {
 			expect(tContent?.text).toBe('new');
 			expect(txContent?.text).toBe('new');
 		});
+	});
+});
+
+// ============================================================================
+// Propagation keeps the translations of linked copies
+// ============================================================================
+
+describe('Saved block module — propagation keeps linked copies translated', () => {
+	type Node = { id: string; type: string; content: Record<string, unknown> };
+	const text = (id: string, html: string): Node => ({
+		id,
+		type: 'text',
+		content: { html, blockType: 'paragraph' },
+	});
+	const container = (id: string, items: Node[]): Node => ({
+		id,
+		type: 'container',
+		content: { items },
+	});
+	const savedContent = (blocks: Node[]) => JSON.stringify({ blocks });
+	const linked = (node: Node, blockId: string, groupId: string) => ({
+		...node,
+		savedBlockRef: { blockId, groupId, blockName: 'Footer' },
+	});
+
+	/** The `html` of every text Block of the language's merged content, in document order. */
+	const translatedTexts = (row: { content: string; translations?: string }, language: string) => {
+		const overlay = parseTranslations(row.translations)[language]?.blocks ?? {};
+		const merged = JSON.parse(
+			mergeTranslationWithContent(JSON.stringify(parseContentBlocks(row.content)), overlay)
+		) as Node[];
+		const texts: string[] = [];
+		const visit = (node: Node) => {
+			if (node.type === 'text') texts.push(String(node.content['html']));
+			for (const child of (node.content['items'] as Node[] | undefined) ?? []) visit(child);
+		};
+		for (const node of merged) visit(node);
+		return texts;
+	};
+
+	const allIds = (content: string): string[] => {
+		const ids: string[] = [];
+		const visit = (node: Node) => {
+			ids.push(node.id);
+			for (const child of (node.content['items'] as Node[] | undefined) ?? []) visit(child);
+		};
+		for (const node of parseContentBlocks(content) as unknown as Node[]) visit(node);
+		return ids;
+	};
+
+	const FOOTER_V1 = [
+		text('s-intro', '<p>Hello</p>'),
+		container('s-box', [text('s-legal', '<p>Legal</p>')]),
+	];
+
+	async function seedFooter(t: ReturnType<typeof convexTest>) {
+		return t.run((ctx) =>
+			ctx.db.insert('emailBlocks', {
+				name: 'Footer',
+				content: savedContent(FOOTER_V1),
+				usageCount: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+	}
+
+	const editFooter = (
+		t: ReturnType<typeof convexTest>,
+		blockId: Id<'emailBlocks'>,
+		blocks: Node[]
+	) =>
+		t.mutation(internal.emailBlocks.module.update, {
+			blockId,
+			patch: { content: savedContent(blocks) },
+			userId: 'user_translations',
+		});
+
+	it('a copy inserted by the editor keeps its translations through repeated edits', async () => {
+		const t = convexTest(schema, modules);
+		const blockId = await seedFooter(t);
+		// The editor inserts a saved block with fresh ids for every nested Block.
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([
+						text('own', '<p>Own</p>'),
+						linked(text('c-intro', '<p>Hello</p>'), blockId, 'g1'),
+						linked(container('c-box', [text('c-legal', '<p>Legal</p>')]), blockId, 'g1'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								own: { html: '<p>Eigen</p>' },
+								'c-intro': { html: '<p>Hallo</p>' },
+								'c-legal': { html: '<p>Rechtliches</p>' },
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		// A Block is added in front and the legal text is reworded.
+		await editFooter(t, blockId, [
+			text('s-new', '<p>New</p>'),
+			text('s-intro', '<p>Hello</p>'),
+			container('s-box', [text('s-legal', '<p>Legal, reworded</p>')]),
+		]);
+		const once = await t.run((ctx) => ctx.db.get(templateId));
+		// The reworded Block keeps its translation, as an edit in the template editor does.
+		expect(translatedTexts(once!, 'de')).toEqual([
+			'<p>Eigen</p>',
+			'<p>New</p>',
+			'<p>Hallo</p>',
+			'<p>Rechtliches</p>',
+		]);
+
+		// Reordered on the next edit: each translation follows its Block.
+		await editFooter(t, blockId, [
+			container('s-box', [text('s-legal', '<p>Legal, reworded</p>')]),
+			text('s-intro', '<p>Hello</p>'),
+		]);
+		const twice = await t.run((ctx) => ctx.db.get(templateId));
+		expect(translatedTexts(twice!, 'de')).toEqual([
+			'<p>Eigen</p>',
+			'<p>Rechtliches</p>',
+			'<p>Hallo</p>',
+		]);
+	});
+
+	it('the same saved block linked twice keeps unique ids and a translation per copy', async () => {
+		const t = convexTest(schema, modules);
+		const blockId = await seedFooter(t);
+		const transactionalId = await t.run((ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					content: buildTemplateContent([
+						linked(text('a-intro', '<p>Hello</p>'), blockId, 'g1'),
+						linked(container('a-box', [text('a-legal', '<p>Legal</p>')]), blockId, 'g1'),
+						linked(text('b-intro', '<p>Hello</p>'), blockId, 'g2'),
+						linked(container('b-box', [text('b-legal', '<p>Legal</p>')]), blockId, 'g2'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								'a-intro': { html: '<p>Hallo A</p>' },
+								'b-intro': { html: '<p>Hallo B</p>' },
+								'b-legal': { html: '<p>Rechtliches B</p>' },
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [
+			text('s-intro', '<p>Hello</p>'),
+			container('s-box', [text('s-legal', '<p>Legal, reworded</p>')]),
+		]);
+
+		const row = await t.run((ctx) => ctx.db.get(transactionalId));
+		expect(translatedTexts(row!, 'de')).toEqual([
+			'<p>Hallo A</p>',
+			'<p>Legal, reworded</p>',
+			'<p>Hallo B</p>',
+			'<p>Rechtliches B</p>',
+		]);
+		const ids = allIds(row!.content);
+		expect(new Set(ids).size).toBe(ids.length);
+	});
+	it('a copy an older propagation wrote keeps its translations, in both links', async () => {
+		const t = convexTest(schema, modules);
+		const blockId = await seedFooter(t);
+		// Older propagations renewed only the root id; the nested Block kept the
+		// saved block's own id, so both links share its overlay entry.
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([
+						linked(text('block_1_a', '<p>Hello</p>'), blockId, 'g1'),
+						linked(container('block_1_b', [text('s-legal', '<p>Legal</p>')]), blockId, 'g1'),
+						linked(text('block_2_a', '<p>Hello</p>'), blockId, 'g2'),
+						linked(container('block_2_b', [text('s-legal', '<p>Legal</p>')]), blockId, 'g2'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								block_1_a: { html: '<p>Hallo</p>' },
+								's-legal': { html: '<p>Rechtliches</p>' },
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [
+			text('s-intro', '<p>Hello, reworded</p>'),
+			container('s-box', [text('s-legal', '<p>Legal</p>')]),
+		]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(translatedTexts(row!, 'de')).toEqual([
+			'<p>Hallo</p>',
+			'<p>Rechtliches</p>',
+			'<p>Hello, reworded</p>',
+			'<p>Rechtliches</p>',
+		]);
+		const ids = allIds(row!.content);
+		expect(new Set(ids).size).toBe(ids.length);
+		// The overlay entries of ids no longer in the document are moved, not copied.
+		expect(Object.keys(parseTranslations(row!.translations)['de']!.blocks ?? {}).sort()).toEqual([
+			'g1-s-intro',
+			'g1-s-legal',
+			'g2-s-legal',
+		]);
+	});
+	it('a Block the edit removes leaves its overlay entry behind', async () => {
+		const t = convexTest(schema, modules);
+		const blockId = await seedFooter(t);
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([
+						linked(text('c-intro', '<p>Hello</p>'), blockId, 'g1'),
+						linked(container('c-box', [text('c-legal', '<p>Legal</p>')]), blockId, 'g1'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								'c-intro': { html: '<p>Hallo</p>' },
+								'c-legal': { html: '<p>Rechtliches</p>' },
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [container('s-box', [text('s-legal', '<p>Legal</p>')])]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(translatedTexts(row!, 'de')).toEqual(['<p>Rechtliches</p>']);
+		expect(Object.keys(parseTranslations(row!.translations)['de']!.blocks ?? {}).sort()).toEqual([
+			'c-intro',
+			'g1-s-legal',
+		]);
 	});
 });

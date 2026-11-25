@@ -5,6 +5,9 @@
  * resolved-and-absent it shows an HONEST empty state that tells the member what
  * they can actually do next rather than a mute "no mailbox configured" wall:
  *
+ *   - mail-off         — every mail feature is switched off, so no mailbox can
+ *                        be created; an admin gets the way to Features, a member
+ *                        is told so instead of being sent to ask for one.
  *   - reserved         — a hosted mailbox is reserved for them and is being set
  *                        up; reassure and wait.
  *   - external-allowed — connecting an external account is enabled; point there.
@@ -31,6 +34,7 @@
  */
 import { api } from '@owlat/api';
 import { deriveMailboxGuardState } from '~/utils/freshStart';
+import { adminEntryById } from '~/lib/adminSettingsRegistry';
 import { LinkIcon, MailCheckIcon, MailboxIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -57,9 +61,10 @@ const externalAllowed = computed(() => isEnabled('mail.external'));
 // The add-account page gates on the same role, and the server refuses to create
 // a mailbox for anyone else.
 const { isAdmin, isRoleLoading } = usePermissions();
-const canSetUpMailbox = computed(
-	() => isAdmin.value && (isEnabled('postbox') || externalAllowed.value)
-);
+const mailAvailable = computed(() => isEnabled('postbox') || externalAllowed.value);
+const canSetUpMailbox = computed(() => isAdmin.value && mailAvailable.value);
+// The Features page asks for the admin role, like the add-account page.
+const featuresPath = computed(() => (isAdmin.value ? adminEntryById('features')?.path : null));
 
 const state = computed(() =>
 	deriveMailboxGuardState({
@@ -73,6 +78,7 @@ const state = computed(() =>
 		hasMailbox: Boolean(props.mailboxId),
 		reservedAddress: freshStatus.value?.reservedAddress ?? null,
 		externalAllowed: externalAllowed.value,
+		mailAvailable: mailAvailable.value,
 	})
 );
 
@@ -113,6 +119,31 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 	</div>
 
 	<slot v-else-if="state === 'ready'" />
+
+	<!-- Mail is switched off: nobody can set up a mailbox, so nobody is sent
+	     to ask for one. An admin gets the way to turn it on. -->
+	<div
+		v-else-if="state === 'mail-off'"
+		class="flex-1 flex items-center justify-center p-12"
+		data-testid="mailbox-guard-mail-off"
+	>
+		<div class="w-full max-w-sm text-center">
+			<MailboxIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
+			<h2 class="text-lg font-semibold text-text-primary mt-4">
+				{{ t('postbox.mailboxGuard.mailOffHeading') }}
+			</h2>
+			<p class="text-sm text-text-secondary mt-2">
+				{{
+					featuresPath
+						? t('postbox.mailboxGuard.mailOffAdminBody')
+						: t('postbox.mailboxGuard.mailOffMemberBody')
+				}}
+			</p>
+			<UiButton v-if="featuresPath" :to="featuresPath" class="mt-6">
+				{{ t('postbox.mailboxGuard.mailOffCta') }}
+			</UiButton>
+		</div>
+	</div>
 
 	<!-- A hosted mailbox is reserved and provisioning; nothing to do but wait.
 	     When the reservation's sending domain hasn't verified yet (early-instance
@@ -204,9 +235,6 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 					{{ t('postbox.mailboxGuard.adminCta') }}
 				</UiButton>
 			</template>
-			<!-- An admin on an instance with mail turned off: nobody to ask, and
-			     nothing to set up here. -->
-			<template v-else-if="isAdmin" />
 			<template v-else-if="alreadyAsked">
 				<p class="text-sm text-text-secondary mt-2">
 					{{ t('postbox.mailboxGuard.deadEndAskedBody') }}

@@ -55,13 +55,21 @@ export function scannedSubject(
 }
 
 /**
- * SHA-256 over the scanned subject and HTML. The action sends it with its
- * verdict and the commit recomputes it from the rows it reads, so a template
- * or subject edited during the scan is caught without shipping the HTML twice.
+ * SHA-256 over the scanned subject, HTML and translations. The action sends it
+ * with its verdict and the commit recomputes it from the rows it reads, so a
+ * template, translation or subject edited during the scan is caught without
+ * shipping the HTML twice.
  */
-export async function scannedContentDigest(subject: string, htmlContent: string): Promise<string> {
-	// NUL separator so ('a', 'bc') and ('ab', 'c') cannot digest alike.
-	const bytes = new TextEncoder().encode(`${subject}\u0000${htmlContent}`);
+export async function scannedContentDigest(
+	subject: string,
+	htmlContent: string,
+	htmlTranslations?: string
+): Promise<string> {
+	// NUL separator so ('a', 'bc') and ('ab', 'c') cannot digest alike. A
+	// template without translations digests as subject and HTML alone, so a
+	// scan started by the previous release still commits.
+	const translated = htmlTranslations ? `\u0000${htmlTranslations}` : '';
+	const bytes = new TextEncoder().encode(`${subject}\u0000${htmlContent}${translated}`);
 	const digest = await crypto.subtle.digest('SHA-256', bytes);
 	return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
@@ -138,8 +146,11 @@ export const commitPreparation = internalMutation({
 		if (
 			!template ||
 			!htmlContent ||
-			(await scannedContentDigest(scannedSubject(campaign, template), htmlContent)) !==
-				read.contentDigest
+			(await scannedContentDigest(
+				scannedSubject(campaign, template),
+				htmlContent,
+				template.htmlTranslations
+			)) !== read.contentDigest
 		) {
 			await ctx.scheduler.runAfter(0, internal.campaigns.send.startCampaignSend, { campaignId });
 			return {
