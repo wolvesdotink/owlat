@@ -1386,6 +1386,26 @@ describe('transactional.dispatch.dispatch — repeated blocks', () => {
 		expect(outcome.detail).toContain('Send fewer entries');
 	});
 
+	it('refuses a list for a variable the schema declares a scalar, naming it', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t, {
+			htmlContent: '<p>Order {{orderNumber}}</p>',
+			dataVariablesSchema: { orderNumber: 'string' },
+		});
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: { orderNumber: ['A-1'] },
+		});
+
+		expect(outcome).toMatchObject({
+			ok: false,
+			reason: 'invalid_variables',
+			variables: ['orderNumber'],
+		});
+	});
+
 	it('refuses a value that is not a list for a List variable', async () => {
 		const t = newTest();
 		const templateId = await publishRepeated(t, '<p>{{item.name}}</p>');
