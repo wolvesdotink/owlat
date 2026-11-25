@@ -12,6 +12,12 @@ export interface Variable {
 	type?: string;
 	/** Whether this is a built-in variable */
 	isBuiltIn?: boolean;
+	/**
+	 * The value the editor preview shows for this variable unless the preview's
+	 * own Variable Values set one: a transactional email's example value, as
+	 * text (a list as its JSON).
+	 */
+	previewValue?: string;
 }
 
 /**

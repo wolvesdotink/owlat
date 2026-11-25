@@ -10,10 +10,9 @@
 
 import type { z } from 'zod';
 import {
+	cursorPaginatedEnvelope,
 	dataEnvelope,
-	DEFAULT_PAGE_SIZE,
 	healthStatusSchema,
-	MAX_PAGE_SIZE,
 	paginatedEnvelope,
 } from './common';
 import {
@@ -22,12 +21,17 @@ import {
 	deleteContactResponseSchema,
 	updateContactRequestSchema,
 } from './contacts';
+import { domainCheckRequestSchema, sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
+import { sendLimitsSchema } from './limits';
+import { RENDER_OPERATIONS } from './renderOperations';
+import { TEMPLATE_OPERATIONS } from './templateOperations';
 import { deliveryStatusSchema } from './status';
 import {
 	addContactToTopicRequestSchema,
 	addToTopicResponseSchema,
 	removeFromTopicResponseSchema,
+	topicSchema,
 } from './topics';
 import {
 	sendTransactionalRequestSchema,
@@ -35,71 +39,35 @@ import {
 	transactionalSendStatusSchema,
 } from './transactional';
 import { ERROR_REASON_STATUS } from './errors';
-import { API_KEY_ERROR_REASONS, TRANSACTIONAL_REFUSAL_REASONS, type ApiErrorReason } from './types';
+import {
+	API_KEY_ERROR_REASONS,
+	DOMAIN_CHECK_REFUSAL_REASONS,
+	SEND_LIST_MAX_WINDOW_DAYS,
+	TRANSACTIONAL_REFUSAL_REASONS,
+	WRITE_REFUSAL_REASONS,
+	type ApiErrorReason,
+} from './types';
+import {
+	ANY_KEY,
+	CONTACT_REF,
+	LIMITS_RECIPIENT_QUERY,
+	PAGE_CURSOR,
+	PAGE_LIMIT,
+	SEND_ID,
+	SEND_LIST_FILTERS,
+	TOPIC_ID,
+	type PublicOperation,
+} from './operationShape';
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
-
-/** A key scope one operation requires. */
-export type PublicApiScope =
-	| 'contacts:read'
-	| 'contacts:write'
-	| 'events:write'
-	| 'transactional:send'
-	| 'topics:write'
-	| 'status:read';
-
-export interface PathParameter {
-	name: string;
-	description: string;
-}
-
-export interface QueryParameter {
-	name: string;
-	description: string;
-	schema: Record<string, unknown>;
-}
-
-export interface PublicOperation {
-	operationId: string;
-	method: HttpMethod;
-	/** The path with `{name}` placeholders for its path parameters. */
-	path: string;
-	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Health';
-	summary: string;
-	/** The key scope the operation needs; `null` for the unauthenticated probe. */
-	scope: PublicApiScope | null;
-	pathParameters: readonly PathParameter[];
-	queryParameters: readonly QueryParameter[];
-	/** Whether an `Idempotency-Key` header makes a repeat answer with the first response. */
-	idempotent: boolean;
-	/** Name of the request body in the document's components, and its schema. */
-	request: { name: string; schema: z.ZodType } | null;
-	/**
-	 * The success status and what its envelope carries: `{ data }` with one
-	 * item, or `{ data: [...], pagination }` when `paginated`. `name` is the
-	 * item's name in the document's components.
-	 */
-	success: {
-		status: number;
-		description: string;
-		name: string;
-		data: z.ZodType;
-		paginated: boolean;
-	};
-	/** Error statuses the operation answers with, beyond the ones every keyed call can. */
-	errors: readonly number[];
-	/** The `error.data.reason` codes the operation answers with, beyond the ones every keyed call can. */
-	reasons: readonly ApiErrorReason[];
-}
-
-/** Statuses every key-authenticated call can answer with. */
-export const KEYED_ERROR_STATUSES = [400, 401, 403, 429, 500] as const;
-
-const CONTACT_REF: PathParameter = {
-	name: 'id',
-	description: 'The contact ID, or the contact email address (URL-encoded).',
-};
-const TOPIC_ID: PathParameter = { name: 'topicId', description: 'The topic ID.' };
+export {
+	ANY_KEY,
+	KEYED_ERROR_STATUSES,
+	type HttpMethod,
+	type PathParameter,
+	type PublicApiScope,
+	type PublicOperation,
+	type QueryParameter,
+} from './operationShape';
 
 export const PUBLIC_OPERATIONS = [
 	{
@@ -132,16 +100,8 @@ export const PUBLIC_OPERATIONS = [
 		scope: 'contacts:read',
 		pathParameters: [],
 		queryParameters: [
-			{
-				name: 'limit',
-				description: `Items per page, at most ${MAX_PAGE_SIZE}; a larger value is clamped.`,
-				schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE },
-			},
-			{
-				name: 'cursor',
-				description: "The previous page's `pagination.cursor`. Omit it for the first page.",
-				schema: { type: 'string' },
-			},
+			PAGE_LIMIT,
+			PAGE_CURSOR,
 			{
 				name: 'search',
 				description: 'Filter by a search query; results are relevance-ordered.',
@@ -179,7 +139,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [409, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'getContact',
@@ -221,7 +181,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'deleteContact',
@@ -242,7 +202,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'sendEvent',
@@ -263,14 +223,15 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
-		reasons: ['idempotency_conflict', 'idempotency_erased'],
+		reasons: ['idempotency_conflict', 'idempotency_erased', ...WRITE_REFUSAL_REASONS],
 	},
 	{
 		operationId: 'sendTransactional',
 		method: 'POST',
 		path: '/api/v1/transactional',
 		tag: 'Transactional',
-		summary: 'Queue a transactional email for one recipient.',
+		summary:
+			'Queue a transactional email for one recipient. A body with a dryRun field is refused with 400: try a send at /api/v1/transactional/dry-run.',
 		scope: 'transactional:send',
 		pathParameters: [],
 		queryParameters: [],
@@ -284,7 +245,28 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
-		reasons: TRANSACTIONAL_REFUSAL_REASONS,
+		reasons: [...TRANSACTIONAL_REFUSAL_REASONS, ...WRITE_REFUSAL_REASONS],
+	},
+	{
+		operationId: 'listTransactionalSends',
+		method: 'GET',
+		path: '/api/v1/transactional',
+		tag: 'Transactional',
+		summary: `List the transactional sends, newest first, each with its delivery status, filtered by recipient, by status or both, within a window of at most ${SEND_LIST_MAX_WINDOW_DAYS} days. Needs the same scope as sending.`,
+		scope: 'transactional:send',
+		pathParameters: [],
+		queryParameters: [PAGE_LIMIT, PAGE_CURSOR, ...SEND_LIST_FILTERS],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'One page of sends, newest first.',
+			name: 'TransactionalSendStatus',
+			data: transactionalSendStatusSchema,
+			paginated: 'cursor',
+		},
+		errors: [],
+		reasons: ['feature_disabled'],
 	},
 	{
 		operationId: 'getTransactionalSend',
@@ -293,12 +275,7 @@ export const PUBLIC_OPERATIONS = [
 		tag: 'Transactional',
 		summary: 'Get the delivery status of one transactional send. Needs the same scope as sending.',
 		scope: 'transactional:send',
-		pathParameters: [
-			{
-				name: 'sendId',
-				description: 'The `transactionalEmailId` the send call answered with.',
-			},
-		],
+		pathParameters: [SEND_ID],
 		queryParameters: [],
 		idempotent: false,
 		request: null,
@@ -311,6 +288,30 @@ export const PUBLIC_OPERATIONS = [
 		},
 		errors: [404],
 		reasons: ['feature_disabled'],
+	},
+	...TEMPLATE_OPERATIONS,
+	...RENDER_OPERATIONS,
+	{
+		operationId: 'listTopics',
+		method: 'GET',
+		path: '/api/v1/topics',
+		tag: 'Topics',
+		summary:
+			'List the topics contacts can be subscribed to, a page at a time, oldest first, with the ID the membership routes take.',
+		scope: 'topics:read',
+		pathParameters: [],
+		queryParameters: [PAGE_LIMIT, PAGE_CURSOR],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'One page of topics.',
+			name: 'Topic',
+			data: topicSchema,
+			paginated: true,
+		},
+		errors: [],
+		reasons: [],
 	},
 	{
 		operationId: 'addContactToTopic',
@@ -331,7 +332,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'removeContactFromTopic',
@@ -358,7 +359,7 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
-		reasons: [],
+		reasons: WRITE_REFUSAL_REASONS,
 	},
 	{
 		operationId: 'getStatus',
@@ -382,15 +383,87 @@ export const PUBLIC_OPERATIONS = [
 		errors: [],
 		reasons: [],
 	},
+	{
+		operationId: 'listDomains',
+		method: 'GET',
+		path: '/api/v1/domains',
+		tag: 'Domains',
+		summary:
+			'List the sending domains, each with its verification state and every DNS record it needs: the name, the value to publish and what the last check found. Needs the same scope as the status.',
+		scope: 'status:read',
+		pathParameters: [],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'Every sending domain.',
+			name: 'SendingDomainSetupList',
+			data: sendingDomainSetupListSchema,
+			paginated: false,
+		},
+		errors: [],
+		reasons: [],
+	},
+	{
+		operationId: 'verifyDomain',
+		method: 'POST',
+		path: '/api/v1/domains/{domain}/verify',
+		tag: 'Domains',
+		summary:
+			'Ask for a fresh DNS check of one sending domain, at most once a minute per domain. The check runs in the background: poll `GET /api/v1/domains` until `lastCheckedAt` is at or after `requestedAt`.',
+		scope: 'domains:verify',
+		pathParameters: [
+			{
+				name: 'domain',
+				description: 'The domain name, or its `id` from `GET /api/v1/domains`.',
+			},
+		],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 202,
+			description: 'The check is queued.',
+			name: 'DomainCheckRequest',
+			data: domainCheckRequestSchema,
+			paginated: false,
+		},
+		errors: [404, 409, 422],
+		reasons: [...DOMAIN_CHECK_REFUSAL_REASONS, ...WRITE_REFUSAL_REASONS],
+	},
+	{
+		operationId: 'getLimits',
+		method: 'GET',
+		path: '/api/v1/limits',
+		tag: 'Transactional',
+		summary:
+			"Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own. With `email` and a template, also what is left of the per-recipient limit for that pair, which needs the same scope as sending.",
+		scope: ANY_KEY,
+		pathParameters: [],
+		queryParameters: LIMITS_RECIPIENT_QUERY,
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'The limits in force.',
+			name: 'SendLimits',
+			data: sendLimitsSchema,
+			paginated: false,
+		},
+		// The 403 and 404 belong to the per-recipient count alone.
+		errors: [403, 404],
+		reasons: ['missing_scope', 'feature_disabled', 'template_not_found'],
+	},
 ] as const satisfies readonly PublicOperation[];
 
 export type PublicOperationId = (typeof PUBLIC_OPERATIONS)[number]['operationId'];
 
 /** The schema of an operation's whole success body, envelope included. */
 export function successBodySchema(operation: PublicOperation): z.ZodType {
-	return operation.success.paginated
-		? paginatedEnvelope(operation.success.data)
-		: dataEnvelope(operation.success.data);
+	const { paginated, data } = operation.success;
+	if (paginated === 'cursor') return cursorPaginatedEnvelope(data);
+	return paginated ? paginatedEnvelope(data) : dataEnvelope(data);
 }
 
 /** The operation with this ID. */
@@ -400,9 +473,10 @@ export function publicOperation(operationId: PublicOperationId): PublicOperation
 
 /** The `error.data.reason` codes an operation can answer with at `status`. */
 export function reasonsAt(operation: PublicOperation, status: number): ApiErrorReason[] {
-	const reasons = [
-		...(operation.scope === null ? [] : API_KEY_ERROR_REASONS),
-		...operation.reasons,
-	];
+	const keyReasons =
+		operation.scope === ANY_KEY
+			? API_KEY_ERROR_REASONS.filter((reason) => reason !== 'missing_scope')
+			: API_KEY_ERROR_REASONS;
+	const reasons = [...(operation.scope === null ? [] : keyReasons), ...operation.reasons];
 	return reasons.filter((reason) => ERROR_REASON_STATUS[reason] === status);
 }

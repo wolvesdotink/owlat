@@ -44,12 +44,23 @@ const REJECTION_STEP_OUTCOME: Record<
 	(detail: string | undefined) => StepOutcome
 > = {
 	recipient_blocked: () => ({ status: 'completed' }),
-	// The contact unsubscribed from everything or was deleted after this step
-	// was claimed. The walker skips the step either way; a deletion also
-	// cancels the run, an unsubscribe moves it on to its next step.
+	// The contact unsubscribed from everything or from the automation's topic,
+	// or was deleted, after this step was claimed. The walker skips the step
+	// either way; a deletion also cancels the run, an unsubscribe moves it on
+	// to its next step. Anything unrecognised reads as a deletion, the side
+	// that sends nothing more.
 	recipient_ineligible: (detail) => ({
 		status: 'contact_ineligible',
-		reason: detail === 'contact_unsubscribed' ? 'contact_unsubscribed' : 'contact_deleted',
+		reason:
+			detail === 'contact_unsubscribed' || detail === 'topic_unsubscribed'
+				? detail
+				: 'contact_deleted',
+	}),
+	// The run, the automation or the step ended after the claim; the intake
+	// wrote the outcome the claim would have.
+	automation_step_ended: (detail) => ({
+		status: 'ended',
+		reason: detail ?? 'Step ended before the send',
 	}),
 	no_delivery_provider: (detail) => ({
 		status: 'failed',
@@ -190,8 +201,8 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// 2024 bulk-sender rule. The header's HMAC token is Node-only, so we hand
 		// the worker `convexSiteUrl` + `contactId` and let it build + merge the
 		// RFC 8058 one-click header. The one-click endpoint removes the contact
-		// across all topics, so it is valid even though an automation has no
-		// single owning topic. The same bulk-sender rules and CAN-SPAM want a
+		// across all topics, as it does for a campaign sent to a topic, so it
+		// stops this mail whether or not the automation belongs to a topic. The same bulk-sender rules and CAN-SPAM want a
 		// visible opt-out in the body too; the worker renders that footer from
 		// `siteUrl`, the web app whose unsubscribe and preference pages it links.
 		const convexSiteUrl = getOptional('CONVEX_SITE_URL');

@@ -15,6 +15,28 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 15, // Allow burst up to 15 requests
 	},
 
+	// Writes to transactional emails and saved blocks through the API, per key.
+	// Each one renders the email and can rewrite every email linking a saved
+	// block, so they get a bucket of their own, apart from the request limit
+	// above and the send caps below.
+	apiTemplateWrite: {
+		kind: 'token bucket',
+		rate: 60,
+		period: MINUTE,
+		capacity: 30,
+	},
+
+	// Renders through the API, per key: `POST /api/v1/render` and the dry run
+	// of `POST /api/v1/transactional`. Each one renders or composes a whole
+	// email and writes nothing, so it has a bucket apart from template writes
+	// and never touches the send caps below.
+	apiRender: {
+		kind: 'token bucket',
+		rate: 60,
+		period: MINUTE,
+		capacity: 30,
+	},
+
 	// The transactional send caps (transactional/sendCaps.ts) are not defined
 	// here: an instance admin sets them, so each call passes its config inline.
 

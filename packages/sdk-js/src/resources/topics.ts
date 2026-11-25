@@ -1,17 +1,50 @@
 import { BaseResource } from './base';
 import type {
 	AddToTopicParams,
+	ListTopicsParams,
 	RemoveFromTopicParams,
 	AddToTopicResponse,
 	RemoveFromTopicResponse,
+	Topic,
 } from '../types/topics';
-import type { ApiResponse } from '../types/common';
+import type { ApiResponse, PaginatedResponse } from '../types/common';
 import { ValidationError } from '../errors';
 
 /**
- * Resource for managing topic memberships.
+ * Resource for listing topics and managing topic memberships.
  */
 export class TopicsResource extends BaseResource {
+	/**
+	 * List the topics contacts can be subscribed to, oldest first, a page at a
+	 * time. Each topic's `id` is the `topicId` that {@link addContact} and
+	 * {@link removeContact} take. Needs the `topics:read` scope.
+	 *
+	 * Pass `cursor` from the previous response's `pagination.cursor` to fetch
+	 * the next page, and stop once `pagination.isDone` is true.
+	 *
+	 * @param params - Page size and cursor
+	 * @returns One page of topics plus cursor metadata
+	 * @throws {ForbiddenError} If the key lacks the `topics:read` scope
+	 *
+	 * @example
+	 * ```typescript
+	 * const { data: topics } = await owlat.topics.list();
+	 * const updates = topics.find((topic) => topic.name === 'Product updates');
+	 * if (updates) {
+	 *   await owlat.topics.addContact({ topicId: updates.id, email: 'user@example.com' });
+	 * }
+	 * ```
+	 */
+	async list(params?: ListTopicsParams): Promise<PaginatedResponse<Topic>> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.cursor) searchParams.set('cursor', params.cursor);
+		const queryString = searchParams.toString();
+		const path = queryString ? `/api/v1/topics?${queryString}` : '/api/v1/topics';
+		const response = await this.http.get<PaginatedResponse<Topic>>(path);
+		return response.data;
+	}
+
 	/**
 	 * Add a contact to a topic.
 	 *
@@ -45,10 +78,7 @@ export class TopicsResource extends BaseResource {
 	 */
 	async addContact(params: AddToTopicParams): Promise<AddToTopicResponse> {
 		if (!params.email && !params.contactId) {
-			throw new ValidationError(
-				'Either email or contactId is required',
-				'invalid_input'
-			);
+			throw new ValidationError('Either email or contactId is required', 'invalid_input');
 		}
 
 		const body: Record<string, string> = {};

@@ -10,8 +10,9 @@ convex/domains/dnsVerification.ts:errorMessage.includes
 convex/domains/dnsVerification.ts:errorMessage.includes
 convex/domains/dnsVerification.ts:errorMessage.includes
 
-# Convex validation errors carry no code; this module is the one place their
-# wording is read (the transaction-limit wording sits beside it).
+# Convex validation and cursor errors carry no code; this module is the one
+# place their wording is read (the transaction-limit wording sits beside it).
+convex/lib/convexLimitErrors.ts:.test(message)
 convex/lib/convexLimitErrors.ts:.test(message)
 
 # Mandrill's free-text rejection reasons (quota, rate limit, backlog).

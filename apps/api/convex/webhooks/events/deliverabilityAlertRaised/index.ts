@@ -5,8 +5,11 @@
  * so an operator's on-call tool hears about it even when the mail server the
  * alert is about cannot deliver that email. `emailMayNotArrive` says so.
  *
- * Also sent with `isTest: true` by the Deliverability Center's "Send test
- * alert", so a receiver can tell a drill from an incident.
+ * Also sent when sending on the instance stops (`checkId`
+ * `deployment.sending_hold`, `delivery/sendingHoldAlerts.ts`), with the hold's
+ * status and how it lifts (raised again, with `previousHoldStatus`, when the
+ * status changes while sending stays stopped), and with `isTest: true` by the Deliverability
+ * Center's "Send test alert", so a receiver can tell a drill from an incident.
  *
  * Customer-facing contract: see docs/webhook-payloads.md.
  */
@@ -26,6 +29,9 @@ const schema = v.object({
 	observedAt: v.string(),
 	emailMayNotArrive: v.boolean(),
 	isTest: v.boolean(),
+	holdStatus: v.optional(v.union(v.literal('suspended'), v.literal('banned'))),
+	previousHoldStatus: v.optional(v.union(v.literal('suspended'), v.literal('banned'))),
+	lift: v.optional(v.string()),
 });
 
 type Data = Infer<typeof schema>;
@@ -43,6 +49,12 @@ export interface DeliverabilityAlertRaisedInput {
 	observedAt: number;
 	emailMayNotArrive: boolean;
 	isTest: boolean;
+	/** A sending hold only: the status that stopped sending. */
+	holdStatus?: 'suspended' | 'banned';
+	/** A sending hold only: set when this raise changed the status of a hold that already stood. */
+	previousHoldStatus?: 'suspended' | 'banned';
+	/** A sending hold only: the `SendingHoldLift` as JSON text (event data is flat). */
+	lift?: string;
 }
 
 export const deliverabilityAlertRaised: WebhookEventModule<
@@ -51,7 +63,7 @@ export const deliverabilityAlertRaised: WebhookEventModule<
 	Data
 > = {
 	literal: 'deliverability.alert_raised',
-	description: 'A deliverability check regressed and Owlat raised an alert',
+	description: 'A deliverability check regressed or sending stopped, and Owlat raised an alert',
 	isSubscribable: true,
 	schema,
 	build(input) {
@@ -67,6 +79,9 @@ export const deliverabilityAlertRaised: WebhookEventModule<
 			observedAt: new Date(input.observedAt).toISOString(),
 			emailMayNotArrive: input.emailMayNotArrive,
 			isTest: input.isTest,
+			...(input.holdStatus ? { holdStatus: input.holdStatus } : {}),
+			...(input.previousHoldStatus ? { previousHoldStatus: input.previousHoldStatus } : {}),
+			...(input.lift !== undefined ? { lift: input.lift } : {}),
 		};
 	},
 };

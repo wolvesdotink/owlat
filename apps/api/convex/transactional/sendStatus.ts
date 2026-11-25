@@ -52,6 +52,8 @@ export function toSendStatus(
 	template: Doc<'transactionalEmails'> | null
 ): TransactionalSendStatus {
 	const isFailed = send.status === 'failed';
+	// A bounce keeps the receiving server's diagnostic in `errorMessage`.
+	const hasReason = isFailed || send.status === 'bounced';
 	return {
 		sendId: send._id,
 		status: send.status,
@@ -69,8 +71,9 @@ export function toSendStatus(
 		complainedAt: isoOrNull(send.complainedAt),
 		failedAt: isoOrNull(send.failedAt),
 		bounceType: send.bounceType ?? null,
+		bounceCause: send.bounceCause ?? null,
 		errorCode: isFailed ? (send.errorCode ?? null) : null,
-		errorMessage: isFailed ? (send.errorMessage ?? null) : null,
+		errorMessage: hasReason ? (send.errorMessage ?? null) : null,
 	};
 }
 

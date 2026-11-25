@@ -13,7 +13,7 @@
  */
 import { api } from '@owlat/api';
 import { BellIcon } from '@coolicons/vue';
-import { DELIVERABILITY_ALERT_WEBHOOK_PRESET } from '~/composables/useWebhookForm';
+import { DELIVERABILITY_ALERT_WEBHOOK_PRESET } from '~/utils/webhookPresets';
 
 const K = 'components.delivery.deliverabilityAlertChannels';
 const PUSH_DOCS_URL =
@@ -56,8 +56,15 @@ const summary = computed(() => {
 			? t(`${K}.summary.inApp`, c.inApp.recipientCount)
 			: t(`${K}.summary.noInApp`),
 		pushReaches.value ? t(`${K}.summary.push`, c.push.deviceCount) : t(`${K}.summary.noPush`),
-		c.webhook.count > 0 ? t(`${K}.summary.webhook`, c.webhook.count) : t(`${K}.summary.noWebhook`),
-	].join(' · ');
+		c.webhook.count > 0
+			? t(`${K}.summary.webhook`, c.webhook.count)
+			: c.webhook.cleartextCount === 0
+				? t(`${K}.summary.noWebhook`)
+				: null,
+		c.webhook.cleartextCount > 0 ? t(`${K}.summary.webhookCleartext`) : null,
+	]
+		.filter((part) => part !== null)
+		.join(' · ');
 });
 
 const emailDetail = computed(() => {
@@ -81,8 +88,17 @@ const webhookDetail = computed(() => {
 	const webhook = channels.value?.webhook;
 	if (!webhook) return '';
 	if (!webhook.isFeatureOn) return t(`${K}.webhook.off`);
-	if (webhook.count === 0) return t(`${K}.webhook.notSet`);
-	return t(`${K}.webhook.reach`, webhook.count);
+	// A stored http:// URL gets no alerts (webhooks/urlPolicy.ts); saying so
+	// keeps the operator from counting it as a channel.
+	const cleartext =
+		webhook.cleartextCount > 0 ? t(`${K}.webhook.cleartext`, webhook.cleartextCount) : '';
+	if (webhook.count === 0) return cleartext || t(`${K}.webhook.notSet`);
+	return [t(`${K}.webhook.reach`, webhook.count), cleartext].filter(Boolean).join(' ');
+});
+
+const hasWebhookToManage = computed(() => {
+	const webhook = channels.value?.webhook;
+	return !webhook?.isFeatureOn || webhook.count > 0 || webhook.cleartextCount > 0;
 });
 </script>
 
@@ -199,7 +215,11 @@ const webhookDetail = computed(() => {
 				>
 					<div class="min-w-0">
 						<h3 class="text-sm font-medium text-text-primary">{{ t(`${K}.webhook.title`) }}</h3>
-						<p class="mt-0.5 text-xs text-text-tertiary" data-testid="alert-channel-webhook">
+						<p
+							class="mt-0.5 text-xs"
+							:class="channels.webhook.cleartextCount > 0 ? 'text-warning' : 'text-text-tertiary'"
+							data-testid="alert-channel-webhook"
+						>
 							{{ webhookDetail }}
 						</p>
 					</div>
@@ -207,16 +227,12 @@ const webhookDetail = computed(() => {
 						size="sm"
 						variant="secondary"
 						:to="
-							channels.webhook.count > 0 || !channels.webhook.isFeatureOn
+							hasWebhookToManage
 								? '/dashboard/admin/delivery/webhooks'
 								: `/dashboard/admin/delivery/webhooks?preset=${DELIVERABILITY_ALERT_WEBHOOK_PRESET}`
 						"
 					>
-						{{
-							channels.webhook.count > 0 || !channels.webhook.isFeatureOn
-								? t(`${K}.webhook.manage`)
-								: t(`${K}.webhook.add`)
-						}}
+						{{ hasWebhookToManage ? t(`${K}.webhook.manage`) : t(`${K}.webhook.add`) }}
 					</UiButton>
 				</li>
 				<li>

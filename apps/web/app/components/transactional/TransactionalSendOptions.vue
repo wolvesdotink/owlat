@@ -1,19 +1,30 @@
 <script setup lang="ts">
 /**
  * The transactional editor's send options below the canvas. The unsubscribe
- * footer is part of the draft and saves with it. The other two change what the
- * send API accepts rather than what the email says, so they apply at once,
- * also while the email is published: which variables a caller may leave out
- * (`transactional/sendOptions.ts` `setVariableOptional`) and whether the
- * template is held to the per-recipient send limit (`setRecipientCapExempt`).
+ * footer is part of the draft and saves with it. The rest leave what the email
+ * says alone, so they apply at once, also while the email is published: which
+ * variables a caller may leave out (`transactional/sendOptions.ts`
+ * `setVariableOptional`), each variable's example value for the preview and
+ * test sends (`setVariableExample`), and whether the template is held to the
+ * per-recipient send limit (`setRecipientCapExempt`).
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	exampleAsPreviewText,
+	type DataVariableExampleValue,
+} from '@owlat/shared/dataVariableExamples';
+
+type DataVariable = {
+	key: string;
+	type: 'string' | 'number' | 'boolean' | 'date' | 'array';
+	example?: DataVariableExampleValue;
+};
 
 const props = defineProps<{
 	emailId: Id<'transactionalEmails'>;
-	/** The template's declared data variables. */
-	variables: ReadonlyArray<{ key: string; type: string }>;
+	/** The template's declared data variables, with their example values. */
+	variables: ReadonlyArray<DataVariable>;
 	optionalVariables: readonly string[];
 	isRecipientCapExempt: boolean;
 }>();
@@ -33,6 +44,9 @@ const { run: setRecipientCapExempt } = useBackendOperation(
 );
 
 const optional = computed(() => new Set(props.optionalVariables));
+
+/** The variable whose example the dialog edits. */
+const editingExample = ref<DataVariable | null>(null);
 
 async function toggleOptional(key: string, isOptional: boolean) {
 	await setVariableOptional({ id: props.emailId, key, isOptional });
@@ -92,8 +106,34 @@ async function toggleExempt(isExempt: boolean) {
 					<div class="min-w-0">
 						<code class="text-sm font-mono text-text-primary">{{ variable.key }}</code>
 						<span class="ml-2 text-xs text-text-tertiary">{{ variable.type }}</span>
+						<p
+							class="text-xs text-text-tertiary mt-0.5 truncate"
+							:data-testid="`variable-example-${variable.key}`"
+						>
+							{{
+								variable.example !== undefined
+									? t('components.transactional.sendOptions.variables.example', {
+											value: exampleAsPreviewText(variable.example),
+										})
+									: t('components.transactional.sendOptions.variables.noExample')
+							}}
+						</p>
 					</div>
 					<div class="flex items-center gap-3 shrink-0">
+						<UiButton
+							v-if="canManage"
+							variant="ghost"
+							size="sm"
+							:aria-label="
+								t('components.transactional.sendOptions.variables.editExample', {
+									name: variable.key,
+								})
+							"
+							:data-testid="`variable-edit-example-${variable.key}`"
+							@click="editingExample = variable"
+						>
+							{{ t('components.transactional.sendOptions.variables.exampleButton') }}
+						</UiButton>
 						<span
 							class="text-sm text-text-secondary"
 							:data-testid="`variable-state-${variable.key}`"
@@ -119,6 +159,13 @@ async function toggleExempt(isExempt: boolean) {
 			<p v-else class="mt-3 text-sm text-text-tertiary">
 				{{ t('components.transactional.sendOptions.variables.empty') }}
 			</p>
+
+			<LazyTransactionalVariableExampleDialog
+				v-if="editingExample"
+				:email-id="emailId"
+				:variable="editingExample"
+				@close="editingExample = null"
+			/>
 
 			<div class="mt-5 flex items-center justify-between gap-4">
 				<div>

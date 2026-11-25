@@ -148,3 +148,130 @@ describe('EmailSendTimeline error details', () => {
 		w.unmount();
 	});
 });
+
+describe('EmailSendTimeline steps of a failed send', () => {
+	const steps = (w: ReturnType<typeof mountTimeline>) =>
+		w.findAll('[data-testid="timeline-event"]').map((row) => row.attributes('data-key'));
+
+	it('ends at the failure instead of listing steps the send will never reach', () => {
+		const w = mountTimeline({
+			status: 'failed',
+			queuedAt: 1,
+			sentAt: undefined,
+			deliveredAt: undefined,
+			failedAt: 5,
+			showQueued: true,
+		});
+
+		expect(steps(w)).toEqual(['queued', 'failed']);
+		expect(w.text()).not.toContain('Not yet reached');
+		expect(w.find('[data-key="failed"]').text()).toContain('Failed');
+		w.unmount();
+	});
+
+	it('shows the failure alone on a transactional send, which hides the queued step', () => {
+		const w = mountTimeline({
+			status: 'failed',
+			sentAt: undefined,
+			deliveredAt: undefined,
+			failedAt: 5,
+			showQueued: false,
+		});
+
+		expect(steps(w)).toEqual(['failed']);
+		expect(w.text()).not.toContain('Not yet reached');
+		w.unmount();
+	});
+
+	it('still lists the steps a send on its way has yet to reach', () => {
+		const w = mountTimeline({ status: 'sent', sentAt: 1, deliveredAt: undefined });
+
+		expect(steps(w)).toEqual(['sent', 'delivered', 'opened', 'clicked']);
+		expect(w.text()).toContain('Not yet reached');
+		w.unmount();
+	});
+});
+
+describe('EmailSendTimeline steps of a bounced or complained send', () => {
+	const steps = (w: ReturnType<typeof mountTimeline>) =>
+		w.findAll('[data-testid="timeline-event"]').map((row) => row.attributes('data-key'));
+
+	it.each([
+		['hard', 'hard' as const],
+		// Owlat never retries a soft-bounced send: the MTA reports the soft bounce
+		// only once its own retries ran out, so delivery will not come later.
+		['soft', 'soft' as const],
+	])('ends a %s bounce at the bounce', (_name, bounceType) => {
+		const w = mountTimeline({
+			status: 'bounced',
+			bounceType,
+			queuedAt: 1,
+			sentAt: 2,
+			deliveredAt: undefined,
+			bouncedAt: 5,
+			showQueued: true,
+		});
+
+		expect(steps(w)).toEqual(['queued', 'sent', 'bounced']);
+		expect(w.text()).not.toContain('Not yet reached');
+		w.unmount();
+	});
+
+	it('keeps the steps a bounced send reached before the bounce', () => {
+		const w = mountTimeline({
+			status: 'bounced',
+			bounceType: 'hard',
+			sentAt: 2,
+			deliveredAt: 3,
+			bouncedAt: 5,
+		});
+
+		expect(steps(w)).toEqual(['sent', 'delivered', 'bounced']);
+		expect(w.text()).not.toContain('Not yet reached');
+		w.unmount();
+	});
+
+	it('shows an open recorded on a soft-bounced send', () => {
+		const w = mountTimeline({
+			status: 'bounced',
+			bounceType: 'soft',
+			sentAt: 2,
+			deliveredAt: 6,
+			openedAt: 6,
+			bouncedAt: 5,
+		});
+
+		expect(steps(w)).toEqual(['sent', 'delivered', 'opened', 'bounced']);
+		expect(w.text()).not.toContain('Not yet reached');
+		w.unmount();
+	});
+
+	it('keeps the delivered and opened steps of a send complained about after opening', () => {
+		const w = mountTimeline({
+			status: 'complained',
+			sentAt: 2,
+			deliveredAt: 3,
+			openedAt: 4,
+			complainedAt: 9,
+		});
+
+		expect(steps(w)).toEqual(['sent', 'delivered', 'opened', 'complained']);
+		expect(w.text()).not.toContain('Not yet reached');
+		expect(w.find('[data-key="complained"]').text()).toContain('Complained');
+		w.unmount();
+	});
+
+	it('ends at the bounce even when the bounce carries no time', () => {
+		const w = mountTimeline({
+			status: 'bounced',
+			bounceType: 'hard',
+			sentAt: 2,
+			deliveredAt: undefined,
+			bouncedAt: undefined,
+		});
+
+		expect(steps(w)).toEqual(['sent', 'bounced']);
+		expect(w.text()).not.toContain('Not yet reached');
+		w.unmount();
+	});
+});

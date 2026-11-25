@@ -1,5 +1,5 @@
 /**
- * Send lifecycle — finalizing the record a 1:1 inbox Send was carrying.
+ * Send lifecycle — finalizing the record a Send was carrying.
  *
  * Two kinds of Send answer a Team inbox thread, and each closes a different
  * record once the Send is terminal:
@@ -13,6 +13,10 @@
  *   (mail/interpret/sendActivity.ts).
  * - `team_reply` → the follow-up it carries (`inbox/followUps.ts`), plus the
  *   thread brief's activity and interpretation, like an agent reply.
+ *
+ * An `automation` Send closes its step run only when the dispatch gate
+ * withdrew it because the automation was paused; every other outcome leaves
+ * the step run as the walker wrote it.
  *
  * This belongs to the Send terminal edge, not to one transport callback.
  * Direct/relay completion and authenticated MTA remote acceptance both pass
@@ -28,6 +32,8 @@ import { transition as threadTransition } from '../../inbox/threads/module';
 import { mirrorEmailSendWrite } from '../../channels/messages';
 import { onTeamSendFinalized } from '../../mail/interpret/sendActivity';
 import { restoreAnsweredTeamThread, settleAnsweredTeamThread } from '../../inbox/answeredThread';
+import { withdrawQueuedEmailStepRun } from '../../automations/stepRunTransitions';
+import { AUTOMATION_PAUSED_ERROR_CODE } from '../sendCompletionDecision';
 import type { EmailSendDoc, SendRef, TransactionalSendDoc, TransitionInput } from './types';
 
 type TerminalInput = Extract<TransitionInput, { to: 'sent' | 'failed' | 'bounced' | 'complained' }>;
@@ -67,6 +73,19 @@ export async function finalizeSendSource(
 ): Promise<void> {
 	if (ref.kind !== 'transactional' || !isTerminal(input)) return;
 	const tSend = send as TransactionalSendDoc;
+
+	// An automation email withdrawn at dispatch because its automation was
+	// paused: the step run that queued it records that it was not sent.
+	if (tSend.kind === 'automation') {
+		if (
+			input.to === 'failed' &&
+			input.errorCode === AUTOMATION_PAUSED_ERROR_CODE &&
+			tSend.automationStepRunId
+		) {
+			await withdrawQueuedEmailStepRun(ctx, tSend.automationStepRunId);
+		}
+		return;
+	}
 
 	if (tSend.kind === 'team_reply' && tSend.followUpId) {
 		await ctx.runMutation(internal.inbox.followUps.completeSend, {

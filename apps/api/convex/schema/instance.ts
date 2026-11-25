@@ -232,6 +232,10 @@ export const instanceTables = {
 		abuseStatusReason: v.optional(v.string()),
 		abuseStatusChangedAt: v.optional(v.number()),
 		abuseStatusChangedBy: v.optional(v.string()), // admin user ID or 'system'
+		// When sending last stopped (suspended or banned), while it stays stopped:
+		// the sending hold alert's id, so its resolve names the alert its raise
+		// named even after a suspension turns into a ban.
+		sendingStoppedAt: v.optional(v.number()),
 		// The metric the reputation check suspended or warned on, only while the
 		// status is one the check set. Absent (an admin's, the MTA's, a legacy
 		// row): never lifted automatically. See `analytics/reputationResume.ts`.

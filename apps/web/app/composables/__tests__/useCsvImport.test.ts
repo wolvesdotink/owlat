@@ -212,6 +212,24 @@ describe('useCsvImport', () => {
 			expect(csvImport.error.value).toBe('CSV parsing error: File read error');
 		});
 
+		it('shows the parse error when the parser chunk cannot be fetched', async () => {
+			vi.doMock('~/utils/contactsCsv', () => {
+				throw new Error('Failed to fetch dynamically imported module');
+			});
+			try {
+				const csvImport = useCsvImport();
+				const fakeFile = new File([''], 'test.csv', { type: 'text/csv' });
+				const fakeEvent = { target: { files: [fakeFile] } } as unknown as Event;
+				await csvImport.handleFileSelect(fakeEvent);
+
+				expect(csvImport.error.value).toMatch(/^CSV parsing error: /);
+				expect(csvImport.step.value).toBe('upload');
+				expect(Papa.parse).not.toHaveBeenCalled();
+			} finally {
+				vi.doUnmock('~/utils/contactsCsv');
+			}
+		});
+
 		it('sets error when CSV has fewer than 2 rows', async () => {
 			const csvImport = useCsvImport();
 

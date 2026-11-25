@@ -3,6 +3,7 @@ import type { Variable, VariableType } from './variables';
 import type { EmailTheme } from '@owlat/shared';
 import type { BrandKitDesign } from '@owlat/shared/brandKit';
 import type { BrandLogos } from '@owlat/shared/brandKitBlocks';
+import type { DataVariableExampleValue } from '@owlat/shared/dataVariableExamples';
 
 export type { EmailTheme } from '@owlat/shared';
 
@@ -126,6 +127,14 @@ export interface BuilderCollabFocus {
 	inlineEditRootId: string | null;
 }
 
+/** A data variable the builder's dialog defines, for the host page to store. */
+export interface CreatedVariable {
+	key: string;
+	type?: string;
+	/** Sample value for the preview and test sends; never used by a real send. */
+	example?: DataVariableExampleValue;
+}
+
 /**
  * Email builder emits
  */
@@ -136,7 +145,7 @@ export interface EmailBuilderEmits {
 	(e: 'update:backgroundColor', value: string): void;
 	(e: 'save'): void;
 	(e: 'back'): void;
-	(e: 'create-variable', variable: { key: string; type?: string }): void;
+	(e: 'create-variable', variable: CreatedVariable): void;
 }
 
 /**

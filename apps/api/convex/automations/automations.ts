@@ -18,6 +18,7 @@ import { getLive } from '../lib/softDelete';
 import { restoreAutomation, softDeleteAutomation } from './deletion';
 import { trackEvent } from '../lib/posthogHelpers';
 import { triggerConfigValidator } from '../lib/convexValidators';
+import { automationTopicId } from '../lib/marketingEligibility';
 import { listResources, countFacet } from '../lib/listing';
 import { recordListingCounter } from '../lib/listingCounters';
 import { automationListing } from './listing';
@@ -150,9 +151,31 @@ export const getWithRelations = automationsQuery({
 			steps: enrichedSteps,
 			topic: null,
 			...triggerEnrichment,
+			mailTopic: await loadMailTopic(ctx, automation),
 		};
 	},
 });
+
+/**
+ * The topic this automation's emails are sent for, as the editor and the
+ * detail page show it: `topic` is null when it names a topic that was deleted
+ * since. Null when the automation belongs to no topic.
+ */
+async function loadMailTopic(
+	ctx: QueryCtx,
+	automation: Doc<'automations'>
+): Promise<{
+	topicId: Id<'topics'>;
+	topic: { _id: Id<'topics'>; name: string } | null;
+} | null> {
+	const topicId = automationTopicId(ctx, automation);
+	if (topicId === null) return null;
+	const topic = await ctx.db.get(topicId);
+	return {
+		topicId,
+		topic: topic ? { _id: topic._id, name: topic.name } : null,
+	};
+}
 
 // Count automations by status — the descriptor's `byStatus` facet returns
 // per-status counts plus their `total`.
@@ -227,6 +250,29 @@ export const update = automationsMutation({
 	},
 });
 
+// Set the topic this automation's emails are sent for. `'trigger'` hands the
+// decision back to the trigger (a "Subscribed to topic" automation then belongs
+// to its trigger's topic), `null` sends for no topic. Allowed in every status,
+// like the name: the step gate reads it before each email, so a change applies
+// to the next email of every running run.
+export const setTopic = automationsMutation({
+	args: {
+		automationId: v.id('automations'),
+		topicId: v.union(v.id('topics'), v.null(), v.literal('trigger')),
+	},
+	handler: async (ctx, args) => {
+		// authz: requireAutomation enforces automations:manage
+		await requireAutomation(ctx, args.automationId, 'edit automations');
+		if (args.topicId !== null && args.topicId !== 'trigger') {
+			await getOrThrow(ctx, args.topicId, 'Topic');
+		}
+		await ctx.db.patch(args.automationId, {
+			topicId: args.topicId === 'trigger' ? undefined : args.topicId,
+			updatedAt: Date.now(),
+		});
+	},
+});
+
 // Update trigger configuration
 export const updateTrigger = automationsMutation({
 	args: {
@@ -258,10 +304,8 @@ export const updateTrigger = automationsMutation({
 
 // Translate the lifecycle's typed `reason` to a human-facing message. The
 // lifecycle owns the typed contract; the human string is shell-local.
-function reasonToMessage(
-	reason: Extract<AutomationTransitionOutcome, { ok: false }>['reason']
-): string {
-	switch (reason) {
+function reasonToMessage(outcome: Extract<AutomationTransitionOutcome, { ok: false }>): string {
+	switch (outcome.reason) {
 		case 'automation_not_found':
 			return 'Automation not found';
 		case 'illegal_edge':
@@ -270,6 +314,8 @@ function reasonToMessage(
 			return 'Automation must have at least one step to be activated';
 		case 'invalid_trigger_config':
 			return 'Automation trigger is missing required configuration';
+		case 'content_refused':
+			return outcome.detail ?? 'Content refused by our content scanner';
 		case 'status_changed':
 			return 'The automation was paused or resumed since; nothing was undone';
 	}
@@ -301,7 +347,7 @@ async function changeStatus(
 		userId,
 		...(args.ifStatusChangedAt !== undefined ? { ifStatusChangedAt: args.ifStatusChangedAt } : {}),
 	});
-	if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
+	if (!outcome.ok) throwInvalidState(reasonToMessage(outcome));
 	return { statusChangedAt: outcome.applied === 'transitioned' ? at : null };
 }
 
@@ -318,7 +364,7 @@ export const activate = automationsMutation({
 			input: { to: 'active', at: Date.now() },
 			userId: session.userId,
 		});
-		if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
+		if (!outcome.ok) throwInvalidState(reasonToMessage(outcome));
 	},
 });
 
@@ -359,6 +405,7 @@ export const duplicate = automationsMutation({
 			description: automation.description,
 			triggerType: automation.triggerType,
 			triggerConfig: automation.triggerConfig,
+			...(automation.topicId !== undefined ? { topicId: automation.topicId } : {}),
 			status: 'draft',
 			statsEntered: 0,
 			statsActive: 0,

@@ -1,15 +1,16 @@
 /**
  * `bun run dev:stack`: a complete local Owlat for this checkout.
  *
- *   bun run dev:stack [up] [--no-seed]   start (or reattach to) the stack
+ *   bun run dev:stack [up] [--no-seed] [--no-web]   start (or reattach to) the stack
  *   bun run dev:stack down [--volumes]   stop this checkout's containers
  *   bun run dev:stack status             ports and container state
  *   bun run dev:stack ports              the resolved ports only
  *   bun run dev:stack logs [convex|redis] [--follow]   container logs
+ *   bun run dev:stack codegen            regenerate apps/api/convex/_generated
  *
  * `up` starts the Convex backend and Redis in a Compose project of their own,
  * pushes the functions, seeds demo data, then runs the Convex watcher and
- * Nuxt in the foreground until Ctrl-C. The containers keep running after
+ * Nuxt (unless `--no-web`) in the foreground until Ctrl-C. The containers keep running after
  * Ctrl-C so the next start is quick; `down` stops them and keeps the data,
  * `down --volumes` deletes it. Ports derive from the checkout path
  * (scripts/dev-stack/config.ts); OWLAT_PORT_OFFSET overrides them.
@@ -17,7 +18,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { lstatSync, realpathSync } from 'node:fs';
+import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { DEV_STACK_USAGE, parseDevStackArgs } from './dev-stack/args';
@@ -30,7 +31,7 @@ import {
 } from './dev-stack/config';
 import { selfHostedCliEnv } from './dev-stack/convexTarget';
 import { parseAdminKey, writeEnvFile } from './dev-stack/envFile';
-import { syncStage, watchStage } from './dev-stack/stage';
+import { copyGeneratedBack, syncStage, watchStage } from './dev-stack/stage';
 import {
 	composeEnvEntries,
 	devStackPaths,
@@ -39,7 +40,7 @@ import {
 	type DevStackPaths,
 } from './dev-stack/state';
 import { supervise } from './dev-stack/supervise';
-import { runUp, type StackOps } from './dev-stack/up';
+import { runCodegen, runUp, type CodegenOps, type StackOps } from './dev-stack/up';
 
 const root = realpathSync(join(import.meta.dir, '..'));
 const paths: DevStackPaths = devStackPaths(root);
@@ -128,11 +129,11 @@ function cliEnv(adminKey: string): NodeJS.ProcessEnv {
 	return selfHostedCliEnv(process.env, config.urls.convex, adminKey);
 }
 
-async function up(seed: boolean): Promise<number> {
-	const secrets = loadOrCreateSecrets(paths.secretsFile);
-	writeComposeEnv();
+type BackendOps = Omit<StackOps, 'pushOnce' | 'seed' | 'runForeground'>;
+
+function backendOps(): { ops: BackendOps; adminKey: () => string } {
 	let adminKey = '';
-	const ops: StackOps = {
+	const ops: BackendOps = {
 		log: (line) => console.info(line),
 		runningServices: async () => runningServices(),
 		portInUse,
@@ -161,13 +162,24 @@ async function up(seed: boolean): Promise<number> {
 				input: `${input}\n`,
 			});
 		},
+	};
+	return { ops, adminKey: () => adminKey };
+}
+
+async function up(seed: boolean, web: boolean): Promise<number> {
+	const secrets = loadOrCreateSecrets(paths.secretsFile);
+	writeComposeEnv();
+	const backend = backendOps();
+	const cliEnvNow = () => cliEnv(backend.adminKey());
+	const ops: StackOps = {
+		...backend.ops,
 		pushOnce: () =>
 			run(convexBin, ['dev', '--once', '--typecheck', 'disable', '--codegen', 'disable'], {
 				cwd: paths.stageApi,
-				env: cliEnv(adminKey),
+				env: cliEnvNow(),
 			}),
 		seed: () => run(process.execPath, [join(root, 'scripts', 'dev-seed.ts')], { env: process.env }),
-		runForeground: () => {
+		runForeground: (withWeb) => {
 			const stopWatching = watchStage(paths.apiDir, paths.stageApi, (result) => {
 				if (result instanceof Error) console.error(`[stage] sync failed: ${result.message}`);
 				else if (result.copied + result.removed > 0) {
@@ -181,21 +193,52 @@ async function up(seed: boolean): Promise<number> {
 						command: convexBin,
 						args: ['dev', '--typecheck', 'disable', '--codegen', 'disable'],
 						cwd: paths.stageApi,
-						env: cliEnv(adminKey),
+						env: cliEnvNow(),
 					},
-					{
-						name: 'web',
-						command: process.execPath,
-						args: ['run', 'dev'],
-						cwd: join(root, 'apps', 'web'),
-						env: { ...process.env, ...webEnv(config), ...webSecretEnv(secrets) },
-					},
+					...(withWeb
+						? [
+								{
+									name: 'web',
+									command: process.execPath,
+									args: ['run', 'dev'],
+									cwd: join(root, 'apps', 'web'),
+									env: { ...process.env, ...webEnv(config), ...webSecretEnv(secrets) },
+								},
+							]
+						: []),
 				],
 				stopWatching
 			);
 		},
 	};
-	return runUp(config, secrets, { seed }, ops);
+	return runUp(config, secrets, { seed, web }, ops);
+}
+
+async function codegen(): Promise<number> {
+	const secrets = loadOrCreateSecrets(paths.secretsFile);
+	writeComposeEnv();
+	const backend = backendOps();
+	// The CLI stages its output in a temporary directory and renames it into
+	// place, which needs the same filesystem; /tmp is often a separate tmpfs.
+	const tmpDir = join(paths.stateDir, 'tmp');
+	mkdirSync(tmpDir, { recursive: true });
+	const ops: CodegenOps = {
+		...backend.ops,
+		codegen: async () => {
+			await run(convexBin, ['codegen', '--typecheck', 'disable'], {
+				cwd: paths.stageApi,
+				env: { ...cliEnv(backend.adminKey()), CONVEX_TMPDIR: tmpDir },
+			});
+			// The CLI writes fullApi as one map, which TypeScript cannot type at this
+			// size; split it before it reaches the checkout.
+			await run(process.execPath, [
+				join(paths.apiDir, 'scripts', 'codegen-api-chunks.ts'),
+				join(paths.stageApi, 'convex', '_generated', 'api.d.ts'),
+			]);
+		},
+		copyGeneratedBack: () => copyGeneratedBack(paths.stageApi, paths.apiDir),
+	};
+	return runCodegen(config, secrets, ops);
 }
 
 async function down(volumes: boolean): Promise<number> {
@@ -245,8 +288,10 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		case 'logs':
 			return logs(args.service, flags.has('--follow'));
+		case 'codegen':
+			return codegen();
 		default:
-			return up(!flags.has('--no-seed'));
+			return up(!flags.has('--no-seed'), !flags.has('--no-web'));
 	}
 }
 

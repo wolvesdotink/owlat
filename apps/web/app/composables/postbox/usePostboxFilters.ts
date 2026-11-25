@@ -70,6 +70,38 @@ export function hasRetroactiveActions(actions: readonly FilterAction[]): boolean
 	return actions.some((action) => RETROACTIVE_ACTION_TYPES.has(action.type));
 }
 
+/** The two fields of a mailbox row that decide which rules see its new mail. */
+export interface FilterMailbox {
+	kind?: 'hosted' | 'external';
+	scope?: 'personal' | 'shared' | 'seed';
+}
+
+/**
+ * Which rules run on a mailbox's new mail. Hosted delivery runs the editor's
+ * filters before the insert (`mail/delivery.ts`); mail synced from a provider
+ * skips that pass (`mail/external/delivery.ts`). The plain-language and AI pass
+ * after the insert runs for personal mailboxes only (`mail/rules/rulesPass.ts`),
+ * hosted or synced. A connected team inbox therefore runs neither.
+ */
+export function filtersOnNewMail(mailbox: FilterMailbox): {
+	editorFilters: boolean;
+	plainRules: boolean;
+} {
+	return {
+		editorFilters: mailbox.kind !== 'external',
+		plainRules: (mailbox.scope ?? 'personal') === 'personal',
+	};
+}
+
+/**
+ * Whether a filter action can ever take effect on this mailbox. A connected
+ * mailbox's filters run only through "Run on existing mail", so only the
+ * actions that run applies are worth offering there.
+ */
+export function isFilterActionAvailable(type: FilterActionType, mailbox: FilterMailbox): boolean {
+	return filtersOnNewMail(mailbox).editorFilters || RETROACTIVE_ACTION_TYPES.has(type);
+}
+
 export interface FilterAction {
 	type: FilterActionType;
 	folderId?: Id<'mailFolders'>;

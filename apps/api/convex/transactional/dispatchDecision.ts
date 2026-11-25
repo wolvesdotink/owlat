@@ -17,12 +17,14 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { IdempotencyRefusalReason } from '../auth/apiRequestReceipts';
 import type { SendIntakeAbuseState, SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
 import type { WorkerEnvelopeInput } from '../delivery/workerEnvelope';
-import type { jsonPrimitiveRecord } from '../lib/convexValidators';
+import type { dataVariablesRecord } from '../lib/convexValidators';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import {
+	MAX_REPEATED_BODY_CHARS,
 	mergeAttachments,
 	missingDataVariables,
+	oversizedRepeatVariables,
 	selectSendContent,
 	validateDataVariables,
 	type AttachmentRef,
@@ -58,6 +60,8 @@ export type DispatchRefusal = {
 	abuse?: SendIntakeAbuseState;
 	/** Set on the volume-cap refusals: when the cap admits the next send. */
 	retryAfterMs?: number;
+	/** Set on `invalid_variables`: the data variables at fault. */
+	variables?: string[];
 };
 
 export type DispatchOutcome =
@@ -222,10 +226,30 @@ export function decideSenderAndVariables(input: {
 			}`,
 		};
 	}
+	return decideVariables(input);
+}
+
+/**
+ * The variable refusals of a send, in order: `dataVariables` must match the
+ * template's declared schema, supply every variable the content renders
+ * without a fallback unless the template marks it optional, and not write out
+ * an oversized body. The API's render (`publicApi/renderHttp.ts`) asks this
+ * for its sample variables too.
+ */
+export function decideVariables(input: {
+	readonly dataVariables: Record<string, unknown> | undefined;
+	readonly template: Partial<Pick<Template, 'dataVariablesSchema' | 'optionalDataVariables'>>;
+	readonly content: Pick<SendContent, 'subject' | 'html' | 'plainText'>;
+}): DispatchRefusal | undefined {
 	const { template } = input;
 	const validation = validateDataVariables(input.dataVariables, template.dataVariablesSchema);
 	if (!validation.valid) {
-		return { ok: false, reason: 'invalid_variables', detail: validation.error };
+		return {
+			ok: false,
+			reason: 'invalid_variables',
+			detail: validation.error,
+			...(validation.variable !== undefined && { variables: [validation.variable] }),
+		};
 	}
 	const missing = missingDataVariables(
 		input.content,
@@ -239,9 +263,30 @@ export function decideSenderAndVariables(input: {
 			ok: false,
 			reason: 'invalid_variables',
 			detail: `Missing data ${one ? 'variable' : 'variables'} ${names}: the email uses ${one ? 'it' : 'them'} without a fallback. Supply ${one ? 'it' : 'them'}, or mark ${one ? 'it' : 'them'} optional in the template's variables to send ${one ? 'it' : 'them'} empty.`,
+			variables: missing,
 		};
 	}
-	return undefined;
+	return oversizedVariablesRefusal(input.content, input.dataVariables);
+}
+
+/**
+ * The refusal of a request whose lists would write out a body longer than
+ * {@link MAX_REPEATED_BODY_CHARS}, or `undefined` when it fits. A dry run asks
+ * it before it composes, since composing such a body is the cost it guards.
+ */
+export function oversizedVariablesRefusal(
+	content: Pick<SendContent, 'html' | 'plainText'>,
+	dataVariables: Record<string, unknown> | undefined
+): DispatchRefusal | undefined {
+	const oversized = oversizedRepeatVariables(content, dataVariables);
+	if (oversized.length === 0) return undefined;
+	const names = oversized.map((name) => `"${name}"`).join(', ');
+	return {
+		ok: false,
+		reason: 'invalid_variables',
+		detail: `The email the entries of ${names} build is longer than ${MAX_REPEATED_BODY_CHARS} characters. Send fewer entries.`,
+		variables: oversized,
+	};
 }
 
 /** What one accepted request writes and queues, in one transaction. */
@@ -269,7 +314,7 @@ export function planTransactionalSend(input: {
 	readonly request: {
 		readonly email: string;
 		readonly language: string | undefined;
-		readonly dataVariables: Infer<typeof jsonPrimitiveRecord> | undefined;
+		readonly dataVariables: Infer<typeof dataVariablesRecord> | undefined;
 		readonly attachmentRefs: AttachmentRef[] | undefined;
 	};
 	readonly contactId: Id<'contacts'>;

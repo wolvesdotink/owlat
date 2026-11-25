@@ -14,5 +14,17 @@
  *   2  A single-open accordion's radio inputs are named after its own Block
  *      (`owlat-accordion-<blockId>`) instead of sharing `owlat-accordion`, so
  *      two accordions in one email no longer close each other's sections.
+ *   3  Non-stacking columns sit in a full-width table row, a full-width
+ *      button's anchor is `box-sizing:border-box`, a button keeps an explicit
+ *      padding of 0, and a table with a border radius keeps separate borders.
+ *   4  A root block's margin is a cell outside the table that carries its
+ *      background and border. A nested text, image, button or divider item
+ *      draws its own padding (unless it is an editor default), margin,
+ *      background, border and corner radius. `mobileFontSize` reaches root
+ *      headings and nested text.
+ *   5  A transactional email's conditional and repeated root Blocks stay in
+ *      its HTML and text once each, between region markers the send resolves
+ *      against the request's data (`sendTimeBlockLogic`), instead of being
+ *      decided without data.
  */
-export const EMAIL_RENDERER_VERSION = 2;
+export const EMAIL_RENDERER_VERSION = 5;

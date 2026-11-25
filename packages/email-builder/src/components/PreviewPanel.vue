@@ -15,6 +15,8 @@ const { t } = useBuilderI18n();
 const props = defineProps<{
 	html: string;
 	subject?: string;
+	/** The inbox preview line shown next to the subject. */
+	preheader?: string;
 	isGenerating?: boolean;
 	plainText?: string;
 	/** Generated body without preview variable substitution — seeds a new override. */
@@ -59,6 +61,7 @@ const emit = defineEmits<{
 			v-else
 			:html="props.html"
 			:subject="props.subject"
+			:preheader="props.preheader"
 			:plain-text="props.plainText"
 			:plain-text-source="props.plainTextSource"
 			:plain-text-override="props.plainTextOverride"

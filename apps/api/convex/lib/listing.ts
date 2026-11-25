@@ -1,7 +1,7 @@
 import type { PaginationOptions, PaginationResult } from 'convex/server';
 import type { DatabaseReader } from '../_generated/server';
 import type { Doc, TableNames } from '../_generated/dataModel';
-import { countIndexRange } from './pagination';
+import { countIndexRange, paginateClientCursor } from './pagination';
 import { counterScopeKey, readCounterScope } from './counters';
 import type { ListingCounterKind } from './listingCounters';
 
@@ -66,6 +66,13 @@ interface ListingBrowse {
 	filterIndexes?: Readonly<Record<string, string>>;
 	/** Optional `sort` arg → index map (browse path only; see `sortKeys`). */
 	sortIndexes?: Readonly<Record<string, string>>;
+	/**
+	 * Per filter field, the `sort` arg → index map for that single filter: the
+	 * compound index whose prefix is the filter field and whose next field is
+	 * the sort key. Without an entry, a filtered browse keeps the
+	 * `filterIndexes` order whatever `sort` asks for.
+	 */
+	filterSortIndexes?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 /**
@@ -155,6 +162,19 @@ interface ListResourcesArgs {
 	 */
 	order?: 'asc' | 'desc';
 	paginationOpts: PaginationOptions;
+	/**
+	 * The cursor came from an API client: a cursor the paginator refuses is the
+	 * caller's `invalid_input` (`lib/pagination.ts:paginateClientCursor`). The
+	 * web app's `usePaginatedQuery` resets its pages only on the paginator's own
+	 * `InvalidCursor` error, so its queries leave this unset.
+	 */
+	clientCursor?: boolean;
+}
+
+function paginatePage(query: AnyQuery, args: ListResourcesArgs) {
+	return args.clientCursor
+		? paginateClientCursor(query, args.paginationOpts)
+		: query.paginate(args.paginationOpts);
 }
 
 /** A page row: the redacted document plus whatever `enrich` merged onto it. */
@@ -205,19 +225,18 @@ async function searchPage<
 	args: ListResourcesArgs
 ): Promise<PaginationResult<Doc<T>>> {
 	const cfg = descriptor.search!;
-	const query = db.query(descriptor.table as never) as unknown as AnyQuery;
-	const result = await query
-		.withSearchIndex(cfg.index, (q) => {
-			let builder = q.search(cfg.field, search);
-			// Soft-delete and equality filters ride the search index's
-			// filterFields — never a post-filter that would thin the page.
-			if (descriptor.softDelete) builder = builder.eq('deletedAt', undefined);
-			for (const { field, value } of activeFilters(descriptor.filters, args.filters)) {
-				builder = builder.eq(field, value);
-			}
-			return builder;
-		})
-		.paginate(args.paginationOpts);
+	const searchable = db.query(descriptor.table as never) as unknown as AnyQuery;
+	const query = searchable.withSearchIndex(cfg.index, (q) => {
+		let builder = q.search(cfg.field, search);
+		// Soft-delete and equality filters ride the search index's
+		// filterFields — never a post-filter that would thin the page.
+		if (descriptor.softDelete) builder = builder.eq('deletedAt', undefined);
+		for (const { field, value } of activeFilters(descriptor.filters, args.filters)) {
+			builder = builder.eq(field, value);
+		}
+		return builder;
+	});
+	const result = await paginatePage(query, args);
 	return result as unknown as PaginationResult<Doc<T>>;
 }
 
@@ -239,24 +258,29 @@ async function browsePage<
 	// ordered, no page-thinning.
 	if (active.length === 1) {
 		const only = active[0]!;
-		const idx = descriptor.browse.filterIndexes?.[only.field];
+		const idx =
+			(args.sort ? descriptor.browse.filterSortIndexes?.[only.field]?.[args.sort] : undefined) ??
+			descriptor.browse.filterIndexes?.[only.field];
 		if (idx) {
 			const q = db.query(descriptor.table as never) as unknown as AnyQuery;
-			const result = await q
-				.withIndex(idx, (b) =>
-					(descriptor.softDelete ? b.eq('deletedAt', undefined) : b).eq(only.field, only.value)
-				)
-				.order(order)
-				.paginate(args.paginationOpts);
+			const result = await paginatePage(
+				q
+					.withIndex(idx, (b) =>
+						(descriptor.softDelete ? b.eq('deletedAt', undefined) : b).eq(only.field, only.value)
+					)
+					.order(order),
+				args
+			);
 			return result as unknown as PaginationResult<Doc<T>>;
 		}
 	}
 
 	// Default browse index: soft-delete rides it; remaining equality filters are
 	// applied post-index (ordinary filters may thin a page; only `deletedAt` is
-	// barred from that). An explicit `sort` may swap in an alternate index.
+	// barred from that). An explicit `sort` may swap in an alternate index,
+	// which the post-index filter keeps in order.
 	let indexName = descriptor.browse.index;
-	if (active.length === 0 && args.sort) {
+	if (args.sort) {
 		indexName = descriptor.browse.sortIndexes?.[args.sort] ?? indexName;
 	}
 
@@ -276,7 +300,7 @@ async function browsePage<
 			return exprs.length === 1 ? exprs[0] : f.and(...exprs);
 		});
 	}
-	const result = await q.paginate(args.paginationOpts);
+	const result = await paginatePage(q, args);
 	return result as unknown as PaginationResult<Doc<T>>;
 }
 

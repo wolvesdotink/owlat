@@ -30,6 +30,7 @@ import { applyUsageCountDelta } from '../emailBlocks/module';
 import { softDeleteTemplate } from './deletion';
 import { getLive } from '../lib/softDelete';
 import { buildSearchableText } from '../lib/queryHelpers';
+import { templateNameSortKey } from './listing';
 import { recordListingCounter } from '../lib/listingCounters';
 import { duplicateEmailFields } from '../lib/publishableEmail';
 import { loadEmailTheme, renderForWrite } from '../lib/publishableEmailRender';
@@ -293,10 +294,11 @@ export async function insertEmailTemplate(
 	const name = args.name.trim();
 	const subject = args.subject?.trim() ?? '';
 	const searchableText = buildSearchableText(name, subject);
+	const previewText = args.previewText?.trim();
 	const content = sanitizeStoredBlocksJson(args.content ?? '[]');
 	const rendered = args.render
 		? renderForWrite(
-				{ content, subject, defaultLanguage, supportedLanguages: [defaultLanguage] },
+				{ content, subject, previewText, defaultLanguage, supportedLanguages: [defaultLanguage] },
 				'personalization',
 				await loadEmailTheme(ctx)
 			)
@@ -305,7 +307,7 @@ export async function insertEmailTemplate(
 	const templateId = await ctx.db.insert('emailTemplates', {
 		name,
 		subject,
-		previewText: args.previewText?.trim(),
+		previewText,
 		content,
 		...(rendered
 			? { htmlContent: rendered.html, plainTextContent: rendered.plainTextContent }
@@ -318,6 +320,7 @@ export async function insertEmailTemplate(
 		contentBlockVersion: CURRENT_CONTENT_BLOCK_VERSION,
 		rendererVersion: CURRENT_RENDERER_VERSION,
 		searchableText,
+		nameSortKey: templateNameSortKey(name),
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -416,6 +419,7 @@ export const duplicate = internalMutation({
 			name: newName,
 			status: 'draft',
 			searchableText,
+			nameSortKey: templateNameSortKey(newName),
 			createdAt: now,
 			updatedAt: now,
 		});

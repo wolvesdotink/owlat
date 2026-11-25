@@ -20,7 +20,7 @@
  *
  * - `ENDPOINT_SCOPES` — one scope per real v1 HTTP endpoint. These are the only
  *   scopes a standalone (operator-managed, unbound) key may carry. `contacts:*`
- *   and `topics:write` also serve as connected-app capabilities.
+ *   and `topics:*` also serve as connected-app capabilities.
  * - `TIER2_ONLY_SCOPES` — the expanded Tier-2 vocabulary from the plugin-platform
  *   roadmap (break 06): the capability surface connected apps request *only* via
  *   plugin-bound keys. These have no standalone-key meaning; a key must be bound
@@ -35,7 +35,11 @@ export const ENDPOINT_SCOPES = [
 	'events:write',
 	'transactional:send',
 	'topics:write',
+	'topics:read',
 	'status:read',
+	'templates:read',
+	'templates:write',
+	'domains:verify',
 ] as const;
 
 /**

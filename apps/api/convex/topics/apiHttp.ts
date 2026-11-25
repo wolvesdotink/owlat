@@ -18,7 +18,11 @@ import {
 import { isValidEmail, isValidConvexId } from '../lib/inputGuards';
 import { contactRefFromPath, resolveContactRef } from '../contacts/api';
 import type { AddToTopicResponse, RemoveFromTopicResponse } from '@owlat/public-contract';
-import { addContactToTopicRequestSchema, decodeRequest } from '@owlat/public-contract/schemas';
+import {
+	addContactToTopicRequestSchema,
+	decodeRequest,
+	readListQuery,
+} from '@owlat/public-contract/schemas';
 
 /**
  * The `{topicId}` segment of `/api/v1/topics/{topicId}/...`, or the 400 to
@@ -27,13 +31,43 @@ import { addContactToTopicRequestSchema, decodeRequest } from '@owlat/public-con
  */
 function topicIdFromPath(segment: PathSegment): Id<'topics'> | Response {
 	if (!segment.ok && segment.reason === 'missing') {
-		return errorResponse('invalid_input', 'Topic ID is required');
+		return invalidInputResponse('Topic ID is required', 'topicId');
 	}
 	if (!segment.ok || !isValidConvexId(segment.value)) {
-		return errorResponse('invalid_input', 'Invalid topic ID format');
+		return invalidInputResponse('Invalid topic ID format', 'topicId');
 	}
 	return segment.value as Id<'topics'>;
 }
+
+/**
+ * GET /api/v1/topics - List topics, a page at a time, oldest first.
+ *
+ * It needs `topics:read`, a scope of its own, so a key minted to subscribe
+ * contacts keeps exactly what it had and a read-only key learns nothing it
+ * could change. Topics have no search index, so a `search` is refused rather
+ * than answered with the unfiltered list.
+ */
+export const listTopics = createAuthenticatedHandler(
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+		const denied = requireScope(auth, 'topics:read', request.headers.get('Origin'));
+		if (denied) return denied;
+		const query = readListQuery(new URL(request.url).searchParams);
+		if (!query.ok) return invalidInputResponse(query.message, query.field);
+		if (query.value.search !== undefined) {
+			return invalidInputResponse('Topics cannot be searched', 'search');
+		}
+		try {
+			const page = await ctx.runQuery(internal.publicApi.topics.listForApi, {
+				limit: query.value.limit,
+				cursor: query.value.cursor,
+			});
+			return jsonResponse(page);
+		} catch (error) {
+			// A cursor the paginator refuses is the caller's 400.
+			return errorResponseFromThrow(error, 'Failed to list topics');
+		}
+	}
+);
 
 /**
  * POST /api/v1/topics/{topicId}/contacts - Add contact to a topic
@@ -120,7 +154,7 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 		const topicId = topicIdFromPath(pathSegmentAfter(request, 'topics'));
 		if (topicId instanceof Response) return topicId;
 
-		const emailOrId = contactRefFromPath(pathSegmentAfter(request, 'contacts'));
+		const emailOrId = contactRefFromPath(pathSegmentAfter(request, 'contacts'), 'emailOrId');
 		if (emailOrId instanceof Response) return emailOrId;
 
 		// Check if the topic exists and belongs to the organization
@@ -136,7 +170,9 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 		const resolved = await resolveContactRef(
 			ctx,
 			isEmail ? { email: emailOrId } : { id: emailOrId },
-			isEmail ? { notFoundMessage: `Contact with email "${emailOrId}" not found` } : undefined
+			isEmail
+				? { notFoundMessage: `Contact with email "${emailOrId}" not found`, field: 'emailOrId' }
+				: { field: 'emailOrId' }
 		);
 		if (resolved instanceof Response) return resolved;
 		const contactId: Id<'contacts'> = resolved._id;

@@ -347,7 +347,13 @@
 			"unknownVariables": "isn't a variable of this email, so it is sent empty. | aren't variables of this email, so they are sent empty.",
 			"define": "Define {key}",
 			"newVariableTitle": "Define a new data variable for this email",
-			"newVariable": "New variable"
+			"newVariable": "New variable",
+			"previewText": "Preview",
+			"previewTextLabel": "Preview text",
+			"previewTextPlaceholder": "Shown after the subject in the inbox (optional)",
+			"previewTextPlaceholderWithVariables": "Shown after the subject in the inbox, type {{ to insert a variable",
+			"previewTextInsertVariableTitle": "Insert a variable into the preview text",
+			"previewTextInsertVariable": "Insert variable into preview text"
 		},
 		"panel": {
 			"fontDefault": "Default",
@@ -477,6 +483,12 @@
 			},
 			"select": {
 				"placeholder": "Choose..."
+			},
+			"columnWidths": {
+				"customize": "Set custom widths",
+				"usePreset": "Use the ratio preset",
+				"column": "Column {index} width",
+				"help": "Whole percent, at least {min}% per column. Changing a column resizes the one next to it."
 			}
 		},
 		"richText": {
@@ -510,7 +522,18 @@
 				"string": "String",
 				"number": "Number",
 				"boolean": "Boolean",
-				"date": "Date"
+				"date": "Date",
+				"array": "List"
+			},
+			"arrayHint": "A list of entries for a repeated block. Choose it under the block's Repeat setting, and use {example} inside the block.",
+			"example": "Example value",
+			"exampleNone": "No example",
+			"exampleHint": "Sample data for the preview and test sends, never a real customer's data. Real sends don't use it.",
+			"exampleErrors": {
+				"json": "This isn't valid JSON.",
+				"list": "Enter a JSON list of up to {max} entries, each a plain value or a flat object of plain values.",
+				"number": "Enter a number.",
+				"date": "Enter a date such as 2026-11-25."
 			},
 			"preview": "Preview",
 			"usage": "Used in the API payload",
@@ -604,6 +627,7 @@
 			"rightWide": "Right Wide",
 			"leftNarrow": "Left Narrow",
 			"rightNarrow": "Right Narrow",
+			"columnWidths": "Column Widths",
 			"columnGap": "Column Gap",
 			"verticalAlign": "Vertical Align",
 			"top": "Top",

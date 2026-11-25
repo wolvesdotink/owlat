@@ -20,6 +20,7 @@ export type {
 	DividerBlockContent,
 	SpacerBlockContent,
 	ColumnItem,
+	ColumnCount,
 	ColumnRatio,
 	ColumnStyle,
 	ColumnsBlockContent,
@@ -73,4 +74,5 @@ export type {
 	BrandBlockKind,
 	RemoteBlockMark,
 	BuilderCollabFocus,
+	CreatedVariable,
 } from './editor';

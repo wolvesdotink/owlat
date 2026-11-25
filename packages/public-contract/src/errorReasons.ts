@@ -47,5 +47,85 @@ export const API_KEY_ERROR_REASONS = [
 /** Why a key-authenticated call was refused before it ran. */
 export type ApiKeyErrorReason = (typeof API_KEY_ERROR_REASONS)[number];
 
+/**
+ * Why a write was refused whatever it wrote: the workspace is being deleted,
+ * and nothing is accepted until the deletion has finished. Every route that
+ * writes can answer it.
+ */
+export const WRITE_REFUSAL_REASONS = ['workspace_deletion_in_progress'] as const;
+
+/** Why a write was refused whatever it wrote. */
+export type WriteRefusalReason = (typeof WRITE_REFUSAL_REASONS)[number];
+
+/**
+ * Why a write to a transactional email or saved block was refused, in
+ * `error.data.reason`:
+ *
+ * - `invalid_content`: a block fails the content check; `error.data.issues`
+ *   lists each problem with the block's id.
+ * - `content_too_large`: the email with its rendered HTML would not fit in one
+ *   stored record.
+ * - `slug_taken`: another transactional email has the slug.
+ * - `revision_mismatch`: the `If-Match` revision is not the email's current
+ *   one; `error.data.currentRevision` names it.
+ * - `email_published`: the email is published and the request did not ask to
+ *   change it while live (`?whilePublished=true`).
+ * - `email_in_review`: the content scan held the email for an admin's review,
+ *   and only the admin's decision moves it on.
+ * - `default_language_change`: the default language cannot change while the
+ *   email has translations.
+ * - `content_blocked`: the content scan refused the content of a published
+ *   email; `error.data.scanScore` is the scan's score.
+ * - `html_render_pending`: a saved block the email uses changed and its HTML is
+ *   still being rendered; try again shortly.
+ * - `template_write_rate_limited`: too many template writes from this key.
+ *
+ * New reasons can be added; treat an unknown one by its HTTP status.
+ */
+export const TEMPLATE_WRITE_REFUSAL_REASONS = [
+	'invalid_content',
+	'content_too_large',
+	'slug_taken',
+	'revision_mismatch',
+	'email_published',
+	'email_in_review',
+	'default_language_change',
+	'content_blocked',
+	'html_render_pending',
+	'template_write_rate_limited',
+] as const;
+
+/** Why a template write was refused. */
+export type TemplateWriteRefusalReason = (typeof TEMPLATE_WRITE_REFUSAL_REASONS)[number];
+
+/**
+ * Why `POST /api/v1/domains/{domain}/verify` refused a check: the domain was
+ * checked less than a minute ago, or it is still being registered and has no
+ * records to check yet.
+ */
+export const DOMAIN_CHECK_REFUSAL_REASONS = [
+	'domain_check_rate_limited',
+	'domain_registering',
+] as const;
+
+/** Why a requested domain check was refused. */
+export type DomainCheckRefusalReason = (typeof DOMAIN_CHECK_REFUSAL_REASONS)[number];
+
+/**
+ * Why a render was refused before it ran: too many renders from this key.
+ * `POST /api/v1/render` and `POST /api/v1/transactional/dry-run` share
+ * the budget, apart from template writes and the send caps.
+ */
+export const RENDER_REFUSAL_REASONS = ['render_rate_limited'] as const;
+
+/** Why a render was refused. */
+export type RenderRefusalReason = (typeof RENDER_REFUSAL_REASONS)[number];
+
 /** Every `error.data.reason` the contract declares. */
-export type ApiErrorReason = ApiKeyErrorReason | TransactionalRefusalReason;
+export type ApiErrorReason =
+	| ApiKeyErrorReason
+	| TransactionalRefusalReason
+	| WriteRefusalReason
+	| TemplateWriteRefusalReason
+	| DomainCheckRefusalReason
+	| RenderRefusalReason;

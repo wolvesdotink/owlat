@@ -63,8 +63,8 @@ const RENDERED_V1 = {
 };
 
 describe('renderer version', () => {
-	it('is 2 since accordion radio groups were scoped to their Block', () => {
-		expect(CURRENT_RENDERER_VERSION).toBe(2);
+	it("is 5 since a transactional email's conditions and repeats are left to the send", () => {
+		expect(CURRENT_RENDERER_VERSION).toBe(5);
 	});
 });
 

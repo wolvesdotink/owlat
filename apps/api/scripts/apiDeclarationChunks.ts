@@ -17,8 +17,7 @@
  *
  * The chunks are deterministic: a module's chunk follows from its own path,
  * and a directory larger than `MAX_MODULES_PER_CHUNK` is split by its
- * subdirectories. Entry order inside a chunk is kept, so hand-added entries
- * stay where they were put within their directory's chunk.
+ * subdirectories. Entry order inside a chunk is kept.
  */
 
 /** ~0.54 * 500^2 = 135k relation steps per chunk, well inside the 2M budget. */

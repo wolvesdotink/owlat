@@ -101,6 +101,7 @@ export type OrganizationDeletionTable =
 	| 'bookingProfiles'
 	| 'mailboxUsage'
 	| 'mailboxes'
+	| 'sendingHoldAlerts'
 	| 'webhookDeliveryLogs'
 	| 'mtaCampaignAlertReceipts'
 	| 'webhooks'
@@ -328,6 +329,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('bookingProfiles'),
 	v.literal('mailboxUsage'),
 	v.literal('mailboxes'),
+	v.literal('sendingHoldAlerts'),
 	v.literal('webhookDeliveryLogs'),
 	v.literal('mtaCampaignAlertReceipts'),
 	v.literal('webhooks'),

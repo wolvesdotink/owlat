@@ -4,7 +4,6 @@ import {
 	CHECKLIST_STEPS,
 	completedChecklistSteps,
 	isAiConnected,
-	isChecklistComplete,
 	isWelcomeTriggerPath,
 	shouldRouteToWelcome,
 	visibleChecklistSteps,
@@ -124,40 +123,6 @@ describe('isAiConnected — org-scoped AI step completion (env OR stored)', () =
 	});
 });
 
-describe('isChecklistComplete — completeness is per visible step', () => {
-	it('fresh mode completes once its universal steps are done', () => {
-		const done = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected', 'firstSendDone']);
-		expect(isChecklistComplete('fresh', done)).toBe(true);
-	});
-
-	it('an unconnected AI step keeps a fresh checklist incomplete', () => {
-		// Everything else done, but the AI provider is not yet connected.
-		const done = new Set<ChecklistStepId>(['mailboxReady', 'firstSendDone']);
-		expect(isChecklistComplete('fresh', done)).toBe(false);
-	});
-
-	it('the universal steps alone do NOT complete a migration checklist', () => {
-		const done = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected', 'firstSendDone']);
-		expect(isChecklistComplete('migration', done)).toBe(false);
-	});
-
-	it('migration completes only when every step is done', () => {
-		const done = new Set<ChecklistStepId>([
-			'mailboxReady',
-			'aiConnected',
-			'importDone',
-			'knowledgeIndexed',
-			'sendingSwitched',
-			'firstSendDone',
-		]);
-		expect(isChecklistComplete('migration', done)).toBe(true);
-	});
-
-	it('an empty set is never complete', () => {
-		expect(isChecklistComplete('fresh', new Set())).toBe(false);
-	});
-});
-
 describe('completedChecklistSteps — where each step reads its completion', () => {
 	const none = {
 		stamps: null,
@@ -175,14 +140,13 @@ describe('completedChecklistSteps — where each step reads its completion', () 
 			hasChosenNotifications: true,
 		});
 		expect([...done].sort()).toEqual(['notifications', 'profileName']);
-		expect(isChecklistComplete('fresh', done, 'member')).toBe(false);
 		const all = completedChecklistSteps('fresh', 'member', {
 			...none,
 			hasDisplayName: true,
 			hasSignature: true,
 			hasChosenNotifications: true,
 		});
-		expect(isChecklistComplete('fresh', all, 'member')).toBe(true);
+		expect([...all].sort()).toEqual(['notifications', 'profileName', 'signature']);
 	});
 
 	it('reads an admin’s steps from stamps and the AI config', () => {

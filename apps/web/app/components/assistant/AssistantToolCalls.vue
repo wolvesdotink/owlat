@@ -35,6 +35,7 @@ const TOOL_LABEL_KEYS: Record<string, string> = {
 	getCampaignStats: 'components.assistant.assistantToolCalls.tools.getCampaignStats',
 	getEmailStats: 'components.assistant.assistantToolCalls.tools.getEmailStats',
 	getDeliveryHealth: 'components.assistant.assistantToolCalls.tools.getDeliveryHealth',
+	getTransactionalSends: 'components.assistant.assistantToolCalls.tools.getTransactionalSends',
 	draftEmailReply: 'components.assistant.assistantToolCalls.tools.draftEmailReply',
 	draftCampaignCopy: 'components.assistant.assistantToolCalls.tools.draftCampaignCopy',
 };

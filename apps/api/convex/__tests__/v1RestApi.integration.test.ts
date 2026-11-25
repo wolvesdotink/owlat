@@ -1,9 +1,12 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, expectTypeOf, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
+import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { createTestContact, createTestTopic, createTestTransactionalEmail } from './factories';
 import {
+	ANY_KEY,
 	apiErrorResponseSchema,
 	PUBLIC_OPERATIONS,
 	publicOperation,
@@ -17,16 +20,34 @@ import {
 	type DeliveryStatusReason,
 	type SendingDomainStatusValue,
 } from '@owlat/public-contract/schemas';
+import { buildOpenApiDocument } from '@owlat/public-contract/openapi';
+import blockSchema from '@owlat/public-contract/schemas/blocks.json';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
 import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
 import type { DispatchRejectionReason } from '../transactional/dispatch';
-import { getTransactionalSend } from '../transactional/sendStatusHttp';
-import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
+import { getTransactionalSend, listTransactionalSends } from '../transactional/sendStatusHttp';
+import { readSendListPage } from '../transactional/sendList';
+import type { QueryCtx } from '../_generated/server';
+import { withCreationTime } from './helpers/creationTimeSeam';
+import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
+import { listDomains } from '../publicApi/domainsHttp';
+import { verifyDomain } from '../publicApi/domainCheckHttp';
+import { getLimits } from '../publicApi/limitsHttp';
+import * as transactionalEmailsApi from '../publicApi/transactionalEmailsHttp';
+import * as savedBlocksApi from '../publicApi/savedBlocksHttp';
+import { renderEmail } from '../publicApi/renderHttp';
+import { dryRunTransactional } from '../transactional/dryRunHttp';
+import { rateLimiter } from '../lib/rateLimiter';
+import {
+	chargeTransactionalSendCaps,
+	PER_API_KEY_DAILY_BUCKET,
+	PER_API_KEY_DAILY_CONFIG,
+} from '../transactional/sendCaps';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
 import type { DeliveryHealthLevel, DomainStatus } from '../delivery/health';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
@@ -105,7 +126,11 @@ const ALL_SCOPES = [
 	'events:write',
 	'transactional:send',
 	'topics:write',
+	'topics:read',
 	'status:read',
+	'templates:read',
+	'templates:write',
+	'domains:verify',
 ];
 
 function setupTest() {
@@ -208,6 +233,10 @@ afterEach(() => {
 });
 
 // ─── Auth gate (shared across every route) ──────────────────────────────────
+
+/** The contract's answer to a `dataVariables` value of the wrong shape. */
+const DATA_VARIABLES_SHAPE_MESSAGE =
+	'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them';
 
 describe('v1 auth gate', () => {
 	it('GET /api/v1/contacts → 401 with no Authorization header', async () => {
@@ -888,9 +917,56 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 				}),
 			});
 			expect(res.status).toBe(400);
-			expect((await res.json()).error.category).toBe('invalid_input');
+			expect((await res.json()).error).toMatchObject({
+				category: 'invalid_input',
+				data: { field: 'eventProperties' },
+			});
 		}
 	);
+
+	it('400 invalid_input naming eventProperties for more than 1024 properties, which Convex cannot store (not 500)', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		const eventProperties = Object.fromEntries(
+			Array.from({ length: 1025 }, (_, i) => [`p${i}`, i])
+		);
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({
+				email: 'many@example.com',
+				eventName: 'signed_up',
+				createContactIfNotExists: true,
+				eventProperties,
+			}),
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toEqual({
+			category: 'invalid_input',
+			message: 'eventProperties can hold at most 1024 entries',
+			data: { field: 'eventProperties' },
+		});
+		expect(await t.run((ctx) => ctx.db.query('contacts').collect())).toHaveLength(0);
+	});
+
+	it('201 for exactly 1024 eventProperties', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		const eventProperties = Object.fromEntries(
+			Array.from({ length: 1024 }, (_, i) => [`p${i}`, i])
+		);
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({
+				email: 'many@example.com',
+				eventName: 'signed_up',
+				createContactIfNotExists: true,
+				eventProperties,
+			}),
+		});
+		expect(res.status).toBe(201);
+	});
 
 	it('400 invalid_input for a deeply nested eventProperties value (not 500)', async () => {
 		const t = setupTest();
@@ -965,26 +1041,30 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error.category).toBe('invalid_input');
 	});
 
-	it('400 invalid_input for a nested dataVariables value (not 500)', async () => {
-		const t = setupTest();
-		const key = await seedKey(t, ['transactional:send']);
-		const res = await t.fetch('/api/v1/transactional', {
-			method: 'POST',
-			headers: authHeaders(key),
-			body: JSON.stringify({
-				email: 'to@example.com',
-				slug: 'welcome',
-				dataVariables: { order: { id: 1 } },
-			}),
-		});
-		expect(res.status).toBe(400);
-		const body = await res.json();
-		expect(body.error).toEqual({
-			category: 'invalid_input',
-			message: 'dataVariables must be an object of string, number, boolean or null values',
-			data: { field: 'dataVariables.order' },
-		});
-	});
+	// A list of flat entries feeds a repeated Block; any other nesting is refused.
+	it.each([
+		['an object as a value', { order: { id: 1 } }, 'dataVariables.order'],
+		['a list of lists', { lines: [['a']] }, 'dataVariables.lines'],
+		['an object inside a list entry', { lines: [{ product: { id: 1 } }] }, 'dataVariables.lines'],
+	])(
+		'400 invalid_input for a nested dataVariables value: %s (not 500)',
+		async (_label, dataVariables, field) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['transactional:send']);
+			const res = await t.fetch('/api/v1/transactional', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: JSON.stringify({ email: 'to@example.com', slug: 'welcome', dataVariables }),
+			});
+			expect(res.status).toBe(400);
+			const body = await res.json();
+			expect(body.error).toEqual({
+				category: 'invalid_input',
+				message: DATA_VARIABLES_SHAPE_MESSAGE,
+				data: { field },
+			});
+		}
+	);
 
 	it.each([
 		[{ email: 'not-an-email', slug: 'welcome' }, 'Invalid email format', 'email'],
@@ -1018,6 +1098,32 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error).toEqual({ category: 'invalid_input', message, data: { field } });
 	});
 
+	it.each([
+		['a non-ASCII character', { café: 'x' }],
+		['a leading $', { $source: 'x' }],
+		['more than 1024 characters', { ['k'.repeat(1025)]: 'x' }],
+		[
+			'more than 1024 entries',
+			Object.fromEntries(Array.from({ length: 1025 }, (_, i) => [`v${i}`, i])),
+		],
+	])(
+		'400 invalid_input naming dataVariables for a key with %s, which Convex cannot store (not 500)',
+		async (_label, dataVariables) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['transactional:send']);
+			const res = await t.fetch('/api/v1/transactional', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: JSON.stringify({ email: 'to@example.com', slug: 'welcome', dataVariables }),
+			});
+			expect(res.status).toBe(400);
+			expect((await res.json()).error).toMatchObject({
+				category: 'invalid_input',
+				data: { field: 'dataVariables' },
+			});
+		}
+	);
+
 	it('400 invalid_input for a nested dataVariables value held under a __proto__ key', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['transactional:send']);
@@ -1031,7 +1137,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		const body = await res.json();
 		expect(body.error).toMatchObject({
 			category: 'invalid_input',
-			message: 'dataVariables must be an object of string, number, boolean or null values',
+			message: DATA_VARIABLES_SHAPE_MESSAGE,
 			data: { field: 'dataVariables.__proto__' },
 		});
 	});
@@ -1206,6 +1312,7 @@ describe('GET /api/v1/transactional/{sendId} (getTransactionalSend → transacti
 			complainedAt: null,
 			failedAt: null,
 			bounceType: null,
+			bounceCause: null,
 			errorCode: null,
 			errorMessage: null,
 		});
@@ -1248,6 +1355,55 @@ describe('GET /api/v1/transactional/{sendId} (getTransactionalSend → transacti
 		expect((await res.json()).data).toMatchObject({ status: 'bounced', bounceType: 'hard' });
 	});
 
+	it('names the type, the diagnostic text and the cause of a bounce the lifecycle recorded', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t, { status: 'sent', sentAt: SENT_AT + 1000 });
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'transactional', id: sendId as Id<'transactionalSends'> },
+			transition: {
+				to: 'bounced',
+				at: SENT_AT + 3000,
+				bounceType: 'hard',
+				bounceCause: 'sender',
+				bounceMessage: '550 5.7.1 Service unavailable; client host blocked',
+			},
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		await expectContractSuccess('getTransactionalSend', res);
+		expect((await res.json()).data).toMatchObject({
+			status: 'bounced',
+			bouncedAt: new Date(SENT_AT + 3000).toISOString(),
+			bounceType: 'hard',
+			bounceCause: 'sender',
+			errorCode: null,
+			errorMessage: '550 5.7.1 Service unavailable; client host blocked',
+		});
+	});
+
+	it('answers a null cause for a bounce stored before the cause was', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t, {
+			status: 'bounced',
+			bouncedAt: SENT_AT + 3000,
+			bounceType: 'soft',
+			errorMessage: '452 4.2.2 Mailbox full',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		expect((await res.json()).data).toMatchObject({
+			bounceType: 'soft',
+			bounceCause: null,
+			errorMessage: '452 4.2.2 Mailbox full',
+		});
+	});
+
 	it.each([
 		['an unknown send id', 'unknown'],
 		['a malformed id', 'malformed'],
@@ -1278,6 +1434,926 @@ describe('GET /api/v1/transactional/{sendId} (getTransactionalSend → transacti
 		const body: unknown = await res.json();
 		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
 		expect(body).toMatchObject({ error: { category: 'not_found' } });
+	});
+});
+
+// ─── GET /api/v1/transactional (list) ────────────────────────────────────────
+
+const MINUTE = 60_000;
+const DAY_MS = 24 * 60 * MINUTE;
+
+/** A template API send whose row was created (queued) at `at`. */
+async function seedSendAt(
+	t: ReturnType<typeof convexTest>,
+	at: number,
+	fields: Record<string, unknown> = {}
+): Promise<string> {
+	return await withCreationTime(at, async () => (await seedApiSend(t, fields)).sendId);
+}
+
+async function listSends(
+	t: ReturnType<typeof convexTest>,
+	key: string,
+	query: Record<string, string> = {}
+): Promise<Response> {
+	const search = new URLSearchParams(query).toString();
+	return await t.fetch(`/api/v1/transactional${search ? `?${search}` : ''}`, {
+		method: 'GET',
+		headers: authHeaders(key),
+	});
+}
+
+/** The sendIds of one list page, in the order the route answered. */
+async function listedIds(res: Response): Promise<string[]> {
+	expect(res.status).toBe(200);
+	return ((await res.json()).data as Array<{ sendId: string }>).map((send) => send.sendId);
+}
+
+describe('GET /api/v1/transactional (listTransactionalSends → transactional:send)', () => {
+	const T0 = Date.UTC(2026, 10, 10, 12, 0, 0);
+	const WINDOW = {
+		since: new Date(T0 - DAY_MS).toISOString(),
+		until: new Date(T0 + DAY_MS).toISOString(),
+	};
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/transactional', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expect((await res.json()).error.data).toEqual({ reason: 'missing_credentials' });
+	});
+
+	it('403 for a key that cannot send, so no key reads addresses it could not read before', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0);
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'transactional:send')
+		);
+		const res = await listSends(t, key, WINDOW);
+		expect(res.status).toBe(403);
+		expect((await res.json()).error.data).toEqual({
+			reason: 'missing_scope',
+			scope: 'transactional:send',
+		});
+	});
+
+	it('403 forbidden while the transactional feature is off', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: Date.now(),
+				featureFlags: { transactional: false },
+			});
+		});
+		const res = await listSends(t, key, WINDOW);
+		expect(res.status).toBe(403);
+		expectDocumentedReason('listTransactionalSends', res, await res.json(), 'feature_disabled');
+	});
+
+	it('lists the API sends newest first, each as the status route answers it', async () => {
+		const t = setupTest();
+		const oldest = await seedSendAt(t, T0 - 2 * MINUTE, { email: 'grace@example.com' });
+		const bounced = await seedSendAt(t, T0 - MINUTE, {
+			status: 'bounced',
+			bouncedAt: SENT_AT + 3000,
+			bounceType: 'hard',
+			bounceCause: 'recipient',
+			errorMessage: '550 5.1.1 User unknown',
+		});
+		const newest = await seedSendAt(t, T0, { status: 'delivered', deliveredAt: SENT_AT + 2000 });
+		// Neither a send no API call made nor an erased one is listed, as neither
+		// can be read by id.
+		await seedSendAt(t, T0 - 30_000, { kind: 'automation', transactionalEmailId: undefined });
+		await seedSendAt(t, T0 - 20_000, {
+			email: '[erased]',
+			deletedAt: T0,
+			deletedBy: 'system',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+
+		const res = await listSends(t, key, WINDOW);
+		await expectContractSuccess('listTransactionalSends', res);
+		const body = await res.json();
+		expect(body.pagination).toEqual({ limit: 25, cursor: null, isDone: true });
+		expect(body.data.map((send: { sendId: string }) => send.sendId)).toEqual([
+			newest,
+			bounced,
+			oldest,
+		]);
+		for (const item of body.data) {
+			const single = await t.fetch(`/api/v1/transactional/${item.sendId}`, {
+				method: 'GET',
+				headers: authHeaders(key),
+			});
+			expect(item).toEqual((await single.json()).data);
+		}
+		expect(body.data[1]).toMatchObject({
+			bounceType: 'hard',
+			bounceCause: 'recipient',
+			errorMessage: '550 5.1.1 User unknown',
+		});
+		expect(JSON.stringify(body)).not.toContain('secret-token-123');
+	});
+
+	it('filters by recipient, matched the way the send route stores the address', async () => {
+		const t = setupTest();
+		const ada = await seedSendAt(t, T0 - MINUTE);
+		await seedSendAt(t, T0, { email: 'grace@example.com' });
+		const adaAgain = await seedSendAt(t, T0 + MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, { ...WINDOW, email: '  Ada@Example.COM ' });
+		expect(await listedIds(res)).toEqual([adaAgain, ada]);
+	});
+
+	it('filters by status', async () => {
+		const t = setupTest();
+		const failed = await seedSendAt(t, T0 - MINUTE, {
+			status: 'failed',
+			errorCode: 'MTA_UNREACHABLE',
+		});
+		await seedSendAt(t, T0, { status: 'delivered' });
+		const failedLater = await seedSendAt(t, T0 + MINUTE, {
+			email: 'grace@example.com',
+			status: 'failed',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, { ...WINDOW, status: 'failed' });
+		expect(await listedIds(res)).toEqual([failedLater, failed]);
+	});
+
+	it('filters by recipient and status at once, a page at a time', async () => {
+		const t = setupTest();
+		const bounced: string[] = [];
+		for (let i = 0; i < 5; i++) {
+			bounced.push(await seedSendAt(t, T0 - (10 - 2 * i) * MINUTE, { status: 'bounced' }));
+			// Ada's other sends and someone else's bounce sit between hers.
+			await seedSendAt(t, T0 - (9 - 2 * i) * MINUTE, { status: 'delivered' });
+			await seedSendAt(t, T0 - (9 - 2 * i) * MINUTE + 1, {
+				email: 'grace@example.com',
+				status: 'bounced',
+			});
+		}
+		const key = await seedKey(t, ['transactional:send']);
+		const filter = { ...WINDOW, email: 'Ada@Example.com', status: 'bounced', limit: '2' };
+
+		const seen: string[] = [];
+		let cursor: string | null = null;
+		let pages = 0;
+		do {
+			const res = await listSends(t, key, cursor ? { ...filter, cursor } : filter);
+			await expectContractSuccess('listTransactionalSends', res);
+			const body = await res.json();
+			for (const send of body.data as Array<{ sendId: string; email: string; status: string }>) {
+				expect(send).toMatchObject({ email: 'ada@example.com', status: 'bounced' });
+				seen.push(send.sendId);
+			}
+			cursor = body.pagination.cursor;
+			pages += 1;
+		} while (cursor !== null);
+
+		expect(pages).toBe(3);
+		expect(seen).toEqual([...bounced].reverse());
+	});
+
+	it('keeps the window when both filters are given', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0 - MINUTE - 1, { status: 'failed' });
+		const inside = await seedSendAt(t, T0 - MINUTE, { status: 'failed' });
+		await seedSendAt(t, T0 + MINUTE, { status: 'failed' });
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, {
+			email: 'ada@example.com',
+			status: 'failed',
+			since: new Date(T0 - MINUTE).toISOString(),
+			until: new Date(T0 + MINUTE).toISOString(),
+		});
+		expect(await listedIds(res)).toEqual([inside]);
+	});
+
+	it.each([
+		['the address alone', { email: 'ada@example.com' }],
+		['the status alone', { status: 'bounced' }],
+		['another status', { email: 'ada@example.com', status: 'failed' }],
+		['another address', { email: 'grace@example.com', status: 'bounced' }],
+	])('refuses a cursor for both filters sent with %s', async (_label, other) => {
+		const t = setupTest();
+		await seedSendAt(t, T0, { status: 'bounced' });
+		await seedSendAt(t, T0 + MINUTE, { status: 'bounced' });
+		const key = await seedKey(t, ['transactional:send']);
+		const both = { ...WINDOW, email: 'ada@example.com', status: 'bounced', limit: '1' };
+		const first = await (await listSends(t, key, both)).json();
+		expect(first.pagination.isDone).toBe(false);
+		const res = await listSends(t, key, {
+			...WINDOW,
+			limit: '1',
+			...other,
+			cursor: first.pagination.cursor,
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toMatchObject({
+			category: 'invalid_input',
+			data: { field: 'cursor' },
+		});
+	});
+
+	it('filters by when the send was queued: since is inclusive, until is not', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0 - MINUTE - 1);
+		const atSince = await seedSendAt(t, T0 - MINUTE);
+		const inside = await seedSendAt(t, T0);
+		await seedSendAt(t, T0 + MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, {
+			since: new Date(T0 - MINUTE).toISOString(),
+			until: new Date(T0 + MINUTE).toISOString(),
+		});
+		expect(await listedIds(res)).toEqual([inside, atSince]);
+	});
+
+	it('covers the last 30 days without a window', async () => {
+		const t = setupTest();
+		await seedSendAt(t, Date.now() - 31 * DAY_MS);
+		const recent = await seedSendAt(t, Date.now() - 60 * MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		expect(await listedIds(await listSends(t, key))).toEqual([recent]);
+	});
+
+	it('pages newest first, and a cursor keeps its place while new sends arrive', async () => {
+		const t = setupTest();
+		const base = Date.now() - 60 * MINUTE;
+		const ids: string[] = [];
+		for (let i = 0; i < 5; i++) ids.push(await seedSendAt(t, base + i * MINUTE));
+		const key = await seedKey(t, ['transactional:send']);
+
+		const first = await (await listSends(t, key, { limit: '2' })).json();
+		expect(first.data.map((s: { sendId: string }) => s.sendId)).toEqual([ids[4], ids[3]]);
+		expect(first.pagination).toMatchObject({ limit: 2, isDone: false });
+
+		// A send queued between two page reads belongs before the first page.
+		await seedSendAt(t, Date.now());
+
+		const second = await (
+			await listSends(t, key, { limit: '2', cursor: first.pagination.cursor })
+		).json();
+		expect(second.data.map((s: { sendId: string }) => s.sendId)).toEqual([ids[2], ids[1]]);
+		const third = await (
+			await listSends(t, key, { limit: '2', cursor: second.pagination.cursor })
+		).json();
+		expect(third.data.map((s: { sendId: string }) => s.sendId)).toEqual([ids[0]]);
+		expect(third.pagination).toEqual({ limit: 2, cursor: null, isDone: true });
+	});
+
+	it('refuses a cursor sent with filters other than the ones it was issued for', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0);
+		await seedSendAt(t, T0 + MINUTE);
+		const key = await seedKey(t, ['transactional:send']);
+		const first = await (await listSends(t, key, { ...WINDOW, limit: '1' })).json();
+		const res = await listSends(t, key, {
+			...WINDOW,
+			limit: '1',
+			status: 'failed',
+			cursor: first.pagination.cursor,
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toMatchObject({
+			category: 'invalid_input',
+			data: { field: 'cursor' },
+		});
+	});
+
+	it('clamps the page size to 100', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, { limit: '500' });
+		expect((await res.json()).pagination.limit).toBe(100);
+	});
+
+	it.each([
+		[
+			'a window over 30 days',
+			{ since: '2026-10-01T00:00:00.000Z', until: '2026-11-01T00:00:01.000Z' },
+			'since',
+		],
+		[
+			'a since after its until',
+			{ since: '2026-11-02T00:00:00.000Z', until: '2026-11-01T00:00:00.000Z' },
+			'since',
+		],
+		['a since that is no timestamp', { since: 'yesterday' }, 'since'],
+		['an until that is no timestamp', { until: '2026-13-45' }, 'until'],
+		['an unknown status', { status: 'lost' }, 'status'],
+		['a malformed address', { email: 'not-an-address' }, 'email'],
+		['a cursor this route did not issue', { cursor: 'not-a-cursor' }, 'cursor'],
+		['a non-positive limit', { limit: '0' }, 'limit'],
+		[
+			'a since on a day the month does not have',
+			{ since: '2026-02-30T00:00:00.000Z', until: '2026-03-05T00:00:00.000Z' },
+			'since',
+		],
+		[
+			'an until on a day the month does not have',
+			{ since: '2026-04-20', until: '2026-04-31' },
+			'until',
+		],
+		// An empty filter is not "no filter": it must not answer every recipient.
+		['an empty address', { email: '' }, 'email'],
+		['an empty status', { status: '' }, 'status'],
+	])('400 invalid_input for %s', async (_label, query, field) => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, query as Record<string, string>);
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error.category).toBe('invalid_input');
+		expect(body.error.data).toEqual({ field });
+	});
+
+	it('accepts the last day of a month and a time with an offset', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, {
+			since: '2026-02-28T00:00:00+01:00',
+			until: '2026-03-01T00:30:00+01:00',
+		});
+		expect(res.status).toBe(200);
+	});
+
+	it('400 "Invalid cursor" for a cursor whose inner page position the paginator rejects (not 500)', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0);
+		const key = await seedKey(t, ['transactional:send']);
+		const since = T0 - DAY_MS;
+		const until = T0 + DAY_MS;
+		const forged = Buffer.from(
+			JSON.stringify({
+				filterKey: JSON.stringify([null, null, since, until]),
+				since,
+				until,
+				cursor: 'not-a-page-position',
+			})
+		).toString('base64url');
+		const res = await listSends(t, key, { ...WINDOW, cursor: forged });
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toEqual({
+			category: 'invalid_input',
+			message: 'Invalid cursor',
+			data: { field: 'cursor' },
+		});
+	});
+
+	it('ends a page early, with a cursor to the rest, once its sends pass the read budget', async () => {
+		const t = setupTest();
+		// Each send close to 1 MiB of stored data variables: a full page of them
+		// would pass what one query may read.
+		const bulk = 'x'.repeat(900_000);
+		const ids: string[] = [];
+		for (let i = 0; i < 12; i++) {
+			ids.unshift(await seedSendAt(t, T0 + i, { dataVariables: { bulk } }));
+		}
+		const key = await seedKey(t, ['transactional:send']);
+		const first = await (await listSends(t, key, { ...WINDOW, limit: '100' })).json();
+		expect(first.data.length).toBeGreaterThan(0);
+		expect(first.data.length).toBeLessThan(ids.length);
+		expect(first.pagination.isDone).toBe(false);
+		const rest = await (
+			await listSends(t, key, { ...WINDOW, limit: '100', cursor: first.pagination.cursor })
+		).json();
+		expect([...first.data, ...rest.data].map((send: { sendId: string }) => send.sendId)).toEqual(
+			ids
+		);
+		expect(rest.pagination.isDone).toBe(true);
+	});
+
+	it.each([
+		[
+			'a recipient',
+			{ email: 'ada@example.com' },
+			'by_kind_deleted_email',
+			[['eq', 'email', 'ada@example.com']],
+		],
+		[
+			'a status',
+			{ status: 'failed' as const },
+			'by_kind_deleted_status',
+			[['eq', 'status', 'failed']],
+		],
+		['the window alone', {}, 'by_kind_deleted', []],
+	])(
+		'reads one index range per page for %s, however many other sends exist',
+		async (_label, filter, index, equals) => {
+			const t = setupTest();
+			// Rows the page must not have to step over: other kinds, erased sends,
+			// other recipients and other states, inside the window.
+			for (let i = 0; i < 40; i++) {
+				await seedSendAt(t, T0 + i, {
+					kind: i % 4 === 0 ? 'automation' : 'transactional',
+					...(i % 4 === 1 ? { email: '[erased]', deletedAt: T0, deletedBy: 'system' } : {}),
+					...(i % 4 === 2 ? { email: `other${i}@example.com`, status: 'delivered' } : {}),
+					...(i % 4 === 3 ? { status: 'delivered', email: 'grace@example.com' } : {}),
+				});
+			}
+			await seedSendAt(t, T0 + 100, { status: 'failed' });
+			await seedSendAt(t, T0 + 101, { status: 'failed' });
+			const calls: Array<{
+				index: string;
+				range: Array<[string, string, unknown]>;
+				filtered: boolean;
+			}> = [];
+			const page = await t.run(async (ctx) => {
+				const db = recordingDb(ctx.db, calls);
+				return await readSendListPage(db, {
+					email: null,
+					status: null,
+					...filter,
+					since: T0 - DAY_MS,
+					until: T0 + DAY_MS,
+					limit: 2,
+					cursor: null,
+				});
+			});
+			expect(page.page).toHaveLength(2);
+			expect(calls).toEqual([
+				{
+					index,
+					range: [
+						['eq', 'kind', 'transactional'],
+						['eq', 'deletedAt', undefined],
+						...equals,
+						['gte', '_creationTime', T0 - DAY_MS],
+						['lt', '_creationTime', T0 + DAY_MS],
+					],
+					filtered: false,
+				},
+			]);
+		}
+	);
+});
+
+const RANGE_BOUNDS = new Set(['eq', 'gt', 'gte', 'lt', 'lte']);
+
+/**
+ * A database whose `query(...).withIndex(...)` calls are recorded: the index,
+ * every bound of its range, and whether a `.filter` followed, which would
+ * read rows the page then drops.
+ */
+function recordingDb(
+	db: QueryCtx['db'],
+	calls: Array<{ index: string; range: Array<[string, string, unknown]>; filtered: boolean }>
+): QueryCtx['db'] {
+	return new Proxy(db, {
+		get(target, prop, receiver) {
+			if (prop !== 'query') return Reflect.get(target, prop, receiver);
+			return (table: string) => {
+				const initializer = target.query(table as never);
+				return new Proxy(initializer, {
+					get(inner, innerProp, innerReceiver) {
+						if (innerProp !== 'withIndex') return Reflect.get(inner, innerProp, innerReceiver);
+						return (index: string, build: (q: unknown) => unknown) => {
+							const call = {
+								index,
+								range: [] as Array<[string, string, unknown]>,
+								filtered: false,
+							};
+							calls.push(call);
+							const recorder = (q: any): any =>
+								new Proxy(q, {
+									get(qt, op) {
+										const fn = Reflect.get(qt, op);
+										if (typeof fn !== 'function' || !RANGE_BOUNDS.has(String(op))) return fn;
+										return (field: string, value: unknown) => {
+											call.range.push([String(op), field, value]);
+											return recorder(fn.call(qt, field, value));
+										};
+									},
+								});
+							const query = (inner.withIndex as any)(index, (q: unknown) => build(recorder(q)));
+							const watch = (q: any): any =>
+								new Proxy(q, {
+									get(qt, op) {
+										const fn = Reflect.get(qt, op);
+										if (typeof fn !== 'function') return fn;
+										if (op === 'filter') call.filtered = true;
+										return (...args: unknown[]) => {
+											const out = fn.apply(qt, args);
+											return out && typeof out === 'object' && 'paginate' in out ? watch(out) : out;
+										};
+									},
+								});
+							return watch(query);
+						};
+					},
+				});
+			};
+		},
+	});
+}
+
+// ─── GET /api/v1/limits ──────────────────────────────────────────────────────
+
+describe('GET /api/v1/limits (getLimits → any key)', () => {
+	// 15:30 UTC: the daily window began at midnight and ends at the next one.
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const NEXT_MIDNIGHT = new Date(Date.UTC(2026, 10, 24)).toISOString();
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function keyIdOf(t: ReturnType<typeof convexTest>, key: string): Promise<Id<'apiKeys'>> {
+		const keyHash = await hashKey(key);
+		const keys = await t.run(async (ctx) => await ctx.db.query('apiKeys').collect());
+		return keys.find((row) => row.keyHash === keyHash)!._id as Id<'apiKeys'>;
+	}
+
+	/** Count `sends` against a key's daily cap, as accepted sends do. */
+	async function chargeDaily(
+		t: ReturnType<typeof convexTest>,
+		keyId: Id<'apiKeys'>,
+		sends: number
+	) {
+		await t.run(async (ctx) => {
+			await rateLimiter.limit(ctx, PER_API_KEY_DAILY_BUCKET, {
+				key: keyId,
+				config: PER_API_KEY_DAILY_CONFIG,
+				count: sends,
+			});
+		});
+	}
+
+	async function readLimits(t: ReturnType<typeof convexTest>, key: string) {
+		const res = await t.fetch('/api/v1/limits', { method: 'GET', headers: authHeaders(key) });
+		expect(res.status).toBe(200);
+		return (await res.json()).data;
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/limits', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expect((await res.json()).error.data).toEqual({ reason: 'missing_credentials' });
+	});
+
+	it('answers any key with the caps in force and what is left of them', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:read']);
+		const res = await t.fetch('/api/v1/limits', { method: 'GET', headers: authHeaders(key) });
+		await expectContractSuccess('getLimits', res);
+		expect((await res.json()).data).toEqual({
+			dailySends: {
+				isEnabled: true,
+				limit: 50_000,
+				used: 0,
+				remaining: 50_000,
+				resetsAt: NEXT_MIDNIGHT,
+			},
+			recipientSends: { isEnabled: true, limit: 5, windowSeconds: 3600 },
+		});
+	});
+
+	it("reads the asking key's own usage from the limiter, and reading spends none of it", async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send'], `own${'a'.repeat(40)}`);
+		const other = await seedKey(t, ['transactional:send'], `other${'a'.repeat(40)}`);
+		await chargeDaily(t, await keyIdOf(t, key), 3);
+		await chargeDaily(t, await keyIdOf(t, other), 7);
+
+		await readLimits(t, key);
+		const limits = await readLimits(t, key);
+		expect(limits.dailySends).toMatchObject({
+			used: 3,
+			remaining: 49_997,
+			resetsAt: NEXT_MIDNIGHT,
+		});
+		expect((await readLimits(t, other)).dailySends).toMatchObject({ used: 7, remaining: 49_993 });
+	});
+
+	it('reads a send charged just after midnight as today, from a clock read just before it', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const keyId = await keyIdOf(t, key);
+		vi.setSystemTime(Date.UTC(2026, 10, 24, 0, 0, 1));
+		await chargeDaily(t, keyId, 1);
+		const limits = await t.query(internal.transactional.sendLimits.forApiKey, {
+			keyId,
+			now: Date.UTC(2026, 10, 23, 23, 59, 59),
+		});
+		expect(limits.dailySends).toMatchObject({
+			used: 1,
+			remaining: 49_999,
+			resetsAt: new Date(Date.UTC(2026, 10, 25)).toISOString(),
+		});
+	});
+
+	it('starts the count again at UTC midnight', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		await chargeDaily(t, await keyIdOf(t, key), 4);
+		vi.setSystemTime(Date.UTC(2026, 10, 24, 0, 0, 1));
+		expect((await readLimits(t, key)).dailySends).toEqual({
+			isEnabled: true,
+			limit: 50_000,
+			used: 0,
+			remaining: 50_000,
+			resetsAt: new Date(Date.UTC(2026, 10, 25)).toISOString(),
+		});
+	});
+
+	it("follows the admin's caps: a lowered cap leaves nothing, a cap switched off counts nothing", async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		await chargeDaily(t, await keyIdOf(t, key), 3);
+		const setCaps = (daily: { isEnabled: boolean; count: number }) =>
+			t.run(async (ctx) => {
+				const existing = await ctx.db.query('instanceSettings').first();
+				const transactionalSendCaps = {
+					perRecipient: { isEnabled: true, count: 10, windowMs: 30 * 60 * 1000 },
+					perApiKeyDaily: daily,
+					updatedAt: NOW,
+					updatedBy: 'admin-user',
+				};
+				if (existing) await ctx.db.patch(existing._id, { transactionalSendCaps });
+				else
+					await ctx.db.insert('instanceSettings', {
+						contactCount: 0,
+						createdAt: NOW,
+						transactionalSendCaps,
+					});
+			});
+
+		await setCaps({ isEnabled: true, count: 2 });
+		expect(await readLimits(t, key)).toEqual({
+			dailySends: { isEnabled: true, limit: 2, used: 3, remaining: 0, resetsAt: NEXT_MIDNIGHT },
+			recipientSends: { isEnabled: true, limit: 10, windowSeconds: 1800 },
+		});
+
+		// A cap that is off is neither checked nor charged, so no count of it means anything.
+		await setCaps({ isEnabled: false, count: 2 });
+		expect((await readLimits(t, key)).dailySends).toEqual({
+			isEnabled: false,
+			limit: 2,
+			used: null,
+			remaining: null,
+			resetsAt: null,
+		});
+	});
+});
+
+describe('GET /api/v1/limits?email=…&slug=… (one template and one address)', () => {
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const MINUTE_MS = 60_000;
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedTemplate(
+		t: ReturnType<typeof convexTest>,
+		fields: Record<string, unknown> = {}
+	): Promise<Id<'transactionalEmails'>> {
+		return await t.run(
+			async (ctx) =>
+				await ctx.db.insert(
+					'transactionalEmails',
+					createTestTransactionalEmail({ slug: 'password-reset', ...fields }) as never
+				)
+		);
+	}
+
+	/** Count `sends` of the template to `email`, as accepted sends do; false once refused. */
+	async function chargePair(
+		t: ReturnType<typeof convexTest>,
+		templateId: Id<'transactionalEmails'>,
+		email: string,
+		sends: number
+	): Promise<boolean[]> {
+		return await t.run(async (ctx) => {
+			const accepted: boolean[] = [];
+			for (let i = 0; i < sends; i++) {
+				const refusal = await chargeTransactionalSendCaps(
+					ctx,
+					{ _id: templateId },
+					{ email },
+					null
+				);
+				accepted.push(refusal === null);
+			}
+			return accepted;
+		});
+	}
+
+	async function readPair(
+		t: ReturnType<typeof convexTest>,
+		key: string,
+		query: Record<string, string>
+	) {
+		return await t.fetch(`/api/v1/limits?${new URLSearchParams(query).toString()}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+	}
+
+	it('counts what one template sent to one address, what is left and when the count is back to zero', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		await chargePair(t, templateId, 'ada@example.com', 2);
+		const key = await seedKey(t, ['transactional:send']);
+
+		const res = await readPair(t, key, { email: ' Ada@Example.com ', slug: 'password-reset' });
+		await expectContractSuccess('getLimits', res);
+		const body = await res.json();
+		expect(body.data.recipientSends).toEqual({
+			isEnabled: true,
+			limit: 5,
+			windowSeconds: 3600,
+			usage: {
+				email: 'ada@example.com',
+				templateId,
+				slug: 'password-reset',
+				isExempt: false,
+				used: 2,
+				remaining: 3,
+				// The allowance refills at 5 per hour: two sends drain in 24 minutes.
+				resetsAt: new Date(NOW + 24 * MINUTE_MS).toISOString(),
+			},
+		});
+		expect(body.data.dailySends).toMatchObject({ isEnabled: true, limit: 50_000 });
+
+		const byId = await readPair(t, key, { email: 'ada@example.com', transactionalId: templateId });
+		expect((await byId.json()).data.recipientSends.usage).toEqual(body.data.recipientSends.usage);
+	});
+
+	it('counts each template and address apart', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		const otherTemplateId = await seedTemplate(t, { slug: 'sign-in-link' });
+		await chargePair(t, templateId, 'ada@example.com', 4);
+		const key = await seedKey(t, ['transactional:send']);
+
+		const otherAddress = await readPair(t, key, {
+			email: 'grace@example.com',
+			slug: 'password-reset',
+		});
+		expect((await otherAddress.json()).data.recipientSends.usage).toMatchObject({
+			used: 0,
+			remaining: 5,
+			resetsAt: null,
+		});
+		const otherTemplate = await readPair(t, key, {
+			email: 'ada@example.com',
+			transactionalId: otherTemplateId,
+		});
+		expect((await otherTemplate.json()).data.recipientSends.usage).toMatchObject({
+			slug: 'sign-in-link',
+			used: 0,
+			remaining: 5,
+		});
+	});
+
+	it('reading the count neither creates nor extends it', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const query = { email: 'ada@example.com', slug: 'password-reset' };
+
+		// A pair never sent to: reading it charges nothing, so five sends still fit.
+		for (let i = 0; i < 3; i++) expect((await readPair(t, key, query)).status).toBe(200);
+		expect(await chargePair(t, templateId, 'ada@example.com', 6)).toEqual([
+			true,
+			true,
+			true,
+			true,
+			true,
+			false,
+		]);
+
+		// Spent: reading it again does not push back when one more send fits.
+		const spent = (await (await readPair(t, key, query)).json()).data.recipientSends.usage;
+		expect(spent).toMatchObject({ used: 5, remaining: 0 });
+		expect(spent.resetsAt).toBe(new Date(NOW + 60 * MINUTE_MS).toISOString());
+		vi.setSystemTime(NOW + 12 * MINUTE_MS);
+		await readPair(t, key, query);
+		await readPair(t, key, query);
+		expect((await (await readPair(t, key, query)).json()).data.recipientSends.usage).toMatchObject({
+			used: 4,
+			remaining: 1,
+			resetsAt: new Date(NOW + 60 * MINUTE_MS).toISOString(),
+		});
+		expect(await chargePair(t, templateId, 'ada@example.com', 2)).toEqual([true, false]);
+	});
+
+	it('gives no count for an exempt template or while the cap is off', async () => {
+		const t = setupTest();
+		const exemptId = await seedTemplate(t, { isRecipientCapExempt: true });
+		await seedTemplate(t, { slug: 'sign-in-link' });
+		const key = await seedKey(t, ['transactional:send']);
+
+		const exempt = await readPair(t, key, { email: 'ada@example.com', transactionalId: exemptId });
+		await expectContractSuccess('getLimits', exempt);
+		expect((await exempt.json()).data.recipientSends.usage).toEqual({
+			email: 'ada@example.com',
+			templateId: exemptId,
+			slug: 'password-reset',
+			isExempt: true,
+			used: null,
+			remaining: null,
+			resetsAt: null,
+		});
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: NOW,
+				transactionalSendCaps: {
+					perRecipient: { isEnabled: false, count: 5, windowMs: 60 * MINUTE_MS },
+					perApiKeyDaily: { isEnabled: true, count: 50_000 },
+					updatedAt: NOW,
+					updatedBy: 'admin-user',
+				},
+			});
+		});
+		const off = await readPair(t, key, { email: 'ada@example.com', slug: 'sign-in-link' });
+		expect((await off.json()).data.recipientSends).toMatchObject({
+			isEnabled: false,
+			usage: { isExempt: false, used: null, remaining: null, resetsAt: null },
+		});
+	});
+
+	it.each([
+		['an address without a template', { email: 'ada@example.com' }, 'slug'],
+		['a slug without an address', { slug: 'password-reset' }, 'email'],
+		['a template ID without an address', { transactionalId: 'abc' }, 'email'],
+		['an empty slug without an address', { slug: '' }, 'email'],
+		['an empty template ID without an address', { transactionalId: '' }, 'email'],
+		['an address with an empty slug', { email: 'ada@example.com', slug: '' }, 'slug'],
+		['an empty address', { email: '', slug: 'password-reset' }, 'email'],
+		['a malformed address', { email: 'not-an-address', slug: 'password-reset' }, 'email'],
+	])('400 invalid_input naming the parameter for %s', async (_label, query, field) => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await readPair(t, key, query);
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toMatchObject({ category: 'invalid_input', data: { field } });
+	});
+
+	it.each([
+		['an unknown slug', { slug: 'no-such-template' }],
+		['a malformed template ID', { transactionalId: 'not-an-id' }],
+	])('404 template_not_found for %s', async (_label, template) => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await readPair(t, key, { email: 'ada@example.com', ...template });
+		expect(res.status).toBe(404);
+		expectDocumentedReason('getLimits', res, await res.json(), 'template_not_found');
+	});
+
+	it('403 for a key that cannot send, which learns nothing about the address', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		await chargePair(t, templateId, 'ada@example.com', 1);
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'transactional:send')
+		);
+		const res = await readPair(t, key, { email: 'ada@example.com', slug: 'password-reset' });
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'transactional:send' });
+		expectDocumentedReason('getLimits', res, body, 'missing_scope');
+		// The same key still reads the caps without a pair.
+		expect(
+			(await t.fetch('/api/v1/limits', { method: 'GET', headers: authHeaders(key) })).status
+		).toBe(200);
+	});
+
+	it('403 forbidden while the transactional feature is off', async () => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: NOW,
+				featureFlags: { transactional: false },
+			});
+		});
+		const res = await readPair(t, key, { email: 'ada@example.com', slug: 'password-reset' });
+		expect(res.status).toBe(403);
+		expectDocumentedReason('getLimits', res, await res.json(), 'feature_disabled');
 	});
 });
 
@@ -1511,6 +2587,243 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
+	});
+});
+
+// ─── GET /api/v1/topics (list) ───────────────────────────────────────────────
+
+describe('GET /api/v1/topics (listTopics → topics:read)', () => {
+	const CREATED_AT = Date.UTC(2026, 10, 2, 8, 0, 0);
+
+	async function seedTopics(t: ReturnType<typeof convexTest>, count: number) {
+		return await t.run(async (ctx) => {
+			const ids = [];
+			for (let i = 1; i <= count; i++) {
+				ids.push(
+					await ctx.db.insert('topics', {
+						name: `Topic ${i}`,
+						...(i % 2 === 1 ? { description: `About topic ${i}` } : {}),
+						...(i === 1 ? { requireDoubleOptIn: true } : {}),
+						displayOrder: i,
+						cachedMemberCount: 40 + i,
+						seedTag: 'demo',
+						createdAt: CREATED_AT + i,
+					})
+				);
+			}
+			return ids;
+		});
+	}
+
+	async function fetchTopics(t: ReturnType<typeof convexTest>, key: string, query = '') {
+		return await t.fetch(`/api/v1/topics${query}`, { method: 'GET', headers: authHeaders(key) });
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/topics', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('listTopics', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that only writes topic membership', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['topics:write']);
+		const res = await fetchTopics(t, key);
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'topics:read' });
+		expectDocumentedReason('listTopics', res, body, 'missing_scope');
+	});
+
+	it('lists each topic with the fields a caller picks one by, and nothing else', async () => {
+		// The deployment serves one organization, so there is no other workspace
+		// whose topics could appear; what is left to rule out is internal fields.
+		const t = setupTest();
+		const [first, second] = await seedTopics(t, 2);
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key);
+		expect(res.status).toBe(200);
+		await expectContractSuccess('listTopics', res);
+		expect(await res.json()).toEqual({
+			data: [
+				{
+					id: first,
+					name: 'Topic 1',
+					description: 'About topic 1',
+					requiresDoubleOptIn: true,
+					createdAt: new Date(CREATED_AT + 1).toISOString(),
+				},
+				{
+					id: second,
+					name: 'Topic 2',
+					description: null,
+					requiresDoubleOptIn: false,
+					createdAt: new Date(CREATED_AT + 2).toISOString(),
+				},
+			],
+			pagination: { limit: 25, totalItems: 2, cursor: null, isDone: true },
+		});
+	});
+
+	it('pages through every topic with limit and cursor', async () => {
+		const t = setupTest();
+		const ids = await seedTopics(t, 3);
+		const key = await seedKey(t, ['topics:read']);
+
+		const first = await (await fetchTopics(t, key, '?limit=2')).json();
+		expect(first.data.map((topic: { id: string }) => topic.id)).toEqual(ids.slice(0, 2));
+		expect(first.pagination).toMatchObject({ limit: 2, totalItems: 3, isDone: false });
+		expect(typeof first.pagination.cursor).toBe('string');
+
+		const next = await fetchTopics(
+			t,
+			key,
+			`?limit=2&cursor=${encodeURIComponent(first.pagination.cursor)}`
+		);
+		await expectContractSuccess('listTopics', next);
+		const second = await next.json();
+		expect(second.data.map((topic: { id: string }) => topic.id)).toEqual(ids.slice(2));
+		expect(second.pagination).toEqual({ limit: 2, totalItems: 3, cursor: null, isDone: true });
+	});
+
+	it('refuses a search, since topics have no search, rather than answering unfiltered', async () => {
+		const t = setupTest();
+		await seedTopics(t, 2);
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key, '?search=Topic%201');
+		expect(res.status).toBe(400);
+		expect((await res.json()).error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a non-positive limit', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['topics:read']);
+		const res = await fetchTopics(t, key, '?limit=0');
+		expect(res.status).toBe(400);
+	});
+
+	it('leaves the membership routes to topics:write alone', async () => {
+		const t = setupTest();
+		const [topicId] = await seedTopics(t, 1);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('contacts', createTestContact({ email: 'member@example.com' }));
+		});
+		const key = await seedKey(t, ['topics:write']);
+		const res = await t.fetch(`/api/v1/topics/${topicId}/contacts`, {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'member@example.com' }),
+		});
+		await expectContractSuccess('addContactToTopic', res);
+	});
+});
+
+// ─── A 400 about one input names it ─────────────────────────────────────────
+
+describe('a 400 about the path, the query or a header names that input in data.field', () => {
+	async function seedFixtures(t: ReturnType<typeof setupTest>) {
+		const key = await seedKey(t, ALL_SCOPES);
+		const topicId = await t.run((ctx) =>
+			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }))
+		);
+		return { key, topicId };
+	}
+	type Fixtures = Awaited<ReturnType<typeof seedFixtures>>;
+
+	const requests: Array<[string, string, (f: Fixtures) => [string, RequestInit]]> = [
+		[
+			'a contact path segment that does not decode',
+			'id',
+			(f) => ['/api/v1/contacts/%E0%A4%A', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a contact path segment that is neither an id nor an address',
+			'id',
+			(f) => ['/api/v1/contacts/not-an-id', { method: 'DELETE', headers: authHeaders(f.key) }],
+		],
+		[
+			'a send id that does not decode',
+			'sendId',
+			(f) => ['/api/v1/transactional/%E0%A4%A', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a malformed topic id',
+			'topicId',
+			(f) => [
+				'/api/v1/topics/short/contacts',
+				{ method: 'POST', headers: authHeaders(f.key), body: '{"email":"a@example.com"}' },
+			],
+		],
+		[
+			'a topic contact segment that does not decode',
+			'emailOrId',
+			(f) => [
+				`/api/v1/topics/${f.topicId}/contacts/%E0%A4%A`,
+				{ method: 'DELETE', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a topic contact segment that is neither an id nor an address',
+			'emailOrId',
+			(f) => [
+				`/api/v1/topics/${f.topicId}/contacts/not-an-id`,
+				{ method: 'DELETE', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a non-positive contacts limit',
+			'limit',
+			(f) => ['/api/v1/contacts?limit=0', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a non-positive topics limit',
+			'limit',
+			(f) => ['/api/v1/topics?limit=0', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a contacts cursor the paginator rejects',
+			'cursor',
+			(f) => [
+				'/api/v1/contacts?cursor=not-a-cursor',
+				{ method: 'GET', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a contacts search cursor the paginator rejects',
+			'cursor',
+			(f) => [
+				'/api/v1/contacts?search=ada&cursor=not-a-cursor',
+				{ method: 'GET', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a topics cursor the paginator rejects',
+			'cursor',
+			(f) => ['/api/v1/topics?cursor=not-a-cursor', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a bad Idempotency-Key on an event',
+			'Idempotency-Key',
+			(f) => [
+				'/api/v1/events',
+				{
+					method: 'POST',
+					headers: { ...authHeaders(f.key), 'Idempotency-Key': 'two words' },
+					body: '{"email":"a@example.com","eventName":"signed_up"}',
+				},
+			],
+		],
+	];
+
+	it.each(requests)('%s names %s', async (_label, field, request) => {
+		const t = setupTest();
+		const fixtures = await seedFixtures(t);
+		const res = await t.fetch(...request(fixtures));
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toMatchObject({ category: 'invalid_input', data: { field } });
 	});
 });
 
@@ -1860,6 +3173,540 @@ describe('GET /api/v1/status (getStatus → status:read)', () => {
 	});
 });
 
+// ─── GET /api/v1/domains ─────────────────────────────────────────────────────
+
+describe('GET /api/v1/domains (listDomains → status:read)', () => {
+	const CHECKED_AT = Date.UTC(2026, 10, 21, 7, 30, 0);
+	const checked = (fields: { verified: boolean; [field: string]: unknown }) => ({
+		lastChecked: CHECKED_AT,
+		...fields,
+	});
+
+	/**
+	 * One verified domain with an apex SPF record, and one that failed: a DKIM
+	 * selector found, one pointing elsewhere, DMARC absent, and return-path
+	 * records the resolver could not answer for or that were never checked.
+	 */
+	async function seedDomains(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) => {
+			const now = Date.now();
+			const verified = await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {
+					spf: { type: 'TXT', host: '@', value: 'v=spf1 include:spf.owlat.example ~all' },
+					dkim: [{ type: 'TXT', host: 'owlat1._domainkey', value: 'v=DKIM1; k=rsa; p=PUBKEY' }],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+				},
+				verificationResults: {
+					spf: checked({ verified: true, foundValue: 'v=spf1 include:spf.owlat.example ~all' }),
+					dkim: [checked({ verified: true, foundValue: 'v=DKIM1; k=rsa; p=PUBKEY' })],
+					dmarc: checked({ verified: true, foundValue: 'v=DMARC1; p=none' }),
+				},
+				lastVerifiedAt: CHECKED_AT,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const failed = await ctx.db.insert('domains', {
+				domain: 'news.example.com',
+				status: 'failed',
+				providerType: 'ses',
+				dnsRecords: {
+					dkim: [
+						{ type: 'CNAME', host: 's1._domainkey', value: 's1.dkim.owlat.example' },
+						{ type: 'CNAME', host: 's2._domainkey', value: 's2.dkim.owlat.example' },
+					],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+					mailFrom: [
+						{ type: 'MX', host: 'bounce', value: 'feedback.owlat.example', priority: 10 },
+						{ type: 'TXT', hostname: 'bounces.owlat.example', value: 'v=spf1 a -all' },
+					],
+				},
+				verificationResults: {
+					dkim: [
+						checked({ verified: true, foundValue: 's1.dkim.owlat.example' }),
+						checked({
+							verified: false,
+							error: "CNAME record doesn't point to expected value",
+							foundValue: 'old.dkim.example.net',
+						}),
+					],
+					dmarc: checked({ verified: false, error: 'No matching TXT record found' }),
+					mailFrom: [
+						checked({
+							verified: false,
+							inconclusive: true,
+							error: 'DNS lookup failed: resolver-error-canary',
+						}),
+					],
+				},
+				lastRegistrationError: 'registration-error-canary',
+				returnPathHostSyncError: 'mta-sync-error-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId: failed,
+				dkimTokens: ['ses-dkim-token-canary'],
+				verificationToken: 'ses-verification-token-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('sendingDomainMtaIdentities', {
+				domainId: verified,
+				dkimSelector: 'owlat1',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { verified, failed };
+		});
+	}
+
+	async function fetchDomains(t: ReturnType<typeof convexTest>, scopes = ['status:read']) {
+		const key = await seedKey(t, scopes);
+		return await t.fetch('/api/v1/domains', { method: 'GET', headers: authHeaders(key) });
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/domains', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('listDomains', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that can only send', async () => {
+		const t = setupTest();
+		const res = await fetchDomains(t, ['transactional:send']);
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'status:read' });
+		expectDocumentedReason('listDomains', res, body, 'missing_scope');
+	});
+
+	it('lists each domain with the records to publish and what the last check found', async () => {
+		const t = setupTest();
+		const { verified, failed } = await seedDomains(t);
+		const res = await fetchDomains(t);
+		expect(res.status).toBe(200);
+		await expectContractSuccess('listDomains', res);
+		expect((await res.json()).data).toEqual([
+			{
+				id: verified,
+				domain: 'mail.example.com',
+				status: 'verified',
+				lastCheckedAt: new Date(CHECKED_AT).toISOString(),
+				records: [
+					{
+						purpose: 'spf',
+						type: 'TXT',
+						host: 'mail.example.com',
+						value: 'v=spf1 include:spf.owlat.example ~all',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dkim',
+						type: 'TXT',
+						host: 'owlat1._domainkey.mail.example.com',
+						value: 'v=DKIM1; k=rsa; p=PUBKEY',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dmarc',
+						type: 'TXT',
+						host: '_dmarc.mail.example.com',
+						value: 'v=DMARC1; p=none',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+				],
+			},
+			{
+				id: failed,
+				domain: 'news.example.com',
+				status: 'failed',
+				lastCheckedAt: null,
+				records: [
+					{
+						purpose: 'dkim',
+						type: 'CNAME',
+						host: 's1._domainkey.news.example.com',
+						value: 's1.dkim.owlat.example',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dkim',
+						type: 'CNAME',
+						host: 's2._domainkey.news.example.com',
+						value: 's2.dkim.owlat.example',
+						priority: null,
+						state: 'wrong',
+						foundValue: 'old.dkim.example.net',
+					},
+					{
+						purpose: 'dmarc',
+						type: 'TXT',
+						host: '_dmarc.news.example.com',
+						value: 'v=DMARC1; p=none',
+						priority: null,
+						state: 'missing',
+						foundValue: null,
+					},
+					{
+						purpose: 'mail_from',
+						type: 'MX',
+						host: 'bounce.news.example.com',
+						value: 'feedback.owlat.example',
+						priority: 10,
+						state: 'unchecked',
+						foundValue: null,
+					},
+					{
+						purpose: 'mail_from',
+						type: 'TXT',
+						host: 'bounces.owlat.example',
+						value: 'v=spf1 a -all',
+						priority: null,
+						state: 'unchecked',
+						foundValue: null,
+					},
+				],
+			},
+		]);
+	});
+
+	it('answers an empty list on an instance with no sending domain', async () => {
+		const t = setupTest();
+		const res = await fetchDomains(t);
+		await expectContractSuccess('listDomains', res);
+		expect(await res.json()).toEqual({ data: [] });
+	});
+
+	it('carries nothing a member cannot see: no provider tokens, keys or raw errors', async () => {
+		// The deployment serves one organization, so there is no other workspace
+		// whose domains could leak; what is left to rule out is admin-only data.
+		const t = setupTest();
+		await seedDomains(t);
+		const res = await fetchDomains(t);
+		expect(res.status).toBe(200);
+		const text = await res.text();
+		for (const field of [
+			'privateKey',
+			'dkimPrivateKey',
+			'dkimTokens',
+			'verificationToken',
+			'dkimSelector',
+			'lastRegistrationError',
+			'returnPathHostSyncError',
+			'verificationResults',
+		]) {
+			expect(text).not.toContain(field);
+		}
+		for (const canary of [
+			'ses-dkim-token-canary',
+			'ses-verification-token-canary',
+			'registration-error-canary',
+			'mta-sync-error-canary',
+			'resolver-error-canary',
+		]) {
+			expect(text).not.toContain(canary);
+		}
+	});
+});
+
+// ─── POST /api/v1/domains/{domain}/verify ─────────────────────────────────────
+
+describe('POST /api/v1/domains/{domain}/verify (verifyDomain → domains:verify)', () => {
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const CHECKED_AT = Date.UTC(2026, 10, 21, 7, 30, 0);
+	const CHECK_JOB = 'domains/requestedVerification:verifyRequested';
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedDomain(
+		t: ReturnType<typeof convexTest>,
+		domain: string,
+		fields: Record<string, unknown> = {}
+	): Promise<Id<'domains'>> {
+		return await t.run(
+			async (ctx) =>
+				await ctx.db.insert('domains', {
+					domain,
+					status: 'pending',
+					providerType: 'mta',
+					dnsRecords: {
+						spf: { type: 'TXT', host: '@', value: 'v=spf1 include:spf.owlat.example ~all' },
+					},
+					lastVerifiedAt: CHECKED_AT,
+					createdAt: CHECKED_AT,
+					updatedAt: CHECKED_AT,
+					...fields,
+				} as never)
+		);
+	}
+
+	function verify(t: ReturnType<typeof convexTest>, key: string, domain: string) {
+		return t.fetch(`/api/v1/domains/${domain}/verify`, {
+			method: 'POST',
+			headers: authHeaders(key),
+		});
+	}
+
+	/** The checks scheduled so far, each with the domain it is for. */
+	async function scheduledChecks(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect())
+				.filter((job) => job.name === CHECK_JOB)
+				.map((job) => job.args[0] as { domainId: string })
+		);
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const res = await t.fetch('/api/v1/domains/mail.example.com/verify', { method: 'POST' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that can read the domains but not check them, and schedules nothing', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'domains:verify')
+		);
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'domains:verify' });
+		expectDocumentedReason('verifyDomain', res, body, 'missing_scope');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('202 and a check scheduled, named by the domain or by its id', async () => {
+		const t = setupTest();
+		const id = await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+
+		const res = await verify(t, key, 'Mail.Example.com');
+		await expectContractSuccess('verifyDomain', res);
+		expect((await res.json()).data).toEqual({
+			id,
+			domain: 'mail.example.com',
+			status: 'pending',
+			lastCheckedAt: new Date(CHECKED_AT).toISOString(),
+			requestedAt: new Date(NOW).toISOString(),
+		});
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }]);
+
+		vi.setSystemTime(NOW + 2 * 60_000);
+		const byId = await verify(t, key, id);
+		expect(byId.status).toBe(202);
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }, { domainId: id }]);
+	});
+
+	it('429 with Retry-After for a second check of one domain within the minute, and none scheduled', async () => {
+		const t = setupTest();
+		const id = await seedDomain(t, 'mail.example.com');
+		const other = await seedDomain(t, 'news.example.com');
+		const key = await seedKey(t, ['domains:verify'], `first${'a'.repeat(40)}`);
+		const otherKey = await seedKey(t, ['domains:verify'], `second${'a'.repeat(40)}`);
+		expect((await verify(t, key, 'mail.example.com')).status).toBe(202);
+
+		vi.setSystemTime(NOW + 20_000);
+		// The limit is the domain's, whichever key asks.
+		const refused = await verify(t, otherKey, 'mail.example.com');
+		expect(refused.status).toBe(429);
+		expect(refused.headers.get('Retry-After')).toBe('40');
+		const body = await refused.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error.category).toBe('rate_limited');
+		expectDocumentedReason('verifyDomain', refused, body, 'domain_check_rate_limited');
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }]);
+
+		// Another domain has its own allowance.
+		expect((await verify(t, key, 'news.example.com')).status).toBe(202);
+
+		vi.setSystemTime(NOW + 60_000);
+		expect((await verify(t, key, 'mail.example.com')).status).toBe(202);
+		expect(await scheduledChecks(t)).toEqual([
+			{ domainId: id },
+			{ domainId: other },
+			{ domainId: id },
+		]);
+	});
+
+	it.each([
+		['an unknown domain', 'unknown'],
+		['a malformed id', 'malformed'],
+		['a segment that does not decode', 'undecodable'],
+		['the id of another kind of record', 'contact'],
+		['a removed domain', 'removed'],
+		['a tracking domain, which is not a sending domain', 'tracking'],
+	])('404 not_found for %s, saying nothing else', async (_label, kind) => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		let ref: string;
+		if (kind === 'unknown') ref = 'other.example.com';
+		else if (kind === 'malformed') ref = 'not-a-domain-id';
+		else if (kind === 'undecodable') ref = '%ZZ';
+		else if (kind === 'contact') {
+			ref = await t.run(async (ctx) => await ctx.db.insert('contacts', createTestContact()));
+		} else if (kind === 'removed') {
+			const id = await seedDomain(t, 'old.example.com');
+			await t.run(async (ctx) => await ctx.db.delete(id));
+			ref = id;
+		} else {
+			await t.run(async (ctx) => {
+				await ctx.db.insert('trackingDomains', {
+					domain: 'click.example.com',
+					cnameTarget: 'track.owlat.example',
+					isVerified: false,
+					createdAt: NOW,
+				});
+			});
+			ref = 'click.example.com';
+		}
+		const res = await verify(t, key, ref);
+		expect(res.status).toBe(404);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toEqual({ category: 'not_found', message: 'Domain not found' });
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('409 for a domain still being registered, with nothing published to check', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com', { status: 'registering', dnsRecords: {} });
+		const key = await seedKey(t, ['domains:verify']);
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(409);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'domain_registering');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('422 while the workspace is being deleted, and schedules nothing', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		await t.run((ctx) => openWorkspaceDeletionFence(ctx));
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(422);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'workspace_deletion_in_progress');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('404 for a path that names no check', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		for (const path of [
+			'/api/v1/domains/mail.example.com',
+			'/api/v1/domains/mail.example.com/check',
+		]) {
+			const res = await t.fetch(path, { method: 'POST', headers: authHeaders(key) });
+			expect(res.status).toBe(404);
+		}
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+});
+
+// ─── GET /api/v1/openapi.json ────────────────────────────────────────────────
+
+describe('GET /api/v1/openapi.json (the instance describes its own API)', () => {
+	const SITE_URL = 'https://api.owlat.example';
+
+	it("serves the contract's document with this instance's API address as its server, without a key", async () => {
+		process.env['CONVEX_SITE_URL'] = SITE_URL;
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', { method: 'GET' });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toContain('application/json');
+		const served = await res.json();
+		expect(served.servers).toEqual([{ url: SITE_URL }]);
+		expect(served).toEqual(buildOpenApiDocument(PUBLIC_OPERATIONS, { serverUrl: SITE_URL }));
+		const { servers: _served, ...rest } = served;
+		const { servers: _built, ...built } = buildOpenApiDocument();
+		expect(rest).toEqual(built);
+	});
+
+	it('drops a trailing slash from the configured address', async () => {
+		process.env['CONVEX_SITE_URL'] = `${SITE_URL}/`;
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', { method: 'GET' });
+		expect((await res.json()).servers).toEqual([{ url: SITE_URL }]);
+	});
+
+	it("keeps the placeholder server, not the request's Host, when no address is configured", async () => {
+		delete process.env['CONVEX_SITE_URL'];
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', {
+			method: 'GET',
+			headers: { Host: 'attacker.example', 'X-Forwarded-Host': 'attacker.example' },
+		});
+		expect(res.status).toBe(200);
+		expect((await res.json()).servers).toEqual(buildOpenApiDocument()['servers']);
+	});
+
+	it('lets a browser on another origin read it', async () => {
+		process.env['CONVEX_SITE_URL'] = SITE_URL;
+		const t = setupTest();
+		const preflight = await t.fetch('/api/v1/openapi.json', {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		const res = await t.fetch('/api/v1/openapi.json', {
+			method: 'GET',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+	});
+});
+
+// ─── GET /api/v1/schemas/blocks.json ─────────────────────────────────────────
+
+describe('GET /api/v1/schemas/blocks.json (the JSON Schema of block content)', () => {
+	it('serves the generated block schema without a key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/schemas/blocks.json', { method: 'GET' });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toBe('application/schema+json');
+		expect(res.headers.get('Cache-Control')).toBe('public, max-age=300');
+		expect(await res.json()).toEqual(blockSchema);
+	});
+
+	it('lets a browser on another origin read it', async () => {
+		const t = setupTest();
+		const preflight = await t.fetch('/api/v1/schemas/blocks.json', {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		const res = await t.fetch('/api/v1/schemas/blocks.json', {
+			method: 'GET',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+	});
+});
+
 // ─── A single all-scope key works across every route ─────────────────────────
 
 describe('an all-scope key satisfies every route', () => {
@@ -1906,10 +3753,27 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	deleteContact: contactsApi.deleteContact,
 	sendEvent,
 	sendTransactional,
+	listTransactionalSends,
 	getTransactionalSend,
 	addContactToTopic,
 	removeContactFromTopic,
+	listTopics,
 	getStatus,
+	listDomains,
+	verifyDomain,
+	getLimits,
+	listTransactionalEmails: transactionalEmailsApi.listTransactionalEmails,
+	createTransactionalEmail: transactionalEmailsApi.createTransactionalEmail,
+	getTransactionalEmail: transactionalEmailsApi.getTransactionalEmail,
+	putTransactionalEmail: transactionalEmailsApi.putTransactionalEmail,
+	publishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	unpublishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	listSavedBlocks: savedBlocksApi.listSavedBlocks,
+	createSavedBlock: savedBlocksApi.createSavedBlock,
+	getSavedBlock: savedBlocksApi.getSavedBlock,
+	updateSavedBlock: savedBlocksApi.updateSavedBlock,
+	renderEmail,
+	dryRunTransactional,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */
@@ -1926,9 +3790,13 @@ describe('the public contract (@owlat/public-contract)', () => {
 		}
 	});
 
-	it('documents every route other than the CORS preflights', () => {
+	it('documents every route other than the CORS preflights and the served documents', () => {
 		for (const [path, method] of router.getRoutes()) {
 			if (method === 'OPTIONS') continue;
+			// The OpenAPI document and the block schema are served as they are,
+			// not in the `{ data }` envelope every operation answers with, so the
+			// document cannot describe them as operations.
+			if (path === '/api/v1/openapi.json' || path === '/api/v1/schemas/blocks.json') continue;
 			const documented = PUBLIC_OPERATIONS.some(
 				(operation) =>
 					operation.method === method &&
@@ -1940,7 +3808,10 @@ describe('the public contract (@owlat/public-contract)', () => {
 
 	it('enforces the scope each keyed operation documents, with the documented error body', async () => {
 		const t = setupTest();
-		const keyed = PUBLIC_OPERATIONS.filter((operation) => operation.scope !== null);
+		// An operation any key may call has no scope to withhold.
+		const keyed = PUBLIC_OPERATIONS.filter(
+			(operation) => operation.scope !== null && operation.scope !== ANY_KEY
+		);
 		for (const [index, operation] of keyed.entries()) {
 			const key = await seedKey(
 				t,
@@ -1991,16 +3862,17 @@ describe('the public contract (@owlat/public-contract)', () => {
 		const res = await t.fetch('/api/v1/transactional', {
 			method: 'POST',
 			headers: authHeaders(key),
-			body: JSON.stringify({ email: 'ada@example.com', slug: 'welcome', dataVariables: { a: [] } }),
+			body: JSON.stringify({
+				email: 'ada@example.com',
+				slug: 'welcome',
+				dataVariables: { a: [[]] },
+			}),
 		});
 		expect(res.status).toBe(400);
 		const body: unknown = await res.json();
 		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
 		expect(body).toMatchObject({
-			error: {
-				category: 'invalid_input',
-				message: 'dataVariables must be an object of string, number, boolean or null values',
-			},
+			error: { category: 'invalid_input', message: DATA_VARIABLES_SHAPE_MESSAGE },
 		});
 	});
 });

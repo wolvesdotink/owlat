@@ -1,10 +1,18 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import { offersShareWithMembers } from '~/utils/knowledgeSharing';
 import { useKnowledgeDetailLabels } from '~/composables/useKnowledgeDetailLabels';
 import { ArrowLeftIcon, ChatIcon, FileHelpIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
+// The edit form renders only inside the edit dialog, so it loads when the
+// dialog first opens instead of with the page (the route's bundle budget). Not
+// suspensible, so a dialog open while the page re-suspends never holds it.
+const KnowledgeEntryForm = defineAsyncComponent({
+	loader: () => import('~/components/knowledge/KnowledgeEntryForm.vue'),
+	suspensible: false,
+});
 
 useHead({ title: () => t('dashboard.knowledge.detail.pageTitle') });
 

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
+import { defineAsyncComponent } from 'vue';
 import { formatNumber } from '~/utils/formatters';
 import { useFormat } from '~/composables/useFormat';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import AutomationsFunnelChart from '~/components/automations/FunnelChart.vue';
-import AutomationsRunsPanel from '~/components/automations/RunsPanel.vue';
 import {
 	ArrowLeftIcon,
 	ClockIcon,
@@ -21,6 +21,21 @@ import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 const { formatPercentage } = useFormat();
+// The runs list sits below the stats and the funnel and runs its own query, so
+// it and its filter control load after the page instead of with it (the
+// route's bundle budget). Not suspensible: with the automation already cached
+// the panel renders on the page's first pass, and the page's Suspense would
+// otherwise hold the whole page back until the chunk arrives.
+const AutomationsRunsPanel = defineAsyncComponent({
+	loader: () => import('~/components/automations/RunsPanel.vue'),
+	suspensible: false,
+});
+
+// Mounted only when runs wait or failed, so a healthy automation never loads it.
+const AutomationsHealthNotice = defineAsyncComponent({
+	loader: () => import('~/components/automations/HealthNotice.vue'),
+	suspensible: false,
+});
 
 useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
 
@@ -69,6 +84,15 @@ const {
 } = useConvexQuery(api.automations.analytics.getStepAnalytics, () => ({
 	automationId: automationId.value,
 }));
+
+// Waiting runs and the last 7 days' failures, as the automations list reads them.
+const { data: healthRows } = useConvexQuery(api.automations.health.summaries, () => ({
+	automationIds: [automationId.value],
+}));
+const health = computed(() => {
+	const row = healthRows.value?.[0];
+	return row && (row.waiting || row.failed > 0) ? row : null;
+});
 
 const isLoading = computed(() => automationLoading.value || statsLoading.value);
 
@@ -214,6 +238,20 @@ const handleToggleStatus = async () => {
 								<component :is="getTriggerDisplay(automation.triggerType).icon" class="w-4 h-4" />
 								{{ t(getTriggerDisplay(automation.triggerType).label) }}
 							</div>
+							<div
+								v-if="automation.mailTopic"
+								class="flex items-center gap-1.5"
+								data-testid="automation-mail-topic"
+							>
+								<MailIcon class="w-4 h-4" />
+								{{
+									automation.mailTopic.topic
+										? t('dashboard.automations.detail.index.mailTopic', {
+												name: automation.mailTopic.topic.name,
+											})
+										: t('dashboard.automations.detail.index.mailTopicDeleted')
+								}}
+							</div>
 							<div class="flex items-center gap-1.5">
 								<ClockIcon class="w-4 h-4" />
 								{{
@@ -250,6 +288,8 @@ const handleToggleStatus = async () => {
 					</template>
 				</UiPageHeader>
 			</div>
+
+			<AutomationsHealthNotice v-if="health" :automation-id="automationId" :health="health" />
 
 			<UiQueryBoundary
 				v-if="statsError"
@@ -349,7 +389,7 @@ const handleToggleStatus = async () => {
 			</div>
 
 			<!-- Contacts List: filterable by status, and by the list's health links -->
-			<AutomationsRunsPanel :automation-id="automationId" />
+			<AutomationsRunsPanel id="runs" :automation-id="automationId" class="scroll-mt-6" />
 		</div>
 	</div>
 </template>

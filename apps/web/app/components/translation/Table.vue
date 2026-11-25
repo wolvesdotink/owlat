@@ -11,7 +11,7 @@ import type { TranslatableRow } from '~/utils/translationRows';
 import TranslationCell from './Cell.vue';
 import { GlobeIcon, PlusIcon, SparklesIcon, TrashIcon } from '@coolicons/vue';
 
-defineProps<{
+const props = defineProps<{
 	rows: TranslatableRow[];
 	defaultLanguage: string;
 	/** The non-default languages, one column each. */
@@ -25,6 +25,8 @@ defineProps<{
 	nativeLabelOf: (language: string) => string;
 	cellValue: (row: TranslatableRow, language: string) => string;
 	cellStatus: (row: TranslatableRow, language: string) => TranslationCellStatus;
+	/** How many rows hold a translation in a language. */
+	progressOf: (language: string) => { done: number; total: number };
 }>();
 
 const emit = defineEmits<{
@@ -41,6 +43,23 @@ const { t } = useI18n();
 
 // Dropdown state for add language
 const addLanguageDropdownOpen = ref(false);
+
+// A grouped row's own label ("Item 2") names its Block only with the group.
+const fieldLabelOf = (row: TranslatableRow) =>
+	row.group
+		? t('components.translation.manager.groupedField', { group: row.group, label: row.label })
+		: row.label;
+
+// The rows of a list, table or menu sit under one heading naming the Block.
+const groupStarts = computed(() => {
+	const starts = new Set<string>();
+	let previous: string | undefined;
+	for (const row of props.rows) {
+		if (row.group && row.group !== previous) starts.add(row.id);
+		previous = row.group;
+	}
+	return starts;
+});
 </script>
 
 <template>
@@ -73,7 +92,12 @@ const addLanguageDropdownOpen = ref(false);
 							class="px-4 py-3 text-left text-sm font-medium text-text-secondary min-w-[250px]"
 						>
 							<div class="flex items-center justify-between">
-								<span>{{ nativeLabelOf(lang) }}</span>
+								<div class="flex flex-col">
+									<span>{{ nativeLabelOf(lang) }}</span>
+									<span class="text-xs font-normal text-text-tertiary tabular-nums">
+										{{ t('components.translation.manager.progress', progressOf(lang)) }}
+									</span>
+								</div>
 								<div class="flex items-center gap-1">
 									<UiTooltip
 										v-if="translatingLanguage !== lang"
@@ -143,51 +167,64 @@ const addLanguageDropdownOpen = ref(false);
 				</thead>
 
 				<tbody>
-					<tr
-						v-for="row in rows"
-						:key="row.id"
-						class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface/30 transition-colors"
-					>
-						<!-- Field label -->
-						<td
-							class="px-4 py-3 text-sm text-text-secondary sticky left-0 bg-bg-elevated font-medium"
+					<template v-for="row in rows" :key="row.id">
+						<tr
+							v-if="groupStarts.has(row.id)"
+							class="border-b border-border-subtle bg-bg-surface/50"
 						>
-							{{ row.label }}
-							<span
-								v-if="row.fieldType === 'html'"
-								class="ml-1.5 text-xs text-text-tertiary bg-bg-surface px-1 py-0.5 rounded"
+							<th
+								scope="rowgroup"
+								:colspan="languages.length + 3"
+								class="px-4 py-2 text-left text-xs font-medium text-text-secondary sticky left-0"
 							>
-								{{ t('components.translation.manager.htmlBadge') }}
-							</span>
-						</td>
+								{{ row.group }}
+							</th>
+						</tr>
+						<tr
+							class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface/30 transition-colors"
+						>
+							<!-- Field label -->
+							<td
+								class="py-3 pr-4 text-sm text-text-secondary sticky left-0 bg-bg-elevated font-medium"
+								:class="row.group ? 'pl-8' : 'pl-4'"
+							>
+								{{ row.label }}
+								<span
+									v-if="row.fieldType === 'html'"
+									class="ml-1.5 text-xs text-text-tertiary bg-bg-surface px-1 py-0.5 rounded"
+								>
+									{{ t('components.translation.manager.htmlBadge') }}
+								</span>
+							</td>
 
-						<!-- Default language cell (read-only) -->
-						<td class="px-4 py-3">
-							<TranslationCell
-								:value="row.sourceText"
-								:is-html="row.fieldType === 'html'"
-								:is-default="true"
-							/>
-						</td>
+							<!-- Default language cell (read-only) -->
+							<td class="px-4 py-3">
+								<TranslationCell
+									:value="row.sourceText"
+									:is-html="row.fieldType === 'html'"
+									:is-default="true"
+								/>
+							</td>
 
-						<!-- Translation cells -->
-						<td v-for="lang in languages" :key="lang" class="px-4 py-3">
-							<TranslationCell
-								:value="cellValue(row, lang)"
-								:is-html="row.fieldType === 'html'"
-								:status="cellStatus(row, lang)"
-								:field-label="row.label"
-								:language-label="nativeLabelOf(lang)"
-								@save="(value: string) => emit('save', row, lang, value)"
-								@retry="emit('retry', row, lang)"
-								@discard="emit('discard', row, lang)"
-								@edit="(text: string | null) => emit('edit', row, lang, text)"
-							/>
-						</td>
+							<!-- Translation cells -->
+							<td v-for="lang in languages" :key="lang" class="px-4 py-3">
+								<TranslationCell
+									:value="cellValue(row, lang)"
+									:is-html="row.fieldType === 'html'"
+									:status="cellStatus(row, lang)"
+									:field-label="fieldLabelOf(row)"
+									:language-label="nativeLabelOf(lang)"
+									@save="(value: string) => emit('save', row, lang, value)"
+									@retry="emit('retry', row, lang)"
+									@discard="emit('discard', row, lang)"
+									@edit="(text: string | null) => emit('edit', row, lang, text)"
+								/>
+							</td>
 
-						<!-- Empty cell for add column -->
-						<td class="px-4 py-3" />
-					</tr>
+							<!-- Empty cell for add column -->
+							<td class="px-4 py-3" />
+						</tr>
+					</template>
 				</tbody>
 			</table>
 		</div>

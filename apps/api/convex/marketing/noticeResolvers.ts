@@ -44,6 +44,8 @@ export interface NoticeDraft {
 	automationId?: Doc<'marketingNotices'>['automationId'];
 	domainId?: Doc<'marketingNotices'>['domainId'];
 	alertId?: Doc<'marketingNotices'>['alertId'];
+	sendingHoldAlertId?: Doc<'marketingNotices'>['sendingHoldAlertId'];
+	holdStatus?: Doc<'marketingNotices'>['holdStatus'];
 	threadId?: Doc<'marketingNotices'>['threadId'];
 	name?: string;
 	percent?: number;
@@ -329,6 +331,14 @@ function isSendingBlocked(settings: Doc<'instanceSettings'> | null): boolean {
 	return settings?.abuseStatus === 'suspended' || settings?.abuseStatus === 'banned';
 }
 
+/** For a stop notice without its raise: whether its status is still the instance's (older rows: always). */
+function isHoldStatusCurrent(
+	settings: Doc<'instanceSettings'> | null,
+	holdStatus: Doc<'marketingNotices'>['holdStatus']
+): boolean {
+	return holdStatus === undefined || settings?.abuseStatus === holdStatus;
+}
+
 /**
  * A suspension or a resume, while sending is still in that state. A later
  * change that keeps it (a resume followed by a warning) does not silence it; a
@@ -341,11 +351,25 @@ async function draftSendingStatus(
 ): Promise<NoticeDraft | null> {
 	const settings = await ctx.db.query('instanceSettings').first();
 	if (isSendingBlocked(settings) !== (event.kind === 'sending_suspended')) return null;
+	// A stop whose status has changed since is announced by its own notice.
+	if (
+		event.kind === 'sending_suspended' &&
+		event.holdStatus !== undefined &&
+		settings?.abuseStatusChangedAt !== event.changedAt
+	) {
+		return null;
+	}
 	return {
 		kind: event.kind,
 		eventKey: `${event.kind}:${event.changedAt}`,
 		subjectKey: 'sending_status',
 		...(settings?.abuseStatusReason ? { detail: settings.abuseStatusReason } : {}),
+		...(event.kind === 'sending_suspended' && event.holdStatus
+			? { holdStatus: event.holdStatus }
+			: {}),
+		...(event.kind === 'sending_suspended' && event.sendingHoldAlertId
+			? { sendingHoldAlertId: event.sendingHoldAlertId }
+			: {}),
 		url: DELIVERY_HUB_URL,
 	};
 }
@@ -461,7 +485,13 @@ export async function noticeLiveness(
 		case 'sending_resumed': {
 			// Holds until sending changes state again.
 			const settings = await ctx.db.query('instanceSettings').first();
-			return isSendingBlocked(settings) === (notice.kind === 'sending_suspended') ? LIVE : null;
+			if (isSendingBlocked(settings) !== (notice.kind === 'sending_suspended')) return null;
+			if (notice.kind === 'sending_resumed') return LIVE;
+			if (notice.sendingHoldAlertId !== undefined) {
+				const raise = await ctx.db.get(notice.sendingHoldAlertId);
+				return raise !== null && raise.announcedAt === settings?.abuseStatusChangedAt ? LIVE : null;
+			}
+			return isHoldStatusCurrent(settings, notice.holdStatus) ? LIVE : null;
 		}
 	}
 }

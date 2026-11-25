@@ -1,12 +1,63 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createTestClient, mockFetch, TEST_RATE_LIMIT_HEADERS } from './helpers';
-import { ValidationError } from '../src/errors';
+import { ForbiddenError, ValidationError } from '../src/errors';
 
 afterEach(() => {
 	vi.restoreAllMocks();
 });
 
 describe('TopicsResource', () => {
+	describe('list', () => {
+		const page = {
+			data: [
+				{
+					id: 'topic_1',
+					name: 'Product updates',
+					description: null,
+					requiresDoubleOptIn: true,
+					createdAt: '2026-01-10T08:00:00.000Z',
+				},
+			],
+			pagination: { limit: 10, totalItems: 11, cursor: 'next-page', isDone: false },
+		};
+
+		it('GETs /api/v1/topics with the page size and cursor, and returns the page', async () => {
+			const spy = mockFetch({ status: 200, body: page, headers: TEST_RATE_LIMIT_HEADERS });
+			const result = await createTestClient().topics.list({ limit: 10, cursor: 'a/b' });
+
+			expect(result).toEqual(page);
+			const [url, options] = spy.mock.calls[0];
+			expect(new URL(String(url)).pathname).toBe('/api/v1/topics');
+			expect(new URL(String(url)).search).toBe('?limit=10&cursor=a%2Fb');
+			expect(options?.method).toBe('GET');
+		});
+
+		it('sends no query for the first page', async () => {
+			const spy = mockFetch({ status: 200, body: page, headers: TEST_RATE_LIMIT_HEADERS });
+			await createTestClient().topics.list();
+			expect(new URL(String(spy.mock.calls[0][0])).search).toBe('');
+		});
+
+		it('throws ForbiddenError with missing_scope for a key without topics:read', async () => {
+			mockFetch({
+				status: 403,
+				body: {
+					error: {
+						category: 'forbidden',
+						message: 'This API key is missing the required scope: topics:read',
+						data: { reason: 'missing_scope', scope: 'topics:read' },
+					},
+				},
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			const error = await createTestClient()
+				.topics.list()
+				.catch((caught: unknown) => caught);
+			expect(error).toBeInstanceOf(ForbiddenError);
+			expect((error as ForbiddenError).reason).toBe('missing_scope');
+		});
+	});
+
 	describe('addContact', () => {
 		const addResponse = {
 			success: true,
@@ -55,13 +106,11 @@ describe('TopicsResource', () => {
 		it('should throw ValidationError when neither email nor contactId provided', async () => {
 			const client = createTestClient();
 
-			await expect(
-				client.topics.addContact({ topicId: 'topic_456' })
-			).rejects.toThrow(ValidationError);
+			await expect(client.topics.addContact({ topicId: 'topic_456' })).rejects.toThrow(
+				ValidationError
+			);
 
-			await expect(
-				client.topics.addContact({ topicId: 'topic_456' })
-			).rejects.toMatchObject({
+			await expect(client.topics.addContact({ topicId: 'topic_456' })).rejects.toMatchObject({
 				code: 'invalid_input',
 				message: 'Either email or contactId is required',
 			});

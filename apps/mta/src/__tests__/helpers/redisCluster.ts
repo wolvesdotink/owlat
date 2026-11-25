@@ -4,7 +4,13 @@ import { createServer } from 'node:net';
 import Redis, { type Cluster } from 'ioredis';
 import { awaitContainerLog, REDIS_CLUSTER_OK_LOG, REDIS_READY_LOG } from './dockerLogs.js';
 
-const REDIS_IMAGE = 'redis:8-alpine';
+/**
+ * The Redis the product's compose files ship (`REDIS_VERSION`), pinned to its
+ * minor. A floating major tag follows upstream releases, and a new minor can
+ * change what a cluster node needs to start, which fails every suite here for
+ * a reason no change in the repository caused.
+ */
+export const REDIS_IMAGE = 'redis:8.8-alpine';
 const CLUSTER_NODE_COUNT = 3;
 const CLUSTER_SLOT_COUNT = 16_384;
 const PORT_MIN = 16_000;
@@ -27,9 +33,9 @@ let probeError: unknown;
 let probed = false;
 
 /**
- * Gate for the suites that run against a real redis:8-alpine container
+ * Gate for the suites that run against a real `REDIS_IMAGE` container
  * (`describe.runIf(dockerRedisAvailable())`). The suites never pull the image
- * themselves; `docker pull redis:8-alpine` once.
+ * themselves; `docker pull redis:8.8-alpine` once.
  *
  * Without `OWLAT_REQUIRE_DOCKER=1` a missing daemon or image skips the suites,
  * so the rest of the MTA tests still run on a machine without Docker. With the

@@ -10,6 +10,8 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 import { renderPublishableEmail } from '../lib/publishableEmailRender';
+import { itemTextKey } from '../emailTemplates/translationMerge';
+import { composeCampaign } from '../delivery/sendComposition/campaign';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -90,6 +92,60 @@ describe('email template saves', () => {
 		const de = JSON.parse(row!.htmlTranslations!).de;
 		expect(de.htmlContent).toContain('Gespeicherter Text');
 		expect(de.htmlContent).not.toContain('client copy');
+	});
+
+	it('renders translated list items, table text, menu labels and accordion titles', async () => {
+		const t = convexTest(schema, modules);
+		const k = itemTextKey;
+		const templateId = await seedTemplate(t, {
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({ de: { subject: 'Hallo', blocks: {} } }),
+			content: JSON.stringify([
+				{ id: 'list', type: 'list', content: { items: ['Free shipping'], listType: 'bullet' } },
+				{
+					id: 'table',
+					type: 'table',
+					content: { headers: ['Product'], rows: [['Shirt']], footerRow: ['Total'] },
+				},
+				{
+					id: 'menu',
+					type: 'menu',
+					content: { items: [{ label: 'Shop', url: 'https://owlat.com/shop' }], align: 'center' },
+				},
+				{
+					id: 'acc',
+					type: 'accordion',
+					content: { sections: [{ id: 's1', title: 'Shipping', items: [] }] },
+				},
+			]),
+		});
+
+		await t.mutation(api.emailTemplates.i18n.updateTranslation, {
+			templateId,
+			language: 'de',
+			blocks: JSON.stringify({
+				list: { texts: { [k('Free shipping')]: '<img src=x onerror=alert(1)>Versand' } },
+				table: {
+					texts: { [k('Product')]: 'Produkt', [k('Shirt')]: 'Hemd', [k('Total')]: 'Summe' },
+				},
+				menu: { texts: { [k('Shop')]: 'Laden' } },
+				acc: { sectionTitles: { s1: 'Lieferung' } },
+			}),
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		const de = JSON.parse(row!.htmlTranslations!).de.htmlContent as string;
+		// Translated text is escaped as the source text is, never markup.
+		expect(de).toContain('&lt;img src=x onerror=alert(1)&gt;Versand');
+		expect(de).not.toContain('<img src=x');
+		for (const text of ['Produkt', 'Hemd', 'Summe', 'Laden', 'Lieferung']) {
+			expect(de).toContain(text);
+		}
+		expect(de).toContain('https://owlat.com/shop');
+		expect(de).not.toContain('Free shipping');
+		expect(row!.htmlContent).toContain('Free shipping');
+		expect(row!.htmlContent).not.toContain('Versand');
 	});
 
 	it('renders a never-rendered row on publish instead of taking the client HTML', async () => {
@@ -237,5 +293,89 @@ describe('transactional email saves', () => {
 		expect(row!.htmlContent).not.toContain('client copy');
 		expect(row!.htmlContent).not.toContain('onerror');
 		expect(row!.htmlContent).toBe(renderPublishableEmail(row!, 'data', undefined).html);
+	});
+});
+
+describe('document language', () => {
+	it('declares the default language on the default render and each language on its own', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			defaultLanguage: 'de',
+			supportedLanguages: ['de', 'fr'],
+		});
+
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			translations: JSON.stringify({
+				fr: { subject: 'Bonjour', blocks: { b1: { html: '<p>Texte</p>' } } },
+			}),
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(row!.htmlContent).toContain(' lang="de"');
+		const fr = JSON.parse(row!.htmlTranslations!).fr;
+		expect(fr.htmlContent).toContain(' lang="fr"');
+	});
+
+	it('declares the default language of a transactional email', async () => {
+		const t = convexTest(schema, modules);
+		const id = await t.run((ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					content: blocksJson('<p>Stored body</p>'),
+					defaultLanguage: 'de',
+					supportedLanguages: ['de'],
+				})
+			)
+		);
+
+		await t.mutation(api.transactional.emails.update, {
+			id,
+			content: blocksJson('<p>Hallo</p>'),
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(id));
+		expect(row!.htmlContent).toContain(' lang="de"');
+	});
+});
+
+describe('default social icons', () => {
+	const socialBlocks = JSON.stringify([
+		{
+			id: 's1',
+			type: 'social',
+			content: {
+				links: [{ platform: 'facebook', url: 'https://example.com', enabled: true }],
+				iconStyle: 'filled',
+				align: 'center',
+				iconSize: 32,
+				iconSpacing: 8,
+				iconColor: '#000000',
+			},
+		},
+	]);
+
+	it('sends the icons from the instance site URL', async () => {
+		vi.stubEnv('SITE_URL', 'https://app.owlat.example/');
+		try {
+			const t = convexTest(schema, modules);
+			const templateId = await seedTemplate(t);
+
+			await t.mutation(api.emailTemplates.emails.update, { templateId, content: socialBlocks });
+
+			const row = await t.run((ctx) => ctx.db.get(templateId));
+			const sent = composeCampaign({
+				kind: 'campaign',
+				template: { subject: row!.subject, htmlContent: row!.htmlContent! },
+				contactInfo: { email: 'reader@owlat.example' },
+			});
+			expect(sent.html).toContain(
+				'src="https://app.owlat.example/social-icons/filled/facebook.png"'
+			);
+			expect(sent.html).not.toContain('src="/social-icons/');
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 });

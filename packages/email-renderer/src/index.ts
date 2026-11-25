@@ -12,6 +12,7 @@ export type {
 } from './templateDiff';
 export { analyzeEmail, suggestOptimizations } from './analyzer';
 export { getEmailHealthScore } from './emailHealthScore';
+export { forceColorScheme } from './styles';
 export { renderPlainText, resolvePlainText, hasPlainTextOverride } from './plaintext';
 export { renderDraftBodies } from './draftBodies';
 export type { DraftBodies, DraftBodySource, RenderDraftBodiesOptions } from './draftBodies';

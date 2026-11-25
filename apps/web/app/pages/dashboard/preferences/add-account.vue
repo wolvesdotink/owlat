@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
@@ -8,6 +9,13 @@ import PostboxMailboxAddressField from '~/components/postbox/PostboxMailboxAddre
 import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 
 const { t } = useI18n();
+// The IMAP connect form shows only for a team inbox on an external account,
+// which is not the default, so it loads when that is first chosen (the
+// route's bundle budget).
+const PostboxMailboxConnectForm = defineAsyncComponent({
+	loader: () => import('~/components/postbox/PostboxMailboxConnectForm.vue'),
+	suspensible: false,
+});
 
 useHead({ title: () => t('dashboard.preferences.addAccount.pageTitle') });
 

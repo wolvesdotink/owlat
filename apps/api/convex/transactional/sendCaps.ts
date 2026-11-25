@@ -20,7 +20,7 @@
 
 import { calculateRateLimit, DAY, type RateLimitConfig } from '@convex-dev/rate-limiter';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { rateLimiter } from '../lib/rateLimiter';
 import type { DispatchRefusal } from './dispatchDecision';
@@ -37,8 +37,17 @@ export const PER_RECIPIENT_BUCKET = 'transactionalPerRecipientUsage';
 export const PER_API_KEY_DAILY_BUCKET = 'transactionalPerApiKeyDailyUsage';
 
 /** Usage drains continuously at the cap's own rate: `count` per window. */
-function perRecipientConfig(count: number, windowMs: number): RateLimitConfig {
+export function perRecipientConfig(count: number, windowMs: number): RateLimitConfig {
 	return { kind: 'token bucket', rate: count, period: windowMs, capacity: USAGE_CEILING };
+}
+
+/**
+ * The per-recipient bucket of one template and address. It carries the
+ * address's digest, not the address: the limiter's rows sit outside contact
+ * erasure.
+ */
+export function perRecipientKey(templateId: Id<'transactionalEmails'>, email: string): string {
+	return `${templateId}:${redactEmailAddress(email)}`;
 }
 
 /** `start: 0` puts the window boundary at UTC midnight. */
@@ -50,42 +59,53 @@ export const PER_API_KEY_DAILY_CONFIG: RateLimitConfig = {
 	start: 0,
 };
 
-/** Sends counted against a bucket now, and when its current window began. */
+/**
+ * Sends counted against a bucket now, and when its current window began. A
+ * read only: nothing is charged, so a query may call it.
+ */
 export async function readBucketUsage(
-	ctx: MutationCtx,
+	ctx: QueryCtx,
 	name: string,
 	key: string,
 	config: RateLimitConfig,
 	now: number
 ): Promise<{ used: number; windowStart: number }> {
 	const stored = await rateLimiter.getValue(ctx, name, { key, config });
-	const current = calculateRateLimit({ value: stored.value, ts: stored.ts }, config, now);
+	// A clock read before a charge that landed later would project the bucket
+	// backwards (a negative number of windows): read it no earlier than its own time.
+	const at = Math.max(now, stored.ts);
+	const current = calculateRateLimit({ value: stored.value, ts: stored.ts }, config, at);
 	return { used: USAGE_CEILING - current.value, windowStart: current.ts };
 }
 
+/** One cap a send is charged against once it is accepted. */
+export interface SendCapCharge {
+	name: string;
+	key: string;
+	config: RateLimitConfig;
+}
+
 /**
- * Charge one send against the caps in force, or return the refusal when one is
- * spent. Both are checked before either is charged, so a request refused by the
- * daily cap does not also use up the recipient's allowance. A cap that is off,
- * or the per-recipient cap of an exempt template, is neither checked nor
- * charged.
- *
- * The recipient key carries the address's digest, not the address: the
- * limiter's rows sit outside contact erasure.
+ * Whether one more send fits the caps in force: the refusal when one is spent,
+ * else the charges an accepted send makes. Both are checked before either is
+ * charged, so a request refused by the daily cap does not also use up the
+ * recipient's allowance. A cap that is off, or the per-recipient cap of an
+ * exempt template, is neither checked nor charged. Reads only: the dry run
+ * asks it from a query.
  */
-export async function chargeTransactionalSendCaps(
-	ctx: MutationCtx,
+export async function checkTransactionalSendCaps(
+	ctx: QueryCtx,
 	template: Pick<Doc<'transactionalEmails'>, '_id' | 'isRecipientCapExempt'>,
 	request: { email: string; apiKeyId?: Id<'apiKeys'> },
 	settings: Pick<Doc<'instanceSettings'>, 'transactionalSendCaps'> | null
-): Promise<DispatchRefusal | null> {
+): Promise<{ ok: false; refusal: DispatchRefusal } | { ok: true; charges: SendCapCharge[] }> {
 	const caps = effectiveSendCaps(settings?.transactionalSendCaps);
 	const now = Date.now();
-	const charges: Array<{ name: string; key: string; config: RateLimitConfig }> = [];
+	const charges: SendCapCharge[] = [];
 
 	const { perRecipient, perApiKeyDaily } = caps;
 	if (perRecipient.isEnabled && template.isRecipientCapExempt !== true) {
-		const key = `${template._id}:${redactEmailAddress(request.email)}`;
+		const key = perRecipientKey(template._id, request.email);
 		const config = perRecipientConfig(perRecipient.count, perRecipient.windowMs);
 		const { used } = await readBucketUsage(ctx, PER_RECIPIENT_BUCKET, key, config, now);
 		const verdict = capVerdict({
@@ -97,9 +117,12 @@ export async function chargeTransactionalSendCaps(
 		if (!verdict.ok) {
 			return {
 				ok: false,
-				reason: 'recipient_rate_limited',
-				detail: `Too many emails from this transactional template to this recipient: the limit is ${perRecipient.count} per ${describeWindow(perRecipient.windowMs)}. The instance admin can change or switch off this limit, or exempt the template from it.`,
-				retryAfterMs: verdict.retryAfterMs,
+				refusal: {
+					ok: false,
+					reason: 'recipient_rate_limited',
+					detail: `Too many emails from this transactional template to this recipient: the limit is ${perRecipient.count} per ${describeWindow(perRecipient.windowMs)}. The instance admin can change or switch off this limit, or exempt the template from it.`,
+					retryAfterMs: verdict.retryAfterMs,
+				},
 			};
 		}
 		charges.push({ name: PER_RECIPIENT_BUCKET, key, config });
@@ -118,16 +141,41 @@ export async function chargeTransactionalSendCaps(
 		if (!verdict.ok) {
 			return {
 				ok: false,
-				reason: 'daily_send_limit',
-				detail: `This API key has reached its daily transactional send limit of ${perApiKeyDaily.count}. The instance admin can change or switch off this limit.`,
-				retryAfterMs: verdict.retryAfterMs,
+				refusal: {
+					ok: false,
+					reason: 'daily_send_limit',
+					detail: `This API key has reached its daily transactional send limit of ${perApiKeyDaily.count}. The instance admin can change or switch off this limit.`,
+					retryAfterMs: verdict.retryAfterMs,
+				},
 			};
 		}
 		charges.push({ name: PER_API_KEY_DAILY_BUCKET, key: keyId, config });
 	}
+	return { ok: true, charges };
+}
 
+/** Charge an accepted send against the caps {@link checkTransactionalSendCaps} returned. */
+export async function chargeSendCaps(
+	ctx: MutationCtx,
+	charges: readonly SendCapCharge[]
+): Promise<void> {
 	for (const charge of charges) {
 		await rateLimiter.limit(ctx, charge.name, { key: charge.key, config: charge.config });
 	}
+}
+
+/**
+ * Charge one send against the caps in force, or return the refusal when one is
+ * spent (see {@link checkTransactionalSendCaps}).
+ */
+export async function chargeTransactionalSendCaps(
+	ctx: MutationCtx,
+	template: Pick<Doc<'transactionalEmails'>, '_id' | 'isRecipientCapExempt'>,
+	request: { email: string; apiKeyId?: Id<'apiKeys'> },
+	settings: Pick<Doc<'instanceSettings'>, 'transactionalSendCaps'> | null
+): Promise<DispatchRefusal | null> {
+	const check = await checkTransactionalSendCaps(ctx, template, request, settings);
+	if (!check.ok) return check.refusal;
+	await chargeSendCaps(ctx, check.charges);
 	return null;
 }

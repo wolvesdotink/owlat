@@ -48,7 +48,7 @@ class RetryConfigTest {
 
     @Test
     void configDefaultsToTheDefaultRetryConfig() {
-        OwlatConfig config = OwlatConfig.builder("sk_test").build();
+        OwlatConfig config = OwlatConfig.builder("sk_test").baseUrl("https://rest.api.example.com").build();
         assertNotNull(config.getRetry());
         assertEquals(2, config.getRetry().getMaxRetries());
     }
@@ -56,6 +56,7 @@ class RetryConfigTest {
     @Test
     void configHonorsACustomRetryConfig() {
         OwlatConfig config = OwlatConfig.builder("sk_test")
+                .baseUrl("https://rest.api.example.com")
                 .retry(RetryConfig.disabled())
                 .build();
         assertEquals(0, config.getRetry().getMaxRetries());
