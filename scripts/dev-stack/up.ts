@@ -38,10 +38,16 @@ export interface StackOps {
 	runForeground(): Promise<number>;
 }
 
-export interface CodegenOps extends Omit<StackOps, 'pushOnce' | 'seed' | 'runForeground'> {
+export interface CodegenOps extends Omit<
+	StackOps,
+	'pushOnce' | 'seed' | 'runForeground' | 'writeStageEnv'
+> {
 	/** `convex codegen` in the stage; rejects when it fails. */
 	codegen(): Promise<void>;
-	/** Copies the stage's generated files into apps/api; returns how many changed. */
+	/**
+	 * Copies the stage's generated files, with the api declaration chunked,
+	 * into apps/api; returns how many changed.
+	 */
 	copyGeneratedBack(): number;
 }
 
@@ -87,7 +93,8 @@ export async function findPortConflicts(
 async function prepareBackend(
 	config: DevStackConfig,
 	secrets: DevStackSecrets,
-	ops: Omit<StackOps, 'pushOnce' | 'seed' | 'runForeground'>,
+	ops: Omit<StackOps, 'pushOnce' | 'seed' | 'runForeground' | 'writeStageEnv'> &
+		Partial<Pick<StackOps, 'writeStageEnv'>>,
 	{ web }: { readonly web: boolean }
 ): Promise<void> {
 	const conflicts = await findPortConflicts(config, ops, { web });
@@ -107,7 +114,9 @@ async function prepareBackend(
 
 	const synced = ops.syncStage();
 	ops.log(`Staged apps/api for Convex (${synced.copied} copied, ${synced.removed} removed).`);
-	ops.writeStageEnv({
+	// `dev:seed` targets whatever the stage env names (convexTarget.ts), so only
+	// `up`, which also pushes the functions, writes it.
+	ops.writeStageEnv?.({
 		CONVEX_SELF_HOSTED_URL: config.urls.convex,
 		CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey,
 		CONVEX_SITE_URL: config.urls.convexSite,
@@ -147,7 +156,7 @@ export async function runCodegen(
 	secrets: DevStackSecrets,
 	ops: CodegenOps
 ): Promise<number> {
-	await prepareBackend(config, secrets, ops, { web: false });
+	await prepareBackend(config, secrets, { ...ops, writeStageEnv: undefined }, { web: false });
 	ops.log('Running convex codegen in the stage...');
 	await ops.codegen();
 	const changed = ops.copyGeneratedBack();

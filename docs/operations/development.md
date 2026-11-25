@@ -97,8 +97,7 @@ Never edit those files by hand.
 
 The Convex CLI cannot generate offline: it bundles the modules and sends them
 to a backend as a push it never finishes, to learn the component APIs. So the
-command (`bun run dev:stack codegen`, then the chunk split and a typecheck)
-starts this checkout's stack containers if they are not running, runs
+command (`bun run dev:stack codegen`, then a typecheck) starts this checkout's stack containers if they are not running, runs
 `convex codegen` in the stage, and copies the output back. It only talks to
 this checkout's local backend, never to a deployment `apps/api` or your shell
 selects, and it works with the foreground stack running or stopped. The

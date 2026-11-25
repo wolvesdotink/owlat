@@ -81,8 +81,8 @@ while IFS= read -r -d '' file; do
 	relative="${file#"${root}"/}"
 	case "/${relative}" in
 		*/__tests__/* | *.test.ts | *.spec.ts) continue ;;
-		# Convex codegen output, which oxlint ignores too: its `env` export reads
-		# process.env and is rewritten on every codegen run.
+		# Convex codegen output, which oxlint ignores in every workspace too: its
+		# `env` export reads process.env and is rewritten on every codegen run.
 		*/_generated/*) continue ;;
 	esac
 	for path in "${allowed[@]}"; do

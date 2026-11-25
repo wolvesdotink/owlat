@@ -164,12 +164,17 @@ describe('runCodegen', () => {
 			'composeUp',
 			'adminKey',
 			'syncStage',
-			'writeStageEnv',
 			'setDeploymentEnv',
 			'codegen',
 			'copyGeneratedBack',
 		]);
-		expect(fake.stageEnv['CONVEX_SELF_HOSTED_URL']).toBe('http://127.0.0.1:23210');
+	});
+
+	it('leaves the stage env, which picks the dev:seed target, to up', async () => {
+		const fake = fakeOps();
+		await runCodegen(config, secrets, codegenOps(fake));
+		expect(fake.calls).not.toContain('writeStageEnv');
+		expect(fake.stageEnv).toEqual({});
 	});
 
 	it('runs while the stack holds the web port', async () => {

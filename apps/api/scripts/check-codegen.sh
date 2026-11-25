@@ -57,7 +57,8 @@ while IFS= read -r file; do
 	key="${file#"$CONVEX_ROOT"/}"
 	expected+=("${key%.*}")
 done < <(find "$CONVEX_ROOT" -type f \
-	\( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.mjs' -o -name '*.cjs' \) \
+	\( -name '*.ts' -o -name '*.tsx' -o -name '*.mts' -o -name '*.cts' \
+	-o -name '*.js' -o -name '*.jsx' -o -name '*.mjs' -o -name '*.cjs' \) \
 	-not -path "$CONVEX_ROOT/_generated/*" \
 	-not -path '*/__tests__/*' \
 	-not -path '*/node_modules/*' | LC_ALL=C sort)

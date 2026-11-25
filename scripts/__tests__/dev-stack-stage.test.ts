@@ -253,7 +253,12 @@ describe('resolveConvexTarget', () => {
 
 	it('drops every inherited deployment selection for a self-hosted call', () => {
 		const env = selfHostedCliEnv(
-			{ CONVEX_DEPLOY_KEY: 'x', CONVEX_DEPLOYMENT: 'y', PATH: '/bin' },
+			{
+				CONVEX_DEPLOY_KEY: 'x',
+				CONVEX_DEPLOYMENT_TOKEN: 'z',
+				CONVEX_DEPLOYMENT: 'y',
+				PATH: '/bin',
+			},
 			'http://127.0.0.1:1',
 			'key'
 		);

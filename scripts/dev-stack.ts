@@ -220,11 +220,18 @@ async function codegen(): Promise<number> {
 	mkdirSync(tmpDir, { recursive: true });
 	const ops: CodegenOps = {
 		...backend.ops,
-		codegen: () =>
-			run(convexBin, ['codegen', '--typecheck', 'disable'], {
+		codegen: async () => {
+			await run(convexBin, ['codegen', '--typecheck', 'disable'], {
 				cwd: paths.stageApi,
 				env: { ...cliEnv(backend.adminKey()), CONVEX_TMPDIR: tmpDir },
-			}),
+			});
+			// The CLI writes fullApi as one map, which TypeScript cannot type at this
+			// size; split it before it reaches the checkout.
+			await run(process.execPath, [
+				join(paths.apiDir, 'scripts', 'codegen-api-chunks.ts'),
+				join(paths.stageApi, 'convex', '_generated', 'api.d.ts'),
+			]);
+		},
 		copyGeneratedBack: () => copyGeneratedBack(paths.stageApi, paths.apiDir),
 	};
 	return runCodegen(config, secrets, ops);
