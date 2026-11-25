@@ -36,7 +36,7 @@ export const BRAND_KIT_OPERATIONS = [
 		path: '/api/v1/brand-kit',
 		tag: 'Brand kit',
 		summary:
-			'Change the brand kit. Send only the fields to change: a field left out keeps its stored value, and the answer is the whole kit after the write. The values are checked as on the brand kit page, and a refusal names the field in error.data.field. An unknown field is refused, and so are the logos, which only the brand kit page can set. A write that names at least one field marks the kit as configured; an empty body changes nothing. As a save on the brand kit page, a write does not restyle blocks of existing emails.',
+			'Change the brand kit. Send only the fields to change: a field left out keeps its stored value, and the answer is the whole kit after the write. The values are checked as on the brand kit page, and a refusal names the field in error.data.field. An unknown field is refused, and so are the logos, which only the brand kit page can set. A write that names at least one field marks the kit as configured; an empty JSON object (`{}`) answers the current kit without writing. As a save on the brand kit page, a write does not restyle blocks of existing emails.',
 		scope: 'brand-kit:write',
 		pathParameters: [],
 		queryParameters: [],
