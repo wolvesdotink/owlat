@@ -4815,12 +4815,12 @@ merging, and the untrusted-text policy. It executes only handlers the
 build statically composed; it is not a module loader.
 
 **Host-mediated service**:
-The only surface hosted plugin code receives — `permissions`, `storage`,
-`llm`, `logger`, `scheduler` on a `PluginContext`, or a smaller
+The only surface hosted plugin code receives besides its input — an abort
+signal, a logger or the attributed LLM dispatch, handed to a module in its
 per-contribution `services` object. Never a Convex context, database
-handle, environment value, tenant id, credential, or scheduler function
-reference. Storage methods take no organization or plugin argument
-because the host already bound both scopes.
+handle, tenant id, scheduler function reference, or an environment value
+the contribution did not declare. Plugin storage, a scheduler and a
+`PluginContext` that carries them all are planned and reach no module yet.
 
 ## Organization deletion
 

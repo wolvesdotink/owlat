@@ -163,6 +163,73 @@ jobs:
           fi
           echo "Published $TAG (server images + desktop apps)."
 
+  # The plugin kits a plugin compiles against, published to npm under the
+  # release's version. Stable only: a candidate's package.json already carries
+  # X.Y.Z, and an npm version can be published once, so publishing it from the
+  # candidate would leave nothing for the stable release to publish. It runs
+  # after `publish`, so a red gate ships nothing to npm either. The token is
+  # handed to the publish step alone, never to the install that runs
+  # dependency scripts.
+  npm:
+    name: Publish plugin kits to npm
+    needs: [resolve, publish]
+    if: needs.resolve.outputs.channel == 'stable'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26'
+          registry-url: 'https://registry.npmjs.org'
+      # `bun pm pack` runs each kit's prepack (build, LICENSE and NOTICE) and
+      # turns `workspace:*` into the exact version; `npm publish` of the
+      # directory would ship the `workspace:*` specifier as written.
+      - name: Pack the kits
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/npm"
+          for dir in packages/provider-kit packages/plugin-kit; do
+            actual="$(jq -r .version "$dir/package.json")"
+            if [[ "$actual" != "$VERSION" ]]; then
+              echo "::error::$dir is at $actual, the tag is v$VERSION"
+              exit 1
+            fi
+            (cd "$dir" && bun pm pack --destination "$RUNNER_TEMP/npm")
+          done
+          ls -l "$RUNNER_TEMP/npm"
+      # provider-kit first: plugin-kit depends on it at the same version.
+      # A version already on npm is skipped, so a rerun after a partial
+      # publish finishes the job.
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::error::The NPM_TOKEN secret is not set (docs/RELEASING.md, npm packages)"
+            exit 1
+          fi
+          for name in provider-kit plugin-kit; do
+            if npm view "@owlat/$name@$VERSION" version >/dev/null 2>&1; then
+              echo "@owlat/$name@$VERSION is already on npm; skipping."
+              continue
+            fi
+            npm publish "$RUNNER_TEMP/npm/owlat-$name-$VERSION.tgz" --provenance --access public --tag latest
+          done
+
   promote-aliases:
     needs: [resolve, publish]
     if: needs.resolve.outputs.channel == 'stable'

@@ -1,7 +1,7 @@
 /**
  * The plugin authoring tutorial, run as written.
  *
- * Every shell command on `41.plugin-authoring.md` runs in order against a
+ * Every shell command in the numbered steps of `41.plugin-authoring.md` runs in order against a
  * checkout-shaped directory (see `../tutorial.ts` for which commands run for
  * real and which are modelled). The run ends where the reader's does: codegen
  * accepts the scaffolded plugin and the generated composition imports it. A page
@@ -24,7 +24,16 @@ const CONVEX_COMPOSITION = 'apps/api/convex/plugins/plugins.generated.ts';
 
 afterAll(cleanupTutorialRuns);
 
+/**
+ * The numbered steps are the path a reader runs from scaffold to bundle. A
+ * section outside them, such as the local-registry setup, starts a container
+ * and edits `~/.npmrc`, so it is checked for German parity but not run.
+ */
 async function englishCommands() {
+	return (await allEnglishCommands()).filter((command) => /^\d+\./.test(command.step));
+}
+
+async function allEnglishCommands() {
 	return tutorialCommands(await readRepositoryFile(ENGLISH));
 }
 
@@ -95,7 +104,7 @@ describe('the plugin authoring tutorial', () => {
 	it('gives the German page the same commands', async () => {
 		const german = tutorialCommands(await readRepositoryFile(GERMAN));
 		expect(german.map((command) => command.line)).toEqual(
-			(await englishCommands()).map((command) => command.line)
+			(await allEnglishCommands()).map((command) => command.line)
 		);
 	});
 });

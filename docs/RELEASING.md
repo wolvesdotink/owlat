@@ -51,6 +51,7 @@ What a candidate does, and what it never does:
 | Image aliases (`latest`, `X.Y`)                                                             | no                               | yes             |
 | `install.sh`, `owlat upgrade`, the in-app update check, the desktop updater's `latest.json` | not by default                   | yes             |
 | Managed desktop updates                                                                     | only on the `prerelease` channel | yes             |
+| `@owlat/provider-kit` and `@owlat/plugin-kit` on npm                                        | no                               | yes             |
 
 The `resolve` job of `release.yml` (`scripts/ci/release-gate.ts`) enforces
 this. A candidate must sit on a prepared commit, where the root `package.json`
@@ -259,6 +260,39 @@ by ref. Compare similar changes, report first-attempt success separately, and
 use p90 only when there are at least 20 samples. Hosted-runner improvements
 require observation over real CI and release runs; local checks cannot establish
 warm-cache or notarization timings.
+
+## npm packages: the plugin kits
+
+The `npm` job of `release.yml` publishes `@owlat/provider-kit` and
+`@owlat/plugin-kit` at the release's version, after the GitHub Release is
+live and only for a stable tag. Plugins outside an Owlat checkout install the
+kit from there, and the plugin CLI writes `^X.Y.Z` of the checkout's kit
+version into a plugin it scaffolds outside the checkout, so a stable release
+without the kits leaves those plugins unable to install.
+
+The job packs each kit with `bun pm pack`, which runs its `prepack` (build,
+LICENSE and NOTICE) and replaces `workspace:*` with the exact version, then
+runs `npm publish --provenance`. It fails if a kit's `package.json` version is
+not the tag's, and skips a version npm already has, so rerunning the job after
+a partial publish completes it.
+
+One-time setup, done by a maintainer with owner rights on npm:
+
+1. Create the `owlat` organization on npmjs.com if it does not exist.
+2. Create a granular access token with **Read and write (publish and stage)**
+   for the `@owlat` scope under **Packages and scopes** (a stage-only token
+   cannot publish), and turn on **Bypass two-factor
+   authentication**: the job publishes unattended, and npm refuses a publish
+   that asks for a one-time password. Store it as the repository secret
+   `NPM_TOKEN`.
+
+Without the secret the job fails with a pointer to this section. The GitHub
+Release, the images and the aliases are already out at that point; set the
+secret and rerun the failed job.
+
+Check a kit's archive locally without publishing:
+`bun run --cwd packages/plugin-kit test:package` packs both kits, installs the
+archives into a scratch project and compiles against them.
 
 ## GHCR visibility: the manual step (read before adding a new image)
 

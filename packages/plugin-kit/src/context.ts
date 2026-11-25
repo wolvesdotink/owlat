@@ -22,6 +22,11 @@ export interface PluginStorageListResult {
 	readonly cursor?: string;
 }
 
+/**
+ * Planned: no host hands this service to plugin code yet, so no module can read
+ * or write plugin storage today. Declaring `plugin-storage:read` or
+ * `plugin-storage:write` is valid but reaches nothing.
+ */
 export interface PluginStorageService {
 	get(key: string): Promise<JsonValue | undefined>;
 	set(key: string, value: JsonValue): Promise<void>;
@@ -62,6 +67,10 @@ export interface PluginLlmGenerateResult {
 	readonly usage?: PluginLlmUsage;
 }
 
+/**
+ * The attributed, budgeted LLM dispatch. Crons receive it as
+ * `PluginCronServices.llm` and draft strategies as `PluginDraftStrategyServices.llm`.
+ */
 export interface PluginLlmService {
 	generate(request: PluginLlmGenerateRequest): Promise<PluginLlmGenerateResult>;
 }
@@ -71,11 +80,17 @@ export interface PluginScheduledTask {
 	readonly payload?: JsonObject;
 }
 
+/** Planned: the host has no implementation of this service yet. */
 export interface PluginSchedulerService {
 	runAfter(delayMs: number, task: PluginScheduledTask): Promise<void>;
 }
 
-/** Services supplied by the host. Plugins never receive a raw Convex context. */
+/**
+ * Planned: no host builds a `PluginContext` or passes one to plugin code yet.
+ * Each module receives the inputs and the per-contribution `services` object its
+ * own interface names (`PluginCronServices`, `PluginAutonomyGateServices`,
+ * `PluginDraftStrategyServices`, ...). Plugins never receive a raw Convex context.
+ */
 export interface PluginContext {
 	readonly pluginId: PluginId;
 	readonly permissions: PluginPermissionService;

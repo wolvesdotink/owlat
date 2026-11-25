@@ -19,6 +19,7 @@
  */
 
 import type { PluginPackageName } from '@owlat/plugin-host';
+import type { ScaffoldLayout } from './scaffold';
 import { bundlingReadmeSection } from './scaffoldReadme';
 import {
 	SEND_PROVIDER_ENV_CONSTANTS,
@@ -284,7 +285,11 @@ describe('${names.id} sending-domain identity', () => {
 `;
 }
 
-export function readmeSource(names: SendProviderNames, packageName: PluginPackageName): string {
+export function readmeSource(
+	names: SendProviderNames,
+	packageName: PluginPackageName,
+	layout: ScaffoldLayout = 'workspace'
+): string {
 	const env = sendProviderEnvVars(names);
 	return `# ${packageName}
 
@@ -335,8 +340,13 @@ bun run --cwd <path-to-this-package> lint
 bun run --cwd <path-to-this-package> test
 \`\`\`
 
-What was emitted is already formatted at the repository's width. A plugin id
-much longer than \`${names.id}\` pushes two or three generated lines past it —
+${layout === 'workspace' ? WORKSPACE_FORMAT_NOTE(names.id) : ''}${bundlingReadmeSection(packageName, layout)}`;
+}
+
+/** The checkout's format gate; a standalone package has none. */
+function WORKSPACE_FORMAT_NOTE(id: string): string {
+	return `What was emitted is already formatted at the repository's width. A plugin id
+much longer than \`${id}\` pushes two or three generated lines past it —
 if the format gate reports this package, format it once from the repository
 root and commit the rewrap:
 
@@ -344,5 +354,5 @@ root and commit the rewrap:
 ./node_modules/.bin/oxfmt --config oxfmtrc.json <path-to-this-package>
 \`\`\`
 
-${bundlingReadmeSection(packageName)}`;
+`;
 }

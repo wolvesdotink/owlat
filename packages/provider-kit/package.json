@@ -2,10 +2,28 @@
 	"name": "@owlat/provider-kit",
 	"version": "0.6.26",
 	"description": "Runtime-neutral contracts for Owlat send-provider bundles",
+	"keywords": [
+		"email",
+		"owlat",
+		"plugins",
+		"send-provider"
+	],
+	"homepage": "https://owlat.app",
+	"bugs": {
+		"url": "https://github.com/wolvesdotink/owlat/issues"
+	},
 	"license": "Apache-2.0",
+	"author": "wolves <npm@wolves.ink>",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wolvesdotink/owlat.git",
+		"directory": "packages/provider-kit"
+	},
 	"files": [
 		"dist",
-		"README.md"
+		"README.md",
+		"LICENSE",
+		"NOTICE"
 	],
 	"type": "module",
 	"sideEffects": false,
@@ -23,6 +41,8 @@
 	},
 	"scripts": {
 		"build": "tsup src/index.ts --format esm --dts --sourcemap --target node20 --clean",
+		"prepack": "bun run build && bun ../plugin-kit/scripts/packageLegalFiles.ts stage",
+		"postpack": "bun ../plugin-kit/scripts/packageLegalFiles.ts clean",
 		"test": "vitest run",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage",
