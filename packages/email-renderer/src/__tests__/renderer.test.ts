@@ -951,7 +951,7 @@ describe('dark mode overrides', () => {
 					id: 'hero',
 					type: 'hero',
 					content: { height: 300, items: [], ...content },
-				} as EditorBlock,
+				} as unknown as EditorBlock,
 			]);
 		const image = { backgroundImage: 'https://example.com/hero.png' };
 		expect(hero(image)).toMatch(/<table [^>]*class="owlat-own-bg"/);
