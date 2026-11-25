@@ -1,5 +1,5 @@
 /**
- * What `llms.txt` puts first for an integrator or an agent: a note on the two
+ * What `llms.txt` points an integrator or an agent at: a note on the two
  * documents every instance serves, then sections of links to the API pages,
  * the guides that matter for email content, and the machine-readable
  * documents. `nuxt-ai-ready` (part of `@nuxtjs/seo`) writes the file at
