@@ -31,6 +31,12 @@ const AutomationsRunsPanel = defineAsyncComponent({
 	suspensible: false,
 });
 
+// Mounted only when runs wait or failed, so a healthy automation never loads it.
+const AutomationsHealthNotice = defineAsyncComponent({
+	loader: () => import('~/components/automations/HealthNotice.vue'),
+	suspensible: false,
+});
+
 useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
 
 definePageMeta({
@@ -78,6 +84,15 @@ const {
 } = useConvexQuery(api.automations.analytics.getStepAnalytics, () => ({
 	automationId: automationId.value,
 }));
+
+// Waiting runs and the last 7 days' failures, as the automations list reads them.
+const { data: healthRows } = useConvexQuery(api.automations.health.summaries, () => ({
+	automationIds: [automationId.value],
+}));
+const health = computed(() => {
+	const row = healthRows.value?.[0];
+	return row && (row.waiting || row.failed > 0) ? row : null;
+});
 
 const isLoading = computed(() => automationLoading.value || statsLoading.value);
 
@@ -274,6 +289,8 @@ const handleToggleStatus = async () => {
 				</UiPageHeader>
 			</div>
 
+			<AutomationsHealthNotice v-if="health" :automation-id="automationId" :health="health" />
+
 			<UiQueryBoundary
 				v-if="statsError"
 				class="mb-8"
@@ -372,7 +389,7 @@ const handleToggleStatus = async () => {
 			</div>
 
 			<!-- Contacts List: filterable by status, and by the list's health links -->
-			<AutomationsRunsPanel :automation-id="automationId" />
+			<AutomationsRunsPanel id="runs" :automation-id="automationId" class="scroll-mt-6" />
 		</div>
 	</div>
 </template>

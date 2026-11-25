@@ -20,6 +20,12 @@
  * when the day turns over, so a list left open across midnight UTC keeps the
  * previous window until one of its automations records an event.
  *
+ * Beside the counts, a summary names why the latest failure in the window
+ * failed (one run and its step run, read on demand) and how many runs wait for
+ * the sending setup now (`waitingRuns.ts`, a capped indexed read). Neither is
+ * a bucket: a failure's reason is on its step run, and waiting is a state, not
+ * an event.
+ *
  * Counting starts with the release that added this module. Older runs are not
  * backfilled: a cancelled run written before it does not say whether it
  * failed, stalled or was cancelled for another reason.
@@ -34,7 +40,9 @@ import { bumpStatShard, sumStatShards } from '../lib/statShards';
 import { utcDayKey, utcDayStart } from '../lib/clock';
 import { getLive } from '../lib/softDelete';
 import { throwInvalidInput } from '../_utils/errors';
+import type { AutomationStepFailureReason } from '../lib/validators/automations';
 import { automationsQuery } from './_helpers';
+import { summarizeWaitingRuns, WAITING_STEP_RANGES_PER_CALL } from './waitingRuns';
 
 /** The window the list reports: today (UTC) and the six days before it. */
 export const HEALTH_WINDOW_DAYS = 7;
@@ -107,12 +115,46 @@ export async function summarizeAutomationHealth(
 }
 
 /**
- * The last-7-days counts of the given automations, in the order asked. An
- * automation that does not exist or is in Recently deleted is left out, as for
- * an unknown id. Any member who can list automations can read this.
+ * Why the newest run a failed step ended inside the window failed, or null when
+ * none did. Read off that one run and its newest step run (the failed one), so
+ * it holds for runs that failed before reasons were counted anywhere; a failed
+ * step run written before codes existed reads as `unknown`.
  */
-// all-members: aggregate run counts beside the automation list, which every
-// member can read (`automations.list`); no contact or message data.
+export async function latestFailureReason(
+	db: DatabaseReader,
+	automationId: Id<'automations'>,
+	now: number
+): Promise<AutomationStepFailureReason | null> {
+	const run = await db
+		.query('automationRuns')
+		.withIndex('by_automation_end_reason_completed', (q) =>
+			q
+				.eq('automationId', automationId)
+				.eq('endReason', 'step_failed')
+				.gte('completedAt', healthWindowStart(now))
+		)
+		.order('desc')
+		.first();
+	if (!run) return null;
+	const newest = await db
+		.query('automationStepRuns')
+		.withIndex('by_automation_run', (q) => q.eq('automationRunId', run._id))
+		.order('desc')
+		.first();
+	return newest?.status === 'failed' ? (newest.failureReason ?? 'unknown') : 'unknown';
+}
+
+/**
+ * The last-7-days counts of the given automations, in the order asked, with
+ * the reason the latest failure in the window failed (`latestFailure`, null
+ * when nothing failed) and the runs waiting for the sending setup right now
+ * (`waiting`, null when none waits; see `waitingRuns.ts`). An automation that
+ * does not exist or is in Recently deleted is left out, as for an unknown id.
+ * Any member who can list automations can read this.
+ */
+// all-members: aggregate run counts and reason codes beside the automation
+// list, which every member can read (`automations.list`); no contact or
+// message data.
 export const summaries = automationsQuery({
 	args: { automationIds: v.array(v.id('automations')) },
 	handler: async (ctx, args) => {
@@ -121,10 +163,16 @@ export const summaries = automationsQuery({
 		}
 		const now = Date.now();
 		const ids = [...new Set(args.automationIds)];
+		const waitingSteps = Math.max(1, Math.floor(WAITING_STEP_RANGES_PER_CALL / ids.length));
 		const rows = await Promise.all(
 			ids.map(async (automationId) => {
 				if (!(await getLive(ctx, automationId))) return null;
-				return { automationId, ...(await summarizeAutomationHealth(ctx.db, automationId, now)) };
+				const counts = await summarizeAutomationHealth(ctx.db, automationId, now);
+				const [latestFailure, waiting] = await Promise.all([
+					counts.failed > 0 ? latestFailureReason(ctx.db, automationId, now) : null,
+					summarizeWaitingRuns(ctx.db, automationId, waitingSteps),
+				]);
+				return { automationId, ...counts, latestFailure, waiting };
 			})
 		);
 		return rows.filter((row) => row !== null);

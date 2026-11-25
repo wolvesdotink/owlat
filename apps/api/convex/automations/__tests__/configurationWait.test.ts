@@ -17,6 +17,7 @@ import type { Id } from '../../_generated/dataModel';
 import type * as SessionOrganization from '../../lib/sessionOrganization';
 import {
 	createTestBlockedEmail,
+	createTestContact,
 	createTestDomain,
 	createTestInstanceSettings,
 	enableFeatures,
@@ -24,6 +25,10 @@ import {
 import { RETRY_DELAYS_MS } from '../../lib/constants';
 import { AUTOMATION_FAILURE_BREAKER_THRESHOLD } from '../lifecycle';
 import { CONFIGURATION_WAIT_MS } from '../configurationWait';
+import { STEP_LEASE_MS } from '../stepOrchestration';
+import { deleteAutomationRun } from '../runDeletion';
+import { summarizeWaitingRuns, WAITING_COUNT_CAP } from '../waitingRuns';
+import type { DatabaseReader } from '../../_generated/server';
 import {
 	advanceAndRun,
 	DAY_MS,
@@ -279,6 +284,55 @@ describe('an email step waits for configuration instead of failing', () => {
 		expect((await runTotals(t, automationId)).statsCompleted).toBe(4);
 	});
 
+	it('a re-checked step completed by recovery releases the others too', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const seeded: { runId: Id<'automationRuns'>; contactId: Id<'contacts'> }[] = [];
+		for (let i = 0; i < 3; i++) {
+			const run = await seedRun(t, automationId, { email: `reader${i}@example.com` });
+			await startAndSettle(t, run.runId);
+			seeded.push(run);
+		}
+		await NO_DEFAULT_SENDER.fix(t);
+
+		// The re-check claims one step and queues its mail, then dies before its
+		// commit; recovery finds the Send and completes the step with it.
+		await t.mutation(internal.automations.configurationWait.probeWaitingStepRun, {});
+		const probed = await t.run(async (ctx) => {
+			for (const { runId, contactId } of seeded) {
+				const [stepRun] = await ctx.db
+					.query('automationStepRuns')
+					.withIndex('by_automation_run', (q) => q.eq('automationRunId', runId))
+					.collect();
+				if (stepRun?.waitingCheckedAt === undefined) return { stepRun: stepRun!, contactId };
+			}
+			throw new Error('no step was re-checked');
+		});
+		await t.mutation(internal.automations.stepOrchestration.claimStepRun, {
+			stepRunId: probed.stepRun._id,
+			attempt: 0,
+		});
+		const enqueued = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation',
+			email: 'reader@example.com',
+			contactId: probed.contactId,
+			automationId,
+			subject: 'Welcome',
+			html: '<p>Hello</p>',
+			from: 'Owlat <noreply@example.com>',
+			automationStepRunId: probed.stepRun._id,
+		});
+		if (!enqueued.ok) throw new Error('not enqueued');
+		await runDueScheduled(t);
+
+		vi.advanceTimersByTime(STEP_LEASE_MS + 1);
+		await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		await runDueScheduled(t);
+
+		expect(await sends(t)).toHaveLength(3);
+		for (const { runId } of seeded) expect((await runOf(t, runId)).status).toBe('completed');
+	});
+
 	it('a re-check tick re-runs one waiting step, not all of them', async () => {
 		const t = await setup(NO_DEFAULT_SENDER);
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
@@ -477,5 +531,219 @@ describe('a waiting step never sends twice or to someone it should not', () => {
 		expect(run.endReason).toBeUndefined();
 		const automation = await t.run(async (ctx) => ctx.db.get(automationId));
 		expect(automation?.consecutiveRunFailures ?? 0).toBe(0);
+	});
+});
+
+async function waitingOf(t: T, automationId: Id<'automations'>) {
+	const [row] = await t.query(api.automations.health.summaries, { automationIds: [automationId] });
+	return row?.waiting;
+}
+
+describe('what the list and the header say about waiting runs', () => {
+	it('counts the waiting runs by reason, with the earliest give-up, and lists them', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const first = await seedRun(t, automationId, { email: 'reader0@example.com' });
+		await startAndSettle(t, first.runId);
+		await advanceAndRun(t, 5 * MINUTE_MS);
+		const second = await seedRun(t, automationId, { email: 'reader1@example.com' });
+		await startAndSettle(t, second.runId);
+		const [firstStep] = await stepRunsOf(t, first.runId);
+
+		expect(await waitingOf(t, automationId)).toEqual({
+			count: 2,
+			hasMore: false,
+			reasons: [{ reason: 'no_default_sender', count: 2, until: firstStep?.waitingUntil }],
+		});
+		const { runs } = await t.query(api.automations.analytics.getAutomationRuns, {
+			automationId,
+			waiting: true,
+		});
+		expect(runs.map((run) => run._id)).toEqual([second.runId, first.runId]);
+	});
+
+	it('a re-check that finds the fault still there keeps the run counted', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId } = await seedRun(t, automationId);
+		await startAndSettle(t, runId);
+
+		await advanceAndRun(t, 5 * MINUTE_MS);
+		await recheckTick(t);
+
+		expect((await waitingOf(t, automationId))?.count).toBe(1);
+	});
+
+	it.each([
+		{
+			name: 'its mail goes out once the setup is fixed',
+			leave: async (t: T) => {
+				await NO_DEFAULT_SENDER.fix(t);
+				await recheckTick(t);
+			},
+		},
+		{
+			name: 'its wait runs out',
+			leave: (t: T) => advanceAndRun(t, CONFIGURATION_WAIT_MS),
+		},
+		{
+			name: 'its contact was deleted, at the next re-check',
+			leave: async (t: T, _automationId: Id<'automations'>, contactId: Id<'contacts'>) => {
+				await t.run(async (ctx) => ctx.db.patch(contactId, { deletedAt: Date.now() }));
+				await recheckTick(t);
+			},
+		},
+		{
+			name: 'its automation was paused, at the next re-check',
+			leave: async (t: T, automationId: Id<'automations'>) => {
+				await t.run(async (ctx) => ctx.db.patch(automationId, { status: 'paused' }));
+				await recheckTick(t);
+			},
+		},
+		{
+			name: 'the run was deleted',
+			leave: (t: T, _automationId: Id<'automations'>, _contactId: Id<'contacts'>, runId) =>
+				t.run(async (ctx) => {
+					await deleteAutomationRun(ctx, runId, 100);
+				}),
+		},
+		{
+			name: 'recovery completed a re-check that died after queuing the mail',
+			leave: async (
+				t: T,
+				automationId: Id<'automations'>,
+				contactId: Id<'contacts'>,
+				runId: Id<'automationRuns'>
+			) => {
+				await NO_DEFAULT_SENDER.fix(t);
+				await t.mutation(internal.automations.configurationWait.probeWaitingStepRun, {});
+				const [stepRun] = await stepRunsOf(t, runId);
+				await t.mutation(internal.automations.stepOrchestration.claimStepRun, {
+					stepRunId: stepRun!._id,
+					attempt: 0,
+				});
+				// Claimed by the re-check: not waiting while that attempt runs.
+				expect(await waitingOf(t, automationId)).toBeNull();
+				await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+					kind: 'automation',
+					email: 'reader@example.com',
+					contactId,
+					automationId,
+					subject: 'Welcome',
+					html: '<p>Hello</p>',
+					from: 'Owlat <noreply@example.com>',
+					automationStepRunId: stepRun!._id,
+				});
+				await runDueScheduled(t);
+				vi.advanceTimersByTime(STEP_LEASE_MS + 1);
+				await t.action(internal.automations.stepWalker.processPendingDelays, {});
+				await runDueScheduled(t);
+				expect((await runOf(t, runId)).status).toBe('completed');
+			},
+		},
+	])('a run stops counting as waiting when $name', async ({ leave }) => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId, contactId } = await seedRun(t, automationId);
+		await startAndSettle(t, runId);
+		expect((await waitingOf(t, automationId))?.count).toBe(1);
+
+		await leave(t, automationId, contactId, runId);
+
+		expect(await waitingOf(t, automationId)).toBeNull();
+		const { runs } = await t.query(api.automations.analytics.getAutomationRuns, {
+			automationId,
+			waiting: true,
+		});
+		expect(runs).toEqual([]);
+	});
+
+	it('reads one index range per email step, and counts only steps that wait', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId, stepIds } = await seedAutomation(t, [
+			{ email: 'Welcome' },
+			{ delayDays: 1 },
+			{ email: 'Follow-up' },
+			{ email: 'Last call' },
+		]);
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			const runId = await ctx.db.insert('automationRuns', {
+				automationId,
+				contactId,
+				currentStepIndex: 0,
+				status: 'running',
+				startedAt: Date.now(),
+				triggeredBy: 'contact_created',
+			});
+			// An email step scheduled to run, not waiting.
+			await ctx.db.insert('automationStepRuns', {
+				automationRunId: runId,
+				automationStepId: stepIds[0]!,
+				stepIndex: 0,
+				stepType: 'email',
+				status: 'pending',
+				scheduledAt: Date.now(),
+			});
+		});
+
+		const ranges = await t.run(async (ctx) => {
+			let stepRunRanges = 0;
+			const db = new Proxy(ctx.db, {
+				get(target, prop, receiver) {
+					if (prop !== 'query') return Reflect.get(target, prop, receiver);
+					return (table: Parameters<typeof target.query>[0]) => {
+						if (table === 'automationStepRuns') stepRunRanges++;
+						return target.query(table);
+					};
+				},
+			}) as DatabaseReader;
+			expect(await summarizeWaitingRuns(db, automationId)).toBeNull();
+			return stepRunRanges;
+		});
+		expect(ranges).toBe(3);
+
+		// Past its share of a list page's range budget, the count reads as "at least".
+		expect(await t.run((ctx) => summarizeWaitingRuns(ctx.db, automationId, 2))).toEqual({
+			count: 0,
+			hasMore: true,
+			reasons: [],
+		});
+	});
+
+	it('counts waiting rows already stored, up to the cap', async () => {
+		const t = await setup(NO_DEFAULT_SENDER);
+		const { automationId, stepIds } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		// Rows as a release without the summary wrote them: only the step run says it waits.
+		await t.run(async (ctx) => {
+			for (let i = 0; i <= WAITING_COUNT_CAP; i++) {
+				const contactId = await ctx.db.insert('contacts', createTestContact());
+				const runId = await ctx.db.insert('automationRuns', {
+					automationId,
+					contactId,
+					currentStepIndex: 0,
+					status: 'running',
+					startedAt: Date.now(),
+					triggeredBy: 'contact_created',
+				});
+				await ctx.db.insert('automationStepRuns', {
+					automationRunId: runId,
+					automationStepId: stepIds[0]!,
+					stepIndex: 0,
+					stepType: 'email',
+					status: 'pending',
+					scheduledAt: Date.now(),
+					waitingFor: i === 0 ? 'domain_not_verified' : 'no_default_sender',
+					waitingUntil: Date.now() + CONFIGURATION_WAIT_MS,
+					waitingCheckedAt: Date.now(),
+					delayUntil: Date.now() + CONFIGURATION_WAIT_MS,
+				});
+			}
+		});
+
+		const waiting = await waitingOf(t, automationId);
+		expect(waiting?.count).toBe(WAITING_COUNT_CAP);
+		expect(waiting?.hasMore).toBe(true);
+		expect(waiting?.reasons[0]?.reason).toBe('no_default_sender');
 	});
 });

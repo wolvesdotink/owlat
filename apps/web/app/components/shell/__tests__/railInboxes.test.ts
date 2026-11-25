@@ -11,6 +11,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ConversationsNav from '../ConversationsNav.vue';
 import InboxChip from '../../inbox/InboxChip.vue';
 import { resolveInboxIdentities, type AccessibleInboxRow } from '~/utils/inboxIdentity';
+import { SHARED_INBOX_RAIL_ENTRY } from '../../../../e2e/capture/sharedInbox';
 
 // The inbox drop targets are their own test (railMailboxDrop.test.ts).
 vi.mock('~/composables/postbox/usePostboxMessageDrag', () => ({
@@ -112,6 +113,29 @@ describe('Collapsed rail inbox entries', () => {
 		const wrapper = mountRail();
 		expect(entry(wrapper, 'mb_team').attributes('aria-label')).toBe('Team, 3 unread');
 		expect(entry(wrapper, 'mb_dev').attributes('aria-label')).toBe('Dev');
+	});
+
+	it('lets `bun run capture` find the Team inbox by its accessible name and mailbox link', () => {
+		railInboxes.value = [
+			...inboxes,
+			{ ...inboxes[1]!, mailboxId: 'mb_team_ops', name: 'Team Ops' },
+		];
+		Object.assign(globalThis, {
+			useFeatureFlag: () => ({ isEnabled: () => true }),
+			usePermissions: () => ({ isAdmin: ref(true), isRoleLoading: ref(false) }),
+		});
+		const wrapper = mountRail();
+		expect(wrapper.find('a[aria-label="Team inbox"]').exists()).toBe(true);
+		const matches = wrapper
+			.findAll('a')
+			.filter(
+				(link) =>
+					(link.attributes('href') ?? '').startsWith(SHARED_INBOX_RAIL_ENTRY.hrefPrefix) &&
+					SHARED_INBOX_RAIL_ENTRY.name.test(link.attributes('aria-label') ?? link.text())
+			);
+		expect(matches.map((link) => link.attributes('href'))).toEqual([
+			'/dashboard/postbox/inbox?mailbox=mb_team',
+		]);
 	});
 
 	it('marks the inbox named in the Postbox URL as current', () => {
