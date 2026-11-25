@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, afterEach } from 'vitest';
-import { resolveLocalHost, resolveLocalUrls } from '../localHost';
+import { publishedPort, resolveLocalHost, resolveLocalUrls } from '../localHost';
 
 describe('resolveLocalHost', () => {
 	afterEach(() => {
@@ -12,7 +14,7 @@ describe('resolveLocalHost', () => {
 
 	it('honours OWLAT_LOCAL_HOST (Docker Desktop bridge path)', () => {
 		expect(resolveLocalHost({ OWLAT_LOCAL_HOST: 'host.docker.internal' })).toBe(
-			'host.docker.internal',
+			'host.docker.internal'
 		);
 	});
 
@@ -32,7 +34,7 @@ describe('resolveLocalUrls', () => {
 
 	it('honours OWLAT_LOCAL_HOST for a local install (Docker Desktop)', () => {
 		expect(
-			resolveLocalUrls({ network: false, env: {}, localHost: 'host.docker.internal' }),
+			resolveLocalUrls({ network: false, env: {}, localHost: 'host.docker.internal' })
 		).toEqual({
 			localCloud: 'http://host.docker.internal:3210',
 			localSite: 'http://host.docker.internal:3211',
@@ -48,7 +50,7 @@ describe('resolveLocalUrls', () => {
 					CONVEX_SITE_URL: 'https://example.com',
 				},
 				localHost: 'host.docker.internal',
-			}),
+			})
 		).toEqual({
 			localCloud: 'http://host.docker.internal:3210',
 			localSite: 'http://host.docker.internal:3211',
@@ -64,7 +66,7 @@ describe('resolveLocalUrls', () => {
 					CONVEX_SITE_URL: 'http://127.0.0.1:3211',
 				},
 				localHost: 'host.docker.internal',
-			}),
+			})
 		).toEqual({
 			localCloud: 'http://127.0.0.1:3210',
 			localSite: 'http://127.0.0.1:3211',
@@ -77,11 +79,33 @@ describe('resolveLocalUrls', () => {
 				network: false,
 				env: { NUXT_PUBLIC_CONVEX_SITE_URL: 'http://127.0.0.1:9999' },
 				localHost: 'localhost',
-			}),
+			})
 		).toEqual({
 			localCloud: 'http://localhost:3210',
 			localSite: 'http://127.0.0.1:9999',
 		});
+	});
+
+	it('follows the ports .env moved, as docker-compose.yml publishes them', () => {
+		const env = { CONVEX_PORT: '13210', CONVEX_SITE_PORT: '13211' };
+		const moved = { localCloud: 'http://localhost:13210', localSite: 'http://localhost:13211' };
+		expect(resolveLocalUrls({ network: false, env, localHost: 'localhost' })).toEqual(moved);
+		// The URLs a copied .env.selfhost.example still holds at the old ports.
+		const template = {
+			NUXT_PUBLIC_CONVEX_URL: 'http://localhost:3210',
+			NUXT_PUBLIC_CONVEX_SITE_URL: 'http://localhost:3211',
+			CONVEX_SITE_URL: 'http://localhost:3211',
+		};
+		expect(
+			resolveLocalUrls({ network: false, env: { ...template, ...env }, localHost: 'localhost' })
+		).toEqual(moved);
+		expect(
+			resolveLocalUrls({
+				network: true,
+				env: { ...env, CONVEX_SITE_URL: 'https://convex-site.example.com' },
+				localHost: 'localhost',
+			})
+		).toEqual(moved);
 	});
 
 	it('defaults localHost from process.env when omitted', () => {
@@ -90,5 +114,22 @@ describe('resolveLocalUrls', () => {
 			localCloud: 'http://localhost:3210',
 			localSite: 'http://localhost:3211',
 		});
+	});
+});
+
+describe('publishedPort', () => {
+	it("takes compose's default when the variable is unset or empty", () => {
+		expect(publishedPort({}, 'CONVEX_SITE_PORT')).toBe('3211');
+		expect(publishedPort({ CONVEX_SITE_PORT: '' }, 'CONVEX_SITE_PORT')).toBe('3211');
+		expect(publishedPort({}, 'CONVEX_PORT')).toBe('3210');
+		expect(publishedPort({}, 'WEB_PORT')).toBe('3000');
+		expect(publishedPort({ WEB_PORT: '8080' }, 'WEB_PORT')).toBe('8080');
+	});
+
+	it('names the defaults docker-compose.yml publishes', () => {
+		const compose = readFileSync(join(__dirname, '../../../../../docker-compose.yml'), 'utf8');
+		for (const name of ['CONVEX_PORT', 'CONVEX_SITE_PORT', 'WEB_PORT'] as const) {
+			expect(compose).toContain(`\${${name}:-${publishedPort({}, name)}}:`);
+		}
 	});
 });

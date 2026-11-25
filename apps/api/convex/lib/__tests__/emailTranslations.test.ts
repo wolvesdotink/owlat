@@ -185,13 +185,9 @@ describe('resolveForLanguage', () => {
 		expect(resolved.subject).toBe('Welcome');
 	});
 
-	it('omits previewText for entities without that field', () => {
-		const resolved = resolveForLanguage(
-			templateEntity({ previewText: undefined }),
-			'en',
-			TRANSACTIONAL_TRANSLATABLE_FIELDS
-		);
-		expect('previewText' in resolved).toBe(false);
+	it('resolves the preview text of a transactional email', () => {
+		const resolved = resolveForLanguage(templateEntity(), 'en', TRANSACTIONAL_TRANSLATABLE_FIELDS);
+		expect(resolved.previewText).toBe('Preview');
 	});
 });
 
@@ -220,11 +216,9 @@ describe('addLanguage', () => {
 		expect(html).not.toContain('onerror');
 	});
 
-	it('does not seed previewText for entities without that field', () => {
+	it('seeds the preview text for a transactional email', () => {
 		const patch = addLanguage(templateEntity(), 'de', TRANSACTIONAL_TRANSLATABLE_FIELDS);
-		const overlay = parseTranslations(patch.translations)['de'];
-		expect(overlay).toBeDefined();
-		expect('previewText' in overlay!).toBe(false);
+		expect(parseTranslations(patch.translations)['de']?.previewText).toBe('Preview');
 	});
 
 	it('rejects a language that already has an overlay (already_exists)', () => {

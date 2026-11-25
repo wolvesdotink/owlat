@@ -17,7 +17,7 @@ import type {
 } from './blockOptions';
 
 /**
- * Text block content
+ * A paragraph or heading of rich text.
  */
 export interface TextBlockContent
 	extends
@@ -26,11 +26,16 @@ export interface TextBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** The text as HTML. Tags, attributes and styles outside the text policy are removed on write. */
 	html: string;
+	/** Whether the text is a paragraph or a heading level. */
 	blockType: TextBlockType;
+	/** Font size in px. */
 	fontSize: number;
+	/** Text color (CSS color). */
 	textColor: string;
 	textAlign?: 'left' | 'center' | 'right' | 'justify';
+	/** Line height as a multiple of the font size, such as 1.5. */
 	lineHeight?: number;
 	/** Block-level font weight (e.g. 400, 700) */
 	fontWeight?: number;
@@ -59,15 +64,17 @@ export interface TextBlockContent
 	borderColor?: string;
 	borderStyle?: BorderStyle;
 	/**
-	 * Set on the brand kit footer block, which prints the sender's postal
-	 * address. The renderer marks the element with `POSTAL_ADDRESS_BLOCK_ATTRIBUTE`
+	 * Marks the block that prints the sender's postal address, as the brand
+	 * kit footer does.
+	 *
+	 * The renderer marks the element with `POSTAL_ADDRESS_BLOCK_ATTRIBUTE`
 	 * (`brandKitBlocks.ts`).
 	 */
 	postalAddress?: boolean;
 }
 
 /**
- * Image block content
+ * An image, optionally linked.
  */
 export interface ImageBlockContent
 	extends
@@ -76,8 +83,11 @@ export interface ImageBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** Image URL (https). */
 	src: string;
+	/** Alternative text. Leave empty only for a decorative image. */
 	alt: string;
+	/** Width in percent of the space the image sits in, 1 to 100. */
 	width: number;
 	align: 'left' | 'center' | 'right';
 	/**
@@ -86,14 +96,15 @@ export interface ImageBlockContent
 	 * reporting the missing alt text.
 	 */
 	decorative?: boolean;
-	/** Durable blob identity paired with src. */
+	/** Set by the media library for an uploaded `src`. Leave it out for an external URL. */
 	storageId?: string;
-	/** Durable media-library provenance authorizing storageId. */
+	/** Set by the media library for an uploaded `src`. Leave it out for an external URL. */
 	mediaAssetId?: string;
-	/** Durable blob identity paired with darkSrc. */
+	/** Set by the media library for an uploaded `darkSrc`. Leave it out for an external URL. */
 	darkStorageId?: string;
-	/** Durable media-library provenance authorizing darkStorageId. */
+	/** Set by the media library for an uploaded `darkSrc`. Leave it out for an external URL. */
 	darkMediaAssetId?: string;
+	/** Where a click on the image leads. */
 	linkUrl?: string;
 	/** Optional fixed height in px */
 	height?: number;
@@ -124,7 +135,7 @@ export interface ImageBlockContent
 }
 
 /**
- * Button block content
+ * A call-to-action button that links to a URL.
  */
 export interface ButtonBlockContent
 	extends
@@ -133,13 +144,21 @@ export interface ButtonBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** The button label. */
 	text: string;
+	/** Where the button leads. The validator reports an empty URL or `#` as an error. */
 	url: string;
+	/** The button's fill color. The section around it takes `blockBackgroundColor`. */
 	backgroundColor: string;
+	/** Label color (CSS color). */
 	textColor: string;
+	/** `full` stretches the button across the available width. */
 	align: 'left' | 'center' | 'right' | 'full';
+	/** Corner radius of the button in px. */
 	borderRadius: number;
+	/** Horizontal padding inside the button in px. */
 	paddingX: number;
+	/** Vertical padding inside the button in px. */
 	paddingY: number;
 	/** Independent font size for button text */
 	fontSize?: number;
@@ -179,7 +198,7 @@ export interface ButtonBlockContent
 }
 
 /**
- * Divider block content
+ * A horizontal rule.
  */
 export interface DividerBlockContent
 	extends
@@ -188,12 +207,16 @@ export interface DividerBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** Line color (CSS color). */
 	color: string;
+	/** Line thickness in px. */
 	thickness: number;
+	/** Line length in percent of the available width, 1 to 100. */
 	width: number;
 	style: 'solid' | 'dashed' | 'dotted';
 	/** Divider alignment */
 	align?: 'left' | 'center' | 'right';
+	borderRadius?: number;
 	paddingTop?: number;
 	paddingRight?: number;
 	paddingBottom?: number;
@@ -210,10 +233,11 @@ export interface DividerBlockContent
 }
 
 /**
- * Spacer block content
+ * Empty vertical space.
  */
 export interface SpacerBlockContent
 	extends DarkModeOverrides, ResponsiveVisibility, CssClassOption, ConditionalOption {
+	/** Height in px. */
 	height: number;
 	paddingTop?: number;
 	paddingRight?: number;
@@ -231,7 +255,7 @@ export interface SpacerBlockContent
 }
 
 /**
- * A column item is a simplified block that can be nested inside columns
+ * A block inside a column: text, image, button, divider or spacer.
  */
 export interface ColumnItem {
 	id: string;
@@ -245,12 +269,13 @@ export interface ColumnItem {
 }
 
 /**
- * Column ratio presets
+ * Column width presets; `getColumnWidths` (`utils/columnWidths.ts`) maps each
+ * to percentages.
  */
 export type ColumnRatio = 'equal' | 'left-wide' | 'right-wide' | 'left-narrow' | 'right-narrow';
 
 /**
- * Per-column styling options
+ * Styling of one column, by position.
  */
 export interface ColumnStyle {
 	backgroundColor?: string;
@@ -278,7 +303,7 @@ export interface ColumnStyle {
 }
 
 /**
- * Columns block content
+ * Up to four columns side by side, each holding text, image, button, divider and spacer blocks.
  */
 export interface ColumnsBlockContent
 	extends
@@ -287,9 +312,13 @@ export interface ColumnsBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** How many columns render. Extra entries in `columns` are ignored. */
 	columnCount: 1 | 2 | 3 | 4;
+	/** Width preset for the columns. One column always takes the full width. */
 	ratio: ColumnRatio;
+	/** Stack the columns on top of each other on mobile. */
 	mobileStacking: boolean;
+	/** The blocks of each column, one array per column, left to right. */
 	columns: ColumnItem[][];
 	/** Vertical alignment for all columns */
 	verticalAlign?: 'top' | 'middle' | 'bottom';

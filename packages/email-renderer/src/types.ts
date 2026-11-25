@@ -37,6 +37,14 @@ export interface RenderOptions {
 	/** Variable values for conditional content evaluation */
 	variableValues?: Record<string, string>;
 	/**
+	 * Leave each Block's condition and repeat for the send to resolve: the Block
+	 * is rendered once, between region markers (`@owlat/shared/sendRegions`),
+	 * instead of being dropped or repeated here. Only HTML that a send personalizes
+	 * per request sets it (a transactional email's stored body); `variableValues`
+	 * is then ignored for conditions and repeats.
+	 */
+	sendTimeBlockLogic?: boolean;
+	/**
 	 * Language of the HTML document, a BCP 47 tag such as `de` or `pt-BR`
 	 * (default: 'en'). A value that is not a language tag renders as 'en'.
 	 */

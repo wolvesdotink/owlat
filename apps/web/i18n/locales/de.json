@@ -783,6 +783,18 @@
 						"topicPlaceholder": "Thema auswählen..."
 					}
 				}
+			},
+			"mailTopic": {
+				"deleted": "Dieses Thema wurde gelöscht, deshalb sendet diese Automation keine E-Mails mehr. Wähle ein anderes Thema oder Kein Thema.",
+				"deletedOption": "Gelöschtes Thema",
+				"hintWithTopic": "Kontakte, die dieses Thema verlassen, bekommen keine E-Mails dieser Automation mehr. Die übrigen Schritte laufen für sie weiter.",
+				"hintWithoutTopic": "Ohne Thema stoppt nur eine Abmeldung von allen E-Mails die E-Mails dieser Automation.",
+				"label": "Thema",
+				"none": "Kein Thema",
+				"operation": "Thema der Automation ändern",
+				"sameAsTrigger": "Wie der Auslöser: {name}",
+				"sameAsTriggerUnnamed": "Wie der Auslöser",
+				"saved": "Thema gespeichert"
 			}
 		},
 		"autonomy": {
@@ -3153,6 +3165,19 @@
 				"heading": "Verschlechterung der Zustellbarkeit erkannt | Verschlechterungen der Zustellbarkeit erkannt",
 				"openCheck": "Prüfung öffnen",
 				"resolve": "Alarm auflösen",
+				"sendingHold": {
+					"changedFrom": {
+						"banned": "Vorher war er gesperrt.",
+						"suspended": "Vorher war er ausgesetzt."
+					},
+					"heading": "Versand gestoppt",
+					"openHealth": "Zustellungsgesundheit öffnen",
+					"subheading": "Von dieser Instanz geht keine neue Mail raus, bis die Sperre aufgehoben ist.",
+					"title": {
+						"banned": "Versand gesperrt",
+						"suspended": "Versand ausgesetzt"
+					}
+				},
 				"statusLabel": "Status:",
 				"subheading": "Eine zuvor bestandene Prüfung schlägt wieder fehl. Sieh sie dir vor deinem nächsten Versand an."
 			},
@@ -3791,7 +3816,8 @@
 					"push": "Push auf {count} Gerät | Push auf {count} Geräten",
 					"noPush": "Kein Push",
 					"webhook": "Webhook an {count} Endpunkt | Webhook an {count} Endpunkte",
-					"noWebhook": "Kein Webhook eingerichtet"
+					"noWebhook": "Kein Webhook eingerichtet",
+					"webhookCleartext": "Webhook braucht HTTPS"
 				},
 				"email": {
 					"title": "E-Mail",
@@ -3824,6 +3850,7 @@
 					"title": "Webhook-Endpunkt",
 					"reach": "Geht an {count} Webhook, signiert und mit Wiederholungen. | Geht an {count} Webhooks, signiert und mit Wiederholungen.",
 					"notSet": "Kein Webhook empfängt Zustellbarkeitsalarme. Schick sie an dein Bereitschafts-Tool oder deinen Team-Chat.",
+					"cleartext": "{count} Webhook für Alarme hat eine http://-Adresse und bekommt keine Alarme, bis seine Adresse mit https:// beginnt. | {count} Webhooks für Alarme haben eine http://-Adresse und bekommen keine Alarme, bis ihre Adressen mit https:// beginnen.",
 					"off": "Ausgehende Webhooks sind auf dieser Instanz ausgeschaltet.",
 					"add": "Alarm-Webhook hinzufügen",
 					"manage": "Webhooks verwalten"
@@ -4348,6 +4375,7 @@
 					"attachments": "den Anhängen",
 					"name": "dem Namen",
 					"plainText": "der Nur-Text-Version",
+					"previewText": "dem Vorschautext",
 					"subject": "dem Betreff",
 					"unsubscribe": "der Abmelde-Einstellung"
 				},
@@ -8989,7 +9017,9 @@
 						"title": "Microsoft-Reputation (SNDS)",
 						"red": "SNDS bewertet {ip} für den {day} mit Rot: Outlook.com und Hotmail filtern den Großteil der Mails von dieser Adresse. Owlat sendet Mails an Microsoft von dieser Adresse mit reduzierter Rate, bis SNDS sie wieder grün bewertet. Andere Adressen und Anbieter sind nicht betroffen.",
 						"yellow": "SNDS bewertet {ip} für den {day} mit Gelb: Microsoft filtert einen Teil der Mails von dieser Adresse. Noch wird nichts zurückgehalten.",
-						"action": "So wird eine rote Adresse wieder grün"
+						"action": "So wird eine rote Adresse wieder grün",
+						"trapHits": "SNDS hat am {day} {count} Spamfallen-Treffer für {ip} gezählt. Deine Liste enthält eine Adresse, die sich nie angemeldet hat, oder eine, die lange aufgegeben und zur Falle wurde. Abwarten hilft hier nicht: Finde die Liste oder den Import, aus dem sie stammt, und entferne Kontakte, die nie bestätigt oder lange nicht mehr reagiert haben. | SNDS hat am {day} {count} Spamfallen-Treffer für {ip} gezählt. Deine Liste enthält Adressen, die sich nie angemeldet haben, oder solche, die lange aufgegeben und zu Fallen wurden. Abwarten hilft hier nicht: Finde die Liste oder den Import, aus dem sie stammen, und entferne Kontakte, die nie bestätigt oder lange nicht mehr reagiert haben.",
+						"trapAction": "So räumst du nach Spamfallen-Treffern auf"
 					}
 				},
 				"dmarc": {
@@ -10840,6 +10870,7 @@
 						"baseUrlTitle": "Deine API-Basis-URL",
 						"createContact": "Einen Kontakt anlegen",
 						"endpoints": {
+							"blockSchema": "Das JSON-Schema des Block-Inhalts, zum Schreiben von Vorlagen und gespeicherten Blöcken",
 							"contact": "Einen Kontakt lesen, aktualisieren oder löschen",
 							"contacts": "Kontakte auflisten oder anlegen",
 							"domains": "Versanddomains und die DNS-Einträge, die jede braucht",
@@ -10847,11 +10878,17 @@
 							"health": "Statusprüfung",
 							"limits": "Die Sendelimits dieses Schlüssels und was davon übrig ist",
 							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
+							"savedBlock": "Einen gespeicherten Block lesen oder ersetzen",
+							"savedBlocks": "Gespeicherte Blöcke auflisten oder anlegen",
 							"status": "Ob diese Instanz senden kann, und wenn nicht, warum",
 							"topicContactAdd": "Einen Kontakt zu einem Thema hinzufügen",
 							"topicContactRemove": "Einen Kontakt aus einem Thema entfernen",
 							"topics": "Themen auflisten",
 							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body) oder Sendungen auflisten",
+							"transactionalEmail": "Eine Transaktions-E-Mail lesen oder per Slug anlegen oder ersetzen",
+							"transactionalEmailPublish": "Eine Transaktions-E-Mail veröffentlichen",
+							"transactionalEmailUnpublish": "Eine Transaktions-E-Mail zurück in den Entwurf setzen",
+							"transactionalEmails": "Transaktions-E-Mails auflisten oder anlegen",
 							"transactionalSend": "Zustellstatus einer Sendung"
 						},
 						"fullReference": "Vollständige API-Referenz",
@@ -10955,6 +10992,14 @@
 							"statusRead": {
 								"description": "Sehen, ob diese Instanz senden kann, warum nicht und welche DNS-Einträge jede Absenderdomain noch braucht.",
 								"label": "Status — lesen"
+							},
+							"templatesRead": {
+								"description": "Transaktions-E-Mails und gespeicherte Blöcke lesen: Inhalt, Übersetzungen und Variablenschema.",
+								"label": "Vorlagen — lesen"
+							},
+							"templatesWrite": {
+								"description": "Transaktions-E-Mails und gespeicherte Blöcke anlegen und ändern und sie veröffentlichen oder zurückziehen.",
+								"label": "Vorlagen — schreiben"
 							},
 							"topicsRead": {
 								"description": "Themen und die IDs auflisten, mit denen du Kontakte hinzufügst.",
@@ -12024,13 +12069,28 @@
 						"trigger": "Auslöser",
 						"loadError": "Schritt-Trichter konnte nicht geladen werden"
 					},
+					"health": {
+						"waitingTitle": "{count} Durchlauf wartet auf die Versand-Einrichtung | {count} Durchläufe warten auf die Versand-Einrichtung",
+						"waitingTitleMore": "Mehr als {count} Durchläufe warten auf die Versand-Einrichtung",
+						"failedTitle": "{count} Durchlauf ist in den letzten 7 Tagen fehlgeschlagen | {count} Durchläufe sind in den letzten 7 Tagen fehlgeschlagen",
+						"latestFailure": "Der letzte Fehler:",
+						"showWaiting": "Wartende Durchläufe anzeigen",
+						"showFailed": "Fehlgeschlagene Durchläufe anzeigen"
+					},
 					"loading": "Automation wird geladen …",
+					"mailTopic": "Thema: {name}",
+					"mailTopicDeleted": "Thema gelöscht",
 					"notFoundDescription": "Diese Automation wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
 					"notFoundTitle": "Automation nicht gefunden",
 					"pageTitle": "Automationsdetails — Owlat",
 					"runs": {
 						"cancelled": "Abgebrochen",
 						"completed": "Abgeschlossen",
+						"emailSkip": {
+							"leftDeletedTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema der Automation angemeldet.",
+							"leftTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema {name} angemeldet.",
+							"unsubscribed": "E-Mails übersprungen: Dieser Kontakt hat sich von allen E-Mails abgemeldet."
+						},
 						"emptyDescription": "Kontakte erscheinen hier, sobald die Automation ausgelöst wird",
 						"emptyFiltered": "Keine Durchläufe für diesen Filter",
 						"emptyTitle": "Noch keine Kontakte in dieser Automation",
@@ -12074,7 +12134,8 @@
 							"sendingNotAllowed": "Wartet darauf, dass der Versand auf dieser Instanz wieder freigegeben ist. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf.",
 							"unknown": "Wartet darauf, dass der Versand wieder funktioniert. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf."
 						},
-						"waitingBadge": "Wartet"
+						"waitingBadge": "Wartet",
+						"waitingNote": "Durchläufe, deren E-Mail darauf wartet, dass die Versand-Einrichtung behoben ist. Jeder sendet, sobald das der Fall ist, oder gibt einen Tag nach Beginn des Wartens auf."
 					},
 					"stats": {
 						"completed": "Abgeschlossen",
@@ -12103,7 +12164,9 @@
 					"cardLabel": "7 Tage:",
 					"entered": "{count} gestartet",
 					"failed": "{count} fehlgeschlagen",
-					"stalled": "{count} hängen geblieben"
+					"stalled": "{count} hängen geblieben",
+					"waiting": "{count} wartend",
+					"waitingMore": "{count}+ wartend"
 				},
 				"newAutomation": "Neue Automation",
 				"noResults": {
@@ -14190,6 +14253,7 @@
 				"pageTitle": "Vorlagen — Owlat",
 				"searchPlaceholder": "Vorlagen suchen...",
 				"sortLabel": "Vorlagen sortieren",
+				"sortedByRelevance": "Nach Relevanz sortiert",
 				"subtitle": "E-Mail-Designs, die du in Kampagnen und Automationen wiederverwendest.",
 				"toasts": {
 					"duplicated": "Vorlage erfolgreich dupliziert"
@@ -19528,6 +19592,11 @@
 				"bodyNoCheck": "Eine Prüfung besteht nicht mehr",
 				"private": "Eine Zustellbarkeitsprüfung besteht nicht mehr"
 			},
+			"sendingBanned": {
+				"body": "Von dieser Instanz geht keine neue Mail raus, bis ein Plattform-Admin die Sperre aufhebt. Unter Zustellungsgesundheit siehst du, warum",
+				"private": "Von dieser Instanz geht keine neue Mail raus",
+				"title": "Versand gesperrt"
+			},
 			"sendingSuspended": {
 				"body": "Von dieser Instanz geht keine neue Mail raus. Unter Zustellungsgesundheit siehst du, warum",
 				"private": "Von dieser Instanz geht keine neue Mail raus",
@@ -19806,6 +19875,7 @@
 				"eventsRequired": "Es muss mindestens ein Ereignis ausgewählt sein",
 				"nameRequired": "Name ist erforderlich",
 				"urlInvalid": "Ungültiges URL-Format",
+				"urlAlertsNeedHttps": "Zustellbarkeitsalarme gehen nur an eine https://-Adresse",
 				"urlProtocol": "Die URL muss das Protokoll HTTP oder HTTPS verwenden",
 				"urlRequired": "URL ist erforderlich"
 			},

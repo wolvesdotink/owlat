@@ -12,7 +12,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { freemem } from 'node:os';
+import { freemem, platform } from 'node:os';
 import { join } from 'node:path';
 
 const TOOL = 'ci:bundle';
@@ -94,6 +94,27 @@ export function availableBytes(meminfo: string | undefined, fallback: number): n
 	return match ? Number(match[1]) * 1024 : fallback;
 }
 
+/**
+ * What macOS can hand a new process from `vm_stat` output: free, speculative
+ * and inactive pages, the estimate psutil reports as available there.
+ * `os.freemem()` on darwin is the kernel's free count alone (free plus
+ * speculative), so on a Mac that has been running a while it reports a
+ * fraction of what the system would reclaim for a build. Purgeable pages are
+ * left out: they sit in the active and inactive queues already, so adding them
+ * would count some pages twice. Undefined when the output lacks a field.
+ */
+export function vmStatAvailableBytes(vmStat: string | undefined): number | undefined {
+	const pageSize = vmStat?.match(/page size of (\d+) bytes/)?.[1];
+	if (vmStat === undefined || pageSize === undefined) return undefined;
+	let pages = 0;
+	for (const field of ['free', 'speculative', 'inactive']) {
+		const count = new RegExp(`^Pages ${field}:\\s+(\\d+)\\.?$`, 'm').exec(vmStat)?.[1];
+		if (count === undefined) return undefined;
+		pages += Number(count);
+	}
+	return pages * Number(pageSize);
+}
+
 export function minAvailableGiB(env: Readonly<Record<string, string | undefined>>): number {
 	const raw = env[MIN_AVAILABLE_ENV];
 	if (raw === undefined || raw === '') return MIN_AVAILABLE_GIB;
@@ -122,6 +143,12 @@ function readMeminfo(): string | undefined {
 	}
 }
 
+function readVmStat(): string | undefined {
+	if (platform() !== 'darwin') return undefined;
+	const result = spawnSync('vm_stat', { encoding: 'utf8' });
+	return result.status === 0 ? result.stdout : undefined;
+}
+
 /** Exit status of `step`; 130 when it was interrupted. */
 function runStep(step: Step, stderr: 'inherit' | 'pipe'): { code: number; stderr: string } {
 	console.info(`\n== ${TOOL}: ${step.label}`);
@@ -143,7 +170,10 @@ function run(): number {
 		console.error(`${TOOL}: ${(error as Error).message}`);
 		return 2;
 	}
-	const refusal = memoryRefusal(availableBytes(readMeminfo(), freemem()), minGiB);
+	const refusal = memoryRefusal(
+		availableBytes(readMeminfo(), vmStatAvailableBytes(readVmStat()) ?? freemem()),
+		minGiB
+	);
 	if (refusal !== undefined) {
 		console.error(refusal);
 		return 2;

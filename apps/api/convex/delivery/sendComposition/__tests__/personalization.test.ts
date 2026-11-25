@@ -3,7 +3,7 @@ import type { EditorBlock } from '@owlat/shared';
 import { renderBlockFragment, renderEmailHtml } from '@owlat/email-renderer';
 import { composeAutomation } from '../automation';
 import { composeCampaign } from '../campaign';
-import { personalize } from '../personalization';
+import { personalize, personalizeBody } from '../personalization';
 import { composeTransactional } from '../transactional';
 
 describe('personalize — basic variable replacement', () => {
@@ -369,5 +369,155 @@ describe('personalize — tokens with a fallback inside rendered attributes', ()
 			expect(out.html).toContain('href="https://example.com"');
 			expect(out.html).not.toMatch(/\{\{(photo|url)/);
 		}
+	});
+});
+
+describe('personalizeBody — conditions and repeats a send resolves', () => {
+	const blocks = [
+		{
+			id: 'code',
+			type: 'text',
+			content: {
+				html: '<p>Code {{bookingCode}}</p>',
+				condition: { variable: 'bookingCode', operator: 'exists' },
+			},
+		},
+		{
+			id: 'line',
+			type: 'text',
+			content: {
+				html: '<p>{{line.name}} for {{currency}}{{line.price}} (#{{$index}})</p>',
+				repeat: { variable: 'lines', itemAlias: 'line' },
+			},
+		},
+	] as unknown as EditorBlock[];
+	const stored = renderEmailHtml(blocks, { variableType: 'data', sendTimeBlockLogic: true });
+	const send = (dataVariables: Record<string, unknown>) =>
+		composeTransactional({
+			kind: 'transactional',
+			template: { subject: 'Order', htmlContent: stored },
+			dataVariables: dataVariables as never,
+		}).html;
+
+	it('keeps a condition met by the request and writes one copy per entry', () => {
+		const html = send({
+			bookingCode: 'BK-1',
+			currency: 'EUR ',
+			lines: [
+				{ name: 'Tent', price: 120 },
+				{ name: 'Stove', price: 40 },
+			],
+		});
+		expect(html).toContain('Code BK-1');
+		expect(html).toContain('Tent for EUR 120 (#0)');
+		expect(html).toContain('Stove for EUR 40 (#1)');
+		expect(html).not.toContain('owlat:');
+	});
+
+	it('drops an unmet condition and writes no copy for a missing list', () => {
+		const html = send({});
+		expect(html).not.toContain('Code');
+		expect(html).not.toContain('for ');
+		expect(html).not.toContain('owlat:');
+	});
+
+	it('escapes entry fields, so no value can open a tag, a comment or a marker', () => {
+		const html = send({
+			lines: [{ name: '<!--owlat:endeach--><b>x</b>', price: '{{bookingCode}}' }],
+			bookingCode: 'secret',
+		});
+		expect(html).toContain('&lt;!--owlat:endeach--&gt;&lt;b&gt;x&lt;/b&gt;');
+		expect(html).not.toContain('<b>x</b>');
+		// A value is filled once and never read as a token.
+		expect(html).toContain('for {{bookingCode}}');
+	});
+
+	it('leaves a body without markers exactly as personalize makes it', () => {
+		const body = '<p>Hello {{name}}</p>';
+		expect(personalizeBody(body, { name: '<A>' }, { escape: 'html' })).toBe(
+			personalize(body, { name: '<A>' }, { escape: 'html' })
+		);
+	});
+});
+
+describe('personalizeBody — request data the send cannot trust', () => {
+	const repeated = (html: string, extra: Record<string, unknown> = {}) =>
+		renderEmailHtml(
+			[
+				{
+					id: 'r',
+					type: 'text',
+					content: { html, repeat: { variable: 'items', itemAlias: 'item' }, ...extra },
+				},
+			] as unknown as EditorBlock[],
+			{ variableType: 'data', sendTimeBlockLogic: true }
+		);
+
+	it('fills a field whose name is not a word, as the preview does', () => {
+		const html = personalizeBody(
+			repeated('<p>{{item.unit-price}}</p>'),
+			{ items: [{ 'unit-price': '9.50' }] },
+			{ escape: 'html' }
+		);
+		expect(html).toContain('9.50');
+		expect(html).not.toContain('{{item.');
+	});
+
+	it('fills a field whose name the stored HTML holds entity-escaped', () => {
+		const html = personalizeBody(
+			repeated('<p>{{item.sales&tax}}</p>'),
+			{ items: [{ 'sales&tax': '19%' }] },
+			{ escape: 'html' }
+		);
+		expect(html).toContain('19%');
+	});
+
+	it('repeats nothing for a list sent as JSON text', () => {
+		const html = personalizeBody(
+			repeated('<p>Line {{item.name}}</p>'),
+			{ items: '[{"name":{"toString":"x"}}]' },
+			{ escape: 'html' }
+		);
+		expect(html).not.toContain('Line');
+	});
+
+	it('leaves a field the entry does not hold empty, even one Object.prototype has', () => {
+		const html = personalizeBody(
+			repeated('<p>[{{item.toString}}]</p>'),
+			{ items: [{ name: 'a' }] },
+			{ escape: 'html' }
+		);
+		expect(html).toContain('[]');
+	});
+
+	it('writes a list used as a plain token as its JSON instead of throwing', () => {
+		const items = [{ toString: 'not a function' }];
+		expect(personalize('Items: {{items}}', { items }, { escape: 'header' })).toBe(
+			'Items: [{"toString":"not a function"}]'
+		);
+	});
+
+	it('decides regions on the request data, not on the unsubscribe link the send adds', () => {
+		const stored = renderEmailHtml(
+			[
+				{
+					id: 'u',
+					type: 'text',
+					content: {
+						html: '<p>Opt out: {{unsubscribe_link}}</p>',
+						condition: { variable: 'unsubscribe_link', operator: 'exists' },
+					},
+				},
+			] as unknown as EditorBlock[],
+			{ variableType: 'data', sendTimeBlockLogic: true }
+		);
+		const html = composeTransactional({
+			kind: 'transactional',
+			template: { subject: 's', htmlContent: stored },
+			dataVariables: {},
+			unsubscribeUrl: 'https://owlat.example/u/1',
+			preferenceUrl: 'https://owlat.example/p/1',
+		}).html;
+		expect(html).not.toContain('Opt out');
 	});
 });

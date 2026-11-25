@@ -564,6 +564,15 @@ describe('transformHtml — footer sender address and language', () => {
 		expect(french).toContain('>Manage Preferences</a>');
 		expect(french).toContain('>Unsubscribe</a>');
 	});
+
+	it('labels the view-in-browser link in the language of the body', () => {
+		const viewInBrowserUrl = 'https://app.example/archive?token=a';
+		const german = transformHtml('<body></body>', { viewInBrowserUrl, footerLanguage: 'de' });
+		expect(german).toContain('>Im Browser ansehen</a>');
+		expect(german).not.toContain('View in browser');
+		const french = transformHtml('<body></body>', { viewInBrowserUrl, footerLanguage: 'fr' });
+		expect(french).toContain('>View in browser</a>');
+	});
 });
 
 describe('transformHtml — the instance’s own subscription links', () => {
