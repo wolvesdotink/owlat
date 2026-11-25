@@ -140,7 +140,7 @@ export const TEMPLATE_OPERATIONS = [
 		path: '/api/v1/transactional-emails/{slug}/publish',
 		tag: 'Templates',
 		summary:
-			'Publish a transactional email so sends can use it. The content scan runs first: suspicious content waits for an admin as pending_review, blocked content is refused. Publishing a published email changes nothing.',
+			'Publish a transactional email so sends can use it. The content scan runs first: suspicious content waits for an admin as pending_review, blocked content is refused. Publishing a published email, or one waiting for review, changes nothing.',
 		scope: 'templates:write',
 		pathParameters: [TRANSACTIONAL_EMAIL_SLUG],
 		queryParameters: [],
@@ -170,7 +170,7 @@ export const TEMPLATE_OPERATIONS = [
 		path: '/api/v1/transactional-emails/{slug}/unpublish',
 		tag: 'Templates',
 		summary:
-			'Return a transactional email to draft, so sends that name it are refused. Unpublishing a draft changes nothing.',
+			'Return a transactional email to draft, so sends that name it are refused. Unpublishing a draft changes nothing; an email waiting for review is refused with email_in_review.',
 		scope: 'templates:write',
 		pathParameters: [TRANSACTIONAL_EMAIL_SLUG],
 		queryParameters: [],
@@ -184,7 +184,12 @@ export const TEMPLATE_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
-		reasons: ['feature_disabled', 'template_write_rate_limited', ...WRITE_REFUSAL_REASONS],
+		reasons: [
+			'feature_disabled',
+			'email_in_review',
+			'template_write_rate_limited',
+			...WRITE_REFUSAL_REASONS,
+		],
 	},
 	{
 		operationId: 'listSavedBlocks',

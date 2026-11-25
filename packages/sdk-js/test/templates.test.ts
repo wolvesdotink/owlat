@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OPERATION_EXAMPLES } from '@owlat/public-contract/schemas';
 import { createTestClient, mockFetch, TEST_RATE_LIMIT_HEADERS } from './helpers';
 import { ConflictError, InvalidStateError, ValidationError } from '../src/errors';
+import type { TransactionalEmail } from '../src';
 
 afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-const EMAIL = OPERATION_EXAMPLES.getTransactionalEmail.response.data;
+// Typed as a read returns it: the upserts below prove a read is accepted as a write.
+const EMAIL: TransactionalEmail = OPERATION_EXAMPLES.getTransactionalEmail.response.data;
 
 const headersOf = (init: RequestInit | undefined) =>
 	(init?.headers ?? {}) as Record<string, string>;

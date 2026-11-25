@@ -3758,8 +3758,8 @@
 																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
 																},
 																"currentRevision": {
-																	"type": "integer",
-																	"description": "The email's current revision, on a `revision_mismatch` refusal."
+																	"type": ["integer", "null"],
+																	"description": "The email's current revision on a `revision_mismatch` refusal, or null when no email has the slug."
 																}
 															}
 														}
@@ -3877,7 +3877,7 @@
 			"post": {
 				"operationId": "publishTransactionalEmail",
 				"tags": ["Templates"],
-				"summary": "Publish a transactional email so sends can use it. The content scan runs first: suspicious content waits for an admin as pending_review, blocked content is refused. Publishing a published email changes nothing.",
+				"summary": "Publish a transactional email so sends can use it. The content scan runs first: suspicious content waits for an admin as pending_review, blocked content is refused. Publishing a published email, or one waiting for review, changes nothing.",
 				"security": [
 					{
 						"apiKey": ["templates:write"]
@@ -4109,8 +4109,8 @@
 																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
 																},
 																"currentRevision": {
-																	"type": "integer",
-																	"description": "The email's current revision, on a `revision_mismatch` refusal."
+																	"type": ["integer", "null"],
+																	"description": "The email's current revision on a `revision_mismatch` refusal, or null when no email has the slug."
 																}
 															}
 														}
@@ -4227,7 +4227,7 @@
 			"post": {
 				"operationId": "unpublishTransactionalEmail",
 				"tags": ["Templates"],
-				"summary": "Return a transactional email to draft, so sends that name it are refused. Unpublishing a draft changes nothing.",
+				"summary": "Return a transactional email to draft, so sends that name it are refused. Unpublishing a draft changes nothing; an email waiting for review is refused with email_in_review.",
 				"security": [
 					{
 						"apiKey": ["templates:write"]
@@ -4440,7 +4440,7 @@
 															"properties": {
 																"reason": {
 																	"type": "string",
-																	"enum": ["workspace_deletion_in_progress"],
+																	"enum": ["email_in_review", "workspace_deletion_in_progress"],
 																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
 																}
 															}
@@ -8188,7 +8188,8 @@
 							"type": "string"
 						},
 						"additionalProperties": {
-							"type": "string"
+							"type": "string",
+							"enum": ["string", "number", "boolean", "date"]
 						},
 						"description": "The data variables a send passes, by name, with their type: string, number, boolean or date. Later releases may add types."
 					},

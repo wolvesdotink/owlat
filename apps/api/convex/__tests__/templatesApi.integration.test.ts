@@ -293,6 +293,18 @@ describe('POST /api/v1/transactional-emails', () => {
 		expect(await rowBySlug(t, 'order')).toBeNull();
 	});
 
+	it('refuses a block whose field has the wrong type, naming it, instead of failing', async () => {
+		const t = setupTest();
+		const { key } = await seedKey(t, READ_WRITE);
+		const res = await request(t, key, 'POST', '/api/v1/transactional-emails', {
+			...EMAIL,
+			slug: 'order',
+			blocks: [{ ...text('b-odd', ''), content: { ...text('b-odd', '').content, html: 42 } }],
+		});
+		const body = await expectRefusal('createTransactionalEmail', res, 400, 'invalid_content');
+		expect(body.error.data).toMatchObject({ blockId: 'b-odd' });
+	});
+
 	it('refuses a block type the server does not know', async () => {
 		const t = setupTest();
 		const { key } = await seedKey(t, READ_WRITE);
@@ -536,6 +548,27 @@ describe('publish and unpublish', () => {
 		expect((await rowBySlug(t, 'order'))?.status).toBe('draft');
 	});
 
+	it('leaves an email the scan held for review to the admin', async () => {
+		const t = setupTest();
+		const { key } = await seedKey(t, READ_WRITE);
+		await request(t, key, 'PUT', '/api/v1/transactional-emails/order', EMAIL);
+		await t.run(async (ctx) => {
+			const row = (await ctx.db
+				.query('transactionalEmails')
+				.withIndex('by_slug', (q) => q.eq('slug', 'order'))
+				.first())!;
+			await ctx.db.patch(row._id, { status: 'pending_review' });
+		});
+
+		const publish = await request(t, key, 'POST', '/api/v1/transactional-emails/order/publish');
+		expect(publish.status).toBe(200);
+		expect((await publish.json()).data.status).toBe('pending_review');
+
+		const unpublish = await request(t, key, 'POST', '/api/v1/transactional-emails/order/unpublish');
+		await expectRefusal('unpublishTransactionalEmail', unpublish, 422, 'email_in_review');
+		expect((await rowBySlug(t, 'order'))?.status).toBe('pending_review');
+	});
+
 	it('answers 404 for another action under the email', async () => {
 		const t = setupTest();
 		const { key } = await seedKey(t, READ_WRITE);
@@ -607,6 +640,21 @@ describe('/api/v1/saved-blocks', () => {
 		);
 		const audit = await auditRows(t, block.id);
 		expect(audit[audit.length - 1]).toMatchObject({ action: 'email_block.updated', userId: 'api' });
+	});
+
+	it('refuses to empty a saved block, as the editor does', async () => {
+		const t = setupTest();
+		const { key } = await seedKey(t, READ_WRITE);
+		const block = (await (await request(t, key, 'POST', '/api/v1/saved-blocks', FOOTER)).json())
+			.data.block;
+		const res = await request(t, key, 'PUT', `/api/v1/saved-blocks/${block.id}`, {
+			...FOOTER,
+			blocks: [],
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error.data?.field).toBe('blocks');
+		const stored = await t.run(async (ctx) => ctx.db.get(block.id as Id<'emailBlocks'>));
+		expect(stored?.content).toContain('f-text');
 	});
 
 	it('refuses a saved block with a broken block, naming it', async () => {

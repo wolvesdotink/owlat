@@ -110,7 +110,7 @@ export interface TransactionalEmail extends TransactionalEmailSummary {
 	 * The data variables a send passes, by name, with their type: `string`,
 	 * `number`, `boolean` or `date`. Later releases may add types.
 	 */
-	dataVariablesSchema: Record<string, string>;
+	dataVariablesSchema: Record<string, TemplateVariableType>;
 	/** Whether the email shows an unsubscribe link. */
 	showUnsubscribe: boolean;
 }

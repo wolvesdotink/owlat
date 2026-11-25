@@ -174,7 +174,7 @@ export const transactionalEmailSchema = z.strictObject({
 	translations: z
 		.record(z.string(), emailTranslationSchema)
 		.meta({ description: 'The other languages, keyed by language code.' }),
-	dataVariablesSchema: z.record(z.string(), z.string()).meta({
+	dataVariablesSchema: z.record(z.string(), z.enum(TEMPLATE_VARIABLE_TYPES)).meta({
 		description:
 			'The data variables a send passes, by name, with their type: string, number, boolean or date. Later releases may add types.',
 	}),

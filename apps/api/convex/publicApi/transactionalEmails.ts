@@ -337,7 +337,7 @@ export const putForApi = internalMutation({
 		const relabels = args.fields.defaultLanguage !== (email.defaultLanguage ?? DEFAULT_LANGUAGE);
 		if (relabels && supportedLanguagesOf(args.fields).length > 1) {
 			throwInvalidState(
-				'The default language cannot change while the email has translations. Change it in the editor, which swaps the content with the translation.',
+				'The default language cannot change while the email has translations: the blocks would stay in the old language.',
 				{ reason: 'default_language_change', field: 'defaultLanguage' }
 			);
 		}
@@ -359,8 +359,10 @@ export const publishForApi = internalMutation({
 		const email = await findOrThrow(ctx, args.slug);
 		assertRevision(email, args.expectedRevision);
 		// Publishing a live email is a no-op, so a script can publish
-		// unconditionally after every import.
-		if (email.status !== 'published') {
+		// unconditionally after every import. An email the content scan held
+		// for review stays held: only an admin's approval publishes it, as in
+		// the editor, which offers no publish while it waits.
+		if (email.status === 'draft') {
 			await publishTransactionalEmail(ctx, email, API_KEY_ACTOR);
 		}
 		return { ok: true, email: await reread(ctx, email._id) };
@@ -374,7 +376,13 @@ export const unpublishForApi = internalMutation({
 		if (!token.ok) return token;
 		await assertTransactionalEnabled(ctx);
 		const email = await findOrThrow(ctx, args.slug);
-		if (email.status !== 'draft') {
+		if (email.status === 'pending_review') {
+			// The editor offers no way out of review but an admin's decision.
+			throwInvalidState('The email is waiting for an admin to review it.', {
+				reason: 'email_in_review',
+			});
+		}
+		if (email.status === 'published') {
 			await unpublishTransactionalEmail(ctx, email._id, API_KEY_ACTOR);
 		}
 		return { ok: true, email: await reread(ctx, email._id) };

@@ -151,6 +151,11 @@ describe('schema and type agreement', () => {
 		expectTypeOf<{ list: number[] }>().not.toExtend<Properties>();
 	});
 
+	it('a read transactional email is accepted as a write: the export is the import', () => {
+		expectTypeOf<T.TransactionalEmail>().toExtend<T.PutTransactionalEmailRequest>();
+		expectTypeOf<T.SavedBlock>().toExtend<T.SavedBlockInput>();
+	});
+
 	it('a contact source includes inbound', () => {
 		expectTypeOf<'inbound'>().toExtend<T.ContactSource>();
 	});

@@ -198,6 +198,11 @@ export const updateSavedBlock = createAuthenticatedHandler(
 		if (blockId instanceof Response) return blockId;
 		const decoded = await decodeBody(request);
 		if (!decoded.ok) return decoded.response;
+		// The editor refuses to save a block empty: the emails that link it would
+		// lose their copy, and nothing would be left for a later change to replace.
+		if (decoded.body.blocks.length === 0) {
+			return invalidInputResponse('A saved block needs at least one block', 'blocks');
+		}
 		const prepared = prepareWrite(decoded.body);
 		if (!prepared.ok) return prepared.response;
 		try {

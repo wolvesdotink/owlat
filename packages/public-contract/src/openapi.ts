@@ -130,8 +130,9 @@ const REASON_DATA: Partial<Record<ApiErrorReason, JsonObject>> = {
 	},
 	revision_mismatch: {
 		currentRevision: {
-			type: 'integer',
-			description: "The email's current revision, on a `revision_mismatch` refusal.",
+			type: ['integer', 'null'],
+			description:
+				"The email's current revision on a `revision_mismatch` refusal, or null when no email has the slug.",
 		},
 	},
 	content_blocked: {

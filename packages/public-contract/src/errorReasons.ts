@@ -70,6 +70,8 @@ export type WriteRefusalReason = (typeof WRITE_REFUSAL_REASONS)[number];
  *   one; `error.data.currentRevision` names it.
  * - `email_published`: the email is published and the request did not ask to
  *   change it while live (`?whilePublished=true`).
+ * - `email_in_review`: the content scan held the email for an admin's review,
+ *   and only the admin's decision moves it on.
  * - `default_language_change`: the default language cannot change while the
  *   email has translations.
  * - `content_blocked`: the content scan refused the content of a published
@@ -86,6 +88,7 @@ export const TEMPLATE_WRITE_REFUSAL_REASONS = [
 	'slug_taken',
 	'revision_mismatch',
 	'email_published',
+	'email_in_review',
 	'default_language_change',
 	'content_blocked',
 	'html_render_pending',

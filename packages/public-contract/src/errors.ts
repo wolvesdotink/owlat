@@ -32,6 +32,7 @@ export const ERROR_REASON_STATUS: Record<ApiErrorReason, number> = {
 	slug_taken: 409,
 	revision_mismatch: 409,
 	email_published: 422,
+	email_in_review: 422,
 	default_language_change: 422,
 	content_blocked: 422,
 	html_render_pending: 422,

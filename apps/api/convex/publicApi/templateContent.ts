@@ -72,15 +72,7 @@ export function checkContent(blocks: readonly unknown[]): ContentCheck {
 	const stored = parseContentBlocks(contentJson) as BlockTreeNode[];
 
 	const unknown = unknownTypeIssues(stored);
-	const validation = validateBlocks(stored as Parameters<typeof validateBlocks>[0]).issues.map(
-		(issue): ContentIssue => ({
-			severity: issue.severity,
-			code: issue.code,
-			message: issue.message,
-			blockId: issue.blockId ?? null,
-			blockType: issue.blockType ?? null,
-		})
-	);
+	const validation = unknown.length === 0 ? validationIssues(stored) : [];
 
 	const warnings: ContentIssue[] = [];
 	let htmlBytes = 0;
@@ -116,6 +108,53 @@ export function checkContent(blocks: readonly unknown[]): ContentCheck {
 	);
 	const firstError = issues.find((issue) => issue.severity === 'error') ?? null;
 	return { blocks: stored, contentJson, issues, firstError, htmlBytes };
+}
+
+/**
+ * `validateBlocks` over the blocks. A semantic check can throw on a field of
+ * the wrong type that the shape check has already reported, so a throw is
+ * traced to the root block that causes it and reported as that block's error.
+ */
+function validationIssues(blocks: readonly BlockTreeNode[]): ContentIssue[] {
+	const validate = (list: readonly BlockTreeNode[]) =>
+		validateBlocks(list as Parameters<typeof validateBlocks>[0]).issues.map(
+			(issue): ContentIssue => ({
+				severity: issue.severity,
+				code: issue.code,
+				message: issue.message,
+				blockId: issue.blockId ?? null,
+				blockType: issue.blockType ?? null,
+			})
+		);
+	try {
+		return validate(blocks);
+	} catch {
+		const issues: ContentIssue[] = [];
+		for (const block of blocks) {
+			try {
+				validate([block]);
+			} catch {
+				issues.push({
+					severity: 'error',
+					code: 'INVALID_BLOCK',
+					message: 'The block content does not have the shape of its type',
+					blockId: block.id,
+					blockType: block.type,
+				});
+			}
+		}
+		return issues.length > 0
+			? issues
+			: [
+					{
+						severity: 'error',
+						code: 'INVALID_BLOCK',
+						message: 'The blocks could not be checked',
+						blockId: null,
+						blockType: null,
+					},
+				];
+	}
 }
 
 function severityRank(issue: ContentIssue): number {
