@@ -182,9 +182,13 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.translation.cell.htmlBadge',
 	'components.translation.manager.buttonBlock',
 	'components.translation.manager.containerPrefix',
+	// Only the two placeholders and a comma.
+	'components.translation.manager.groupedField',
 	'components.translation.manager.heroPrefix',
 	'components.translation.manager.htmlBadge',
 	'components.translation.manager.languageOption',
+	// "Link" is the German term the app uses (Link-Adressen), like the presend check name.
+	'components.translation.manager.menuLink',
 	'components.webhooks.webhookDeliveryLogsPanel.events.test',
 	'dashboard.admin.backups.pageTitle',
 	'dashboard.admin.backups.title',

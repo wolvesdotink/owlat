@@ -277,3 +277,15 @@ describe('TranslationCell badges', () => {
 		badgeBesideText(w, 'HTML');
 	});
 });
+
+describe('cell preview', () => {
+	it('shows plain text with angle brackets as written', () => {
+		const w = mountCell({ value: 'Orders < 10 kg ship > today', isHtml: false });
+		expect(entry(w).text()).toContain('Orders < 10 kg ship > today');
+	});
+
+	it('shows HTML as its text', () => {
+		const w = mountCell({ value: '<p>Hallo <strong>Welt</strong></p>', isHtml: true });
+		expect(entry(w).text()).toContain('Hallo Welt');
+	});
+});

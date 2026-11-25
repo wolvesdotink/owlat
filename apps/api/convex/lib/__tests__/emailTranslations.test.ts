@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ConvexError } from 'convex/values';
-import { extractTranslatableContent } from '../../emailTemplates/translationMerge';
+import { extractTranslatableContent, itemTextKey } from '../../emailTemplates/translationMerge';
 import {
 	addLanguage,
 	mergeTranslationWithContent,
@@ -8,6 +8,7 @@ import {
 	removeLanguage,
 	resolveForLanguage,
 	serializeTranslations,
+	setDefaultLanguagePatch,
 	updateTranslationPatch,
 	TEMPLATE_TRANSLATABLE_FIELDS,
 	TRANSACTIONAL_TRANSLATABLE_FIELDS,
@@ -373,5 +374,272 @@ describe('Hero descendants', () => {
 		);
 		expect(merged[0].content.columns[0][0].content.html).toBe('<p>Hi</p>');
 		expect(merged[1].content.columns[0][0].content.html).toBe('<p>Hallo</p>');
+	});
+});
+
+describe('list items, table text, menu labels and accordion titles', () => {
+	const k = itemTextKey;
+	const LIST = {
+		id: 'list',
+		type: 'list',
+		content: { items: ['Free shipping', 'Easy returns'], listType: 'bullet' },
+	};
+	const TABLE = {
+		id: 'table',
+		type: 'table',
+		content: {
+			headers: ['Product', 'Price'],
+			rows: [
+				['Shirt', '49'],
+				['Socks', '9'],
+			],
+			footerRow: ['Total', '58'],
+			captionText: 'Your order',
+		},
+	};
+	const MENU = {
+		id: 'menu',
+		type: 'menu',
+		content: {
+			items: [
+				{ label: 'Shop', url: 'https://owlat.com/shop' },
+				{ label: 'Help', url: 'https://owlat.com/help' },
+			],
+		},
+	};
+	const ACCORDION = {
+		id: 'acc',
+		type: 'accordion',
+		content: {
+			sections: [
+				{
+					id: 's1',
+					title: 'Shipping',
+					items: [{ id: 'acc-text', type: 'text', content: { html: '<p>Three days</p>' } }],
+				},
+			],
+		},
+	};
+	// The table sits in a column, so the merge must reach a nested Block.
+	const CONTENT_ALL = JSON.stringify([
+		LIST,
+		{ id: 'cols', type: 'columns', content: { columns: [[TABLE], [MENU]] } },
+		ACCORDION,
+	]);
+	const GERMAN = {
+		list: {
+			texts: {
+				[k('Free shipping')]: 'Kostenloser Versand',
+				[k('Easy returns')]: 'Einfache Rückgabe',
+			},
+		},
+		table: {
+			texts: {
+				[k('Product')]: 'Produkt',
+				[k('Price')]: 'Preis',
+				[k('Shirt')]: 'Hemd',
+				[k('Socks')]: 'Socken',
+				[k('Total')]: 'Summe',
+				[k('Your order')]: 'Deine Bestellung',
+			},
+		},
+		menu: { texts: { [k('Shop')]: 'Laden', [k('Help')]: 'Hilfe' } },
+		acc: { sectionTitles: { s1: 'Versand' } },
+		'acc-text': { html: '<p>Drei Tage</p>' },
+	};
+
+	it('seeds a language with every item text, keyed by its source', () => {
+		const seeded = extractTranslatableContent(CONTENT_ALL);
+		expect(seeded['list']).toEqual({
+			texts: { [k('Free shipping')]: 'Free shipping', [k('Easy returns')]: 'Easy returns' },
+		});
+		expect(Object.values(seeded['table']!.texts!)).toEqual([
+			'Product',
+			'Price',
+			'Shirt',
+			'49',
+			'Socks',
+			'9',
+			'Total',
+			'58',
+			'Your order',
+		]);
+		expect(seeded['menu']).toEqual({ texts: { [k('Shop')]: 'Shop', [k('Help')]: 'Help' } });
+		expect(seeded['acc']).toEqual({ sectionTitles: { s1: 'Shipping' } });
+		expect(seeded['acc-text']).toEqual({ html: '<p>Three days</p>' });
+	});
+
+	it('merges item texts at any depth and keeps untranslated text and links', () => {
+		const [list, columns, accordion] = JSON.parse(mergeTranslationWithContent(CONTENT_ALL, GERMAN));
+		expect(list.content.items).toEqual(['Kostenloser Versand', 'Einfache Rückgabe']);
+		const [[table], [menu]] = columns.content.columns;
+		expect(table.content.headers).toEqual(['Produkt', 'Preis']);
+		expect(table.content.rows).toEqual([
+			['Hemd', '49'],
+			['Socken', '9'],
+		]);
+		expect(table.content.footerRow).toEqual(['Summe', '58']);
+		expect(table.content.captionText).toBe('Deine Bestellung');
+		expect(menu.content.items).toEqual([
+			{ label: 'Laden', url: 'https://owlat.com/shop' },
+			{ label: 'Hilfe', url: 'https://owlat.com/help' },
+		]);
+		expect(accordion.content.sections[0].title).toBe('Versand');
+		expect(accordion.content.sections[0].items[0].content.html).toBe('<p>Drei Tage</p>');
+	});
+
+	it('translates the rich cells of a table that has them', () => {
+		const content = JSON.stringify([
+			{
+				id: 'table',
+				type: 'table',
+				content: { headers: [], rows: [['Shirt']], cells: [[{ content: 'Shirt', colSpan: 2 }]] },
+			},
+		]);
+		const [table] = JSON.parse(mergeTranslationWithContent(content, GERMAN));
+		expect(table.content.cells).toEqual([[{ content: 'Hemd', colSpan: 2 }]]);
+	});
+
+	it('keeps each translation on its own item after the author reorders or changes them', () => {
+		// The author moved "Easy returns" up, rewrote "Free shipping" and added an item.
+		const edited = JSON.stringify([
+			{
+				...LIST,
+				content: {
+					...LIST.content,
+					items: ['Easy returns', 'Free shipping worldwide', 'Gift wrap'],
+				},
+			},
+			{
+				...TABLE,
+				content: {
+					...TABLE.content,
+					rows: [
+						['Socks', '9'],
+						['Shirt', '49'],
+					],
+				},
+			},
+		]);
+		const [list, table] = JSON.parse(mergeTranslationWithContent(edited, GERMAN));
+		expect(list.content.items).toEqual([
+			'Einfache Rückgabe',
+			'Free shipping worldwide',
+			'Gift wrap',
+		]);
+		expect(table.content.rows).toEqual([
+			['Socken', '9'],
+			['Hemd', '49'],
+		]);
+	});
+
+	it('stores item texts and refuses one that is not text', () => {
+		const entity = templateEntity({
+			content: CONTENT_ALL,
+			translations: JSON.stringify({ de: { subject: 'Hallo', blocks: {} } }),
+			supportedLanguages: ['en', 'de'],
+		});
+		const patch = updateTranslationPatch(
+			entity,
+			{ language: 'de', blocks: JSON.stringify(GERMAN) },
+			TEMPLATE_TRANSLATABLE_FIELDS
+		);
+		expect(parseTranslations(patch.translations)['de']!.blocks).toEqual(GERMAN);
+		expect(
+			categoryOf(() =>
+				updateTranslationPatch(
+					entity,
+					{ language: 'de', blocks: '{"list":{"texts":{"a":5}}}' },
+					TEMPLATE_TRANSLATABLE_FIELDS
+				)
+			)
+		).toBe('invalid_input');
+	});
+
+	it('shows the source of an item whose translation was cleared, and keeps the others in place on a swap', () => {
+		const menu = (labels: string[]) => ({
+			id: 'menu',
+			type: 'menu',
+			content: { items: labels.map((label) => ({ label, url: 'https://owlat.com' })) },
+		});
+		const entity = templateEntity({
+			content: JSON.stringify([menu(['Contact us', 'Contact'])]),
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({
+				de: {
+					subject: 'Hallo',
+					blocks: { menu: { texts: { [k('Contact us')]: '', [k('Contact')]: 'Kontakt' } } },
+				},
+			}),
+		});
+		const labels = (content: string, blocks: Record<string, unknown>) =>
+			JSON.parse(mergeTranslationWithContent(content, blocks as never))[0].content.items.map(
+				(item: { label: string }) => item.label
+			);
+		expect(labels(entity.content, parseTranslations(entity.translations)['de']!.blocks!)).toEqual([
+			'Contact us',
+			'Kontakt',
+		]);
+		const patch = setDefaultLanguagePatch(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS)!;
+		const en = parseTranslations(patch.translations)['en']!.blocks!;
+		expect(labels(patch.content!, en)).toEqual(['Contact us', 'Contact']);
+	});
+
+	it('leaves items untranslated rather than wrong when two texts become one on a swap', () => {
+		const entity = templateEntity({
+			content: JSON.stringify([
+				{ ...LIST, content: { ...LIST.content, items: ['Contact us', 'Contact'] } },
+			]),
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de', 'fr'],
+			translations: JSON.stringify({
+				de: {
+					subject: 'Hallo',
+					blocks: { list: { texts: { [k('Contact us')]: 'Kontakt', [k('Contact')]: 'Kontakt' } } },
+				},
+				// French translated only one of the two.
+				fr: {
+					subject: 'Bonjour',
+					blocks: { list: { texts: { [k('Contact us')]: 'Contactez-nous' } } },
+				},
+			}),
+		});
+		const patch = setDefaultLanguagePatch(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS)!;
+		const translations = parseTranslations(patch.translations);
+		for (const language of ['en', 'fr']) {
+			const blocks = translations[language]!.blocks!;
+			expect(
+				JSON.parse(mergeTranslationWithContent(patch.content!, blocks))[0].content.items
+			).toEqual(['Kontakt', 'Kontakt']);
+		}
+	});
+
+	it('moves every overlay onto the new default text when a language becomes the default', () => {
+		const french = { list: { texts: { [k('Free shipping')]: 'Livraison gratuite' } } };
+		const entity = templateEntity({
+			content: JSON.stringify([LIST]),
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de', 'fr'],
+			translations: JSON.stringify({
+				de: { subject: 'Hallo', blocks: { list: GERMAN.list } },
+				fr: { subject: 'Bonjour', blocks: french },
+			}),
+		});
+		const patch = setDefaultLanguagePatch(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS)!;
+		expect(JSON.parse(patch.content!)[0].content.items).toEqual([
+			'Kostenloser Versand',
+			'Einfache Rückgabe',
+		]);
+		const translations = parseTranslations(patch.translations);
+		const contentDe = patch.content!;
+		expect(
+			JSON.parse(mergeTranslationWithContent(contentDe, translations['en']!.blocks!))[0].content
+				.items
+		).toEqual(['Free shipping', 'Easy returns']);
+		expect(
+			JSON.parse(mergeTranslationWithContent(contentDe, translations['fr']!.blocks!))[0].content
+				.items
+		).toEqual(['Livraison gratuite', 'Einfache Rückgabe']);
 	});
 });

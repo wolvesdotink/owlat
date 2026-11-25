@@ -33,6 +33,7 @@ import {
 	extractTranslatableContent,
 	mergeTranslationIntoItem,
 	parseBlockList,
+	rekeyItemTexts,
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
 import { decodeOverlayBlocks, decodeStoredTranslations, type StoredTranslation } from './emailJson';
@@ -341,7 +342,7 @@ export function updateTranslationPatch(
 		const blocks = decodeOverlayBlocks(sanitizeOverlayBlocksJson(update.blocks));
 		if (!blocks.ok) {
 			throwInvalidInput(
-				'Translation blocks must be a JSON object of block id to { html?, buttonText?, alt? } text.',
+				'Translation blocks must be a JSON object of block id to { html?, buttonText?, alt?, texts?, sectionTitles? } text.',
 				{ issue: blocks.issue }
 			);
 		}
@@ -387,14 +388,24 @@ export function setDefaultLanguagePatch(
 	// (no per-block text), so guard against a missing `blocks` map: the merge
 	// indexes into it per block id and would otherwise throw.
 	const newDefaultContent = mergeTranslationWithContent(currentContent, newDefault.blocks ?? {});
+	// List items, table text and menu labels are keyed by their source text,
+	// which the swap replaces: every overlay moves to the keys of the new
+	// default's text in the same positions.
+	const previousBlocks = parseBlockList(currentContent) ?? [];
+	const nextBlocks = parseBlockList(newDefaultContent) ?? [];
 	const outgoingDefaultOverlay: Translation = {
 		subject: row.subject,
 		...(fields.hasPreviewText ? { previewText: row.previewText } : {}),
-		blocks: extractTranslatableContent(currentContent),
+		blocks: rekeyItemTexts(previousBlocks, nextBlocks, extractTranslatableContent(currentContent)),
 	};
 
 	// Drop the promoted language's overlay; demote the old default to one.
 	const { [language]: _, ...otherTranslations } = translations;
+	for (const overlay of Object.values(otherTranslations)) {
+		if (overlay.blocks) {
+			overlay.blocks = rekeyItemTexts(previousBlocks, nextBlocks, overlay.blocks);
+		}
+	}
 	const updatedTranslations: Record<string, StoredTranslation> = {
 		...otherTranslations,
 		[currentDefault]: outgoingDefaultOverlay,

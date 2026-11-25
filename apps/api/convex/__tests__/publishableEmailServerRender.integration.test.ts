@@ -10,6 +10,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 import { renderPublishableEmail } from '../lib/publishableEmailRender';
+import { itemTextKey } from '../emailTemplates/translationMerge';
 import { composeCampaign } from '../delivery/sendComposition/campaign';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -91,6 +92,60 @@ describe('email template saves', () => {
 		const de = JSON.parse(row!.htmlTranslations!).de;
 		expect(de.htmlContent).toContain('Gespeicherter Text');
 		expect(de.htmlContent).not.toContain('client copy');
+	});
+
+	it('renders translated list items, table text, menu labels and accordion titles', async () => {
+		const t = convexTest(schema, modules);
+		const k = itemTextKey;
+		const templateId = await seedTemplate(t, {
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({ de: { subject: 'Hallo', blocks: {} } }),
+			content: JSON.stringify([
+				{ id: 'list', type: 'list', content: { items: ['Free shipping'], listType: 'bullet' } },
+				{
+					id: 'table',
+					type: 'table',
+					content: { headers: ['Product'], rows: [['Shirt']], footerRow: ['Total'] },
+				},
+				{
+					id: 'menu',
+					type: 'menu',
+					content: { items: [{ label: 'Shop', url: 'https://owlat.com/shop' }], align: 'center' },
+				},
+				{
+					id: 'acc',
+					type: 'accordion',
+					content: { sections: [{ id: 's1', title: 'Shipping', items: [] }] },
+				},
+			]),
+		});
+
+		await t.mutation(api.emailTemplates.i18n.updateTranslation, {
+			templateId,
+			language: 'de',
+			blocks: JSON.stringify({
+				list: { texts: { [k('Free shipping')]: '<img src=x onerror=alert(1)>Versand' } },
+				table: {
+					texts: { [k('Product')]: 'Produkt', [k('Shirt')]: 'Hemd', [k('Total')]: 'Summe' },
+				},
+				menu: { texts: { [k('Shop')]: 'Laden' } },
+				acc: { sectionTitles: { s1: 'Lieferung' } },
+			}),
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		const de = JSON.parse(row!.htmlTranslations!).de.htmlContent as string;
+		// Translated text is escaped as the source text is, never markup.
+		expect(de).toContain('&lt;img src=x onerror=alert(1)&gt;Versand');
+		expect(de).not.toContain('<img src=x');
+		for (const text of ['Produkt', 'Hemd', 'Summe', 'Laden', 'Lieferung']) {
+			expect(de).toContain(text);
+		}
+		expect(de).toContain('https://owlat.com/shop');
+		expect(de).not.toContain('Free shipping');
+		expect(row!.htmlContent).toContain('Free shipping');
+		expect(row!.htmlContent).not.toContain('Versand');
 	});
 
 	it('renders a never-rendered row on publish instead of taking the client HTML', async () => {
