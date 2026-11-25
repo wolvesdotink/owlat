@@ -33,7 +33,9 @@ const ITEM_FIELD_EXAMPLE = `{{${DEFAULT_ITEM_ALIAS}.field}}`;
 
 const variableKey = ref('');
 const variableType = ref<DataVariableType>('string');
-const example = ref<DataVariableExampleValue | undefined | 'invalid'>(undefined);
+const example = ref<
+	{ valid: true; value: DataVariableExampleValue | undefined } | { valid: false }
+>({ valid: true, value: undefined });
 // A new field per form, so a reopened dialog starts without the last example.
 const formKey = ref(0);
 
@@ -41,14 +43,13 @@ const normalizedKey = computed(() => variableKey.value.trim());
 const isValidKey = computed(() => /^[a-zA-Z][a-zA-Z0-9_]*$/.test(normalizedKey.value));
 const isDuplicate = computed(() => props.existingKeys.includes(normalizedKey.value));
 const canCreate = computed(
-	() =>
-		!!normalizedKey.value && isValidKey.value && !isDuplicate.value && example.value !== 'invalid'
+	() => !!normalizedKey.value && isValidKey.value && !isDuplicate.value && example.value.valid
 );
 
 const resetForm = () => {
 	variableKey.value = '';
 	variableType.value = 'string';
-	example.value = undefined;
+	example.value = { valid: true, value: undefined };
 	formKey.value++;
 };
 
@@ -59,7 +60,7 @@ const handleClose = () => {
 
 const handleCreate = () => {
 	if (!canCreate.value) return;
-	const value = example.value === 'invalid' ? undefined : example.value;
+	const value = example.value.valid ? example.value.value : undefined;
 	emit('create', {
 		key: normalizedKey.value,
 		type: variableType.value,

@@ -172,13 +172,17 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 	// What the preview fills tokens and decides conditions and repeats with: each
 	// variable's own preview value (a transactional email's example), and over
 	// it whatever the Variable Values panel sets.
-	const previewValues = computed<Record<string, string>>(() => {
+	const exampleValues = computed<Record<string, string>>(() => {
 		const values: Record<string, string> = {};
 		for (const v of variables?.value ?? []) {
 			if (v.previewValue !== undefined) values[v.key] = v.previewValue;
 		}
-		return { ...values, ...renderOptions?.value?.variableValues };
+		return values;
 	});
+	const previewValues = computed<Record<string, string>>(() => ({
+		...exampleValues.value,
+		...renderOptions?.value?.variableValues,
+	}));
 
 	/** Build merged render options for the renderer */
 	const buildRenderOptions = (darkMode = false): RenderOptions => {
@@ -392,8 +396,9 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		if (previewMode.value !== 'edit') regenerateHtml();
 	};
 
-	// An example value edited while the preview is open shows at once.
-	watch(previewValues, (next, previous) => {
+	// An example value edited while the preview is open shows at once. Only
+	// the examples: a render option change re-renders through the watch below.
+	watch(exampleValues, (next, previous) => {
 		if (previewMode.value === 'edit') return;
 		if (JSON.stringify(next) !== JSON.stringify(previous)) regenerate();
 	});

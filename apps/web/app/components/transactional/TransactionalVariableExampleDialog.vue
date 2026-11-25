@@ -31,14 +31,18 @@ const { run: setVariableExample, isLoading } = useBackendOperation(
 	{ label: () => t('components.transactional.sendOptions.operations.example') }
 );
 
-const value = ref<DataVariableExampleValue | undefined | 'invalid'>(undefined);
+const input = ref<{ valid: true; value: DataVariableExampleValue | undefined } | { valid: false }>({
+	valid: true,
+	value: undefined,
+});
 
 async function save() {
-	if (!props.variable || value.value === 'invalid') return;
+	if (!props.variable || !input.value.valid) return;
+	const example = input.value.value;
 	const result = await setVariableExample({
 		id: props.emailId,
 		key: props.variable.key,
-		...(value.value !== undefined ? { example: value.value } : {}),
+		...(example !== undefined ? { example } : {}),
 	});
 	if (result.ok) emit('close');
 }
@@ -60,13 +64,13 @@ async function save() {
 				:type="variable.type"
 				:initial="variable.example"
 				:input-id="inputId"
-				@change="value = $event"
+				@change="input = $event"
 			/>
 		</div>
 		<template #footer>
 			<UiButton variant="ghost" @click="emit('close')">{{ t('common.cancel') }}</UiButton>
 			<UiButton
-				:disabled="value === 'invalid' || isLoading"
+				:disabled="!input.valid || isLoading"
 				data-testid="variable-example-save"
 				@click="save"
 			>

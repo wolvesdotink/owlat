@@ -15,6 +15,7 @@ describe('dataVariableExampleError', () => {
 		['date', '2026-11-25'],
 		['date', '2026-11-25T09:30:00Z'],
 		['date', '2026-11-25T09:30:00.123+01:00'],
+		['date', '2028-02-29'],
 		['array', []],
 		['array', ['a', 1, true, null, { name: 'Notebook', quantity: 2, note: null }]],
 	])('accepts %s %j', (type, value) => {
@@ -30,6 +31,8 @@ describe('dataVariableExampleError', () => {
 		['date', 1_764_000_000_000, 'must be an ISO date'],
 		['date', 'tomorrow', 'must be an ISO date'],
 		['date', '2026-13-45', 'must be an ISO date'],
+		['date', '2026-02-30', 'must be an ISO date'],
+		['date', '2026-04-31T10:00:00Z', 'must be an ISO date'],
 		['array', '[]', 'must be a list'],
 		['array', [['nested']], 'entry 1 must be'],
 		['array', ['ok', { name: { nested: true } }], 'entry 2, field "name"'],
@@ -51,6 +54,13 @@ describe('dataVariableExamplesFault', () => {
 
 	it('does not read a declared variable from the prototype', () => {
 		expect(dataVariableExamplesFault({}, { constructor: 'x' })?.variable).toBe('constructor');
+	});
+
+	it('measures the cap in UTF-8 bytes, not characters', () => {
+		// 6,000 characters, 18,000 bytes.
+		expect(dataVariableExamplesFault({ name: 'string' }, { name: '漢'.repeat(6_000) })).toEqual({
+			message: expect.stringContaining('too large'),
+		});
 	});
 
 	it('refuses examples over the size cap', () => {

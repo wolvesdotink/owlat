@@ -30,8 +30,11 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-	/** The parsed example, `undefined` for none, or `invalid` while the input is not one. */
-	(e: 'change', value: DataVariableExampleValue | undefined | 'invalid'): void;
+	/** The parsed example (`undefined` for none), or `valid: false` while the input is not one. */
+	(
+		e: 'change',
+		result: { valid: true; value: DataVariableExampleValue | undefined } | { valid: false }
+	): void;
 }>();
 
 const { t } = useBuilderI18n();
@@ -48,6 +51,12 @@ const textOf = (value: DataVariableExampleValue | undefined): string => {
 };
 
 const text = ref<string | number>(textOf(props.initial));
+
+// A date picker cannot show a stored timestamp (`2026-11-25T09:30:00Z`, which
+// the API accepts), so such an example is edited as text.
+const isPlainDate = (value: DataVariableExampleValue | undefined) =>
+	value === undefined || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value));
+const dateInputType = computed(() => (isPlainDate(props.initial) ? 'date' : 'text'));
 
 watch(
 	() => [props.type, props.initial] as const,
@@ -97,7 +106,7 @@ const errorMessage = computed(() => {
 watch(
 	parsed,
 	(result) => {
-		emit('change', 'error' in result ? 'invalid' : result.value);
+		emit('change', 'error' in result ? { valid: false } : { valid: true, value: result.value });
 	},
 	{ immediate: true }
 );
@@ -134,7 +143,7 @@ const errorId = computed(() => `${props.inputId}-error`);
 			v-else
 			:id="inputId"
 			v-model="text"
-			:type="type === 'number' ? 'number' : type === 'date' ? 'date' : 'text'"
+			:type="type === 'number' ? 'number' : type === 'date' ? dateInputType : 'text'"
 			class="input"
 			:class="{ 'input-error': errorMessage }"
 			:aria-invalid="errorMessage ? true : undefined"

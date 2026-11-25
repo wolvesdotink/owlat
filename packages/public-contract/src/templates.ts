@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { MAX_DATA_VARIABLE_EXAMPLES_CHARS } from '@owlat/shared/dataVariableExamples';
+import { MAX_DATA_VARIABLE_EXAMPLES_BYTES } from '@owlat/shared/dataVariableExamples';
 import { MAX_REPEAT_ITEMS } from '@owlat/shared/sendRegions';
 import { jsonPrimitiveSchema, requestBody, requiredString } from './common';
 import {
@@ -112,7 +112,7 @@ const dataVariableExampleSchema = z.union(
 	{ error: DATA_VARIABLE_EXAMPLES_SHAPE }
 );
 
-const dataVariableExamplesDescription = `Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most ${MAX_REPEAT_ITEMS} entries, each a plain value or a flat object of them. At most ${MAX_DATA_VARIABLE_EXAMPLES_CHARS / 1000} KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's.`;
+const dataVariableExamplesDescription = `Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most ${MAX_REPEAT_ITEMS} entries, each a plain value or a flat object of them. At most ${MAX_DATA_VARIABLE_EXAMPLES_BYTES / 1000} KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's.`;
 
 const languageCode = (message: string) =>
 	z.string({ error: message }).regex(LANGUAGE_CODE_PATTERN, { error: message });

@@ -204,6 +204,8 @@ describe('usePreview', () => {
 		renderOptions.value = { variableValues: { customerName: 'Sam' } };
 		await nextTick();
 		expect(preview.generatedHtml.value).toContain('Hi Sam');
+		// Rendered once for the change, so the diff still has the render before it.
+		expect(preview.htmlChanged.value).toBe(true);
 	});
 
 	it('keeps the humanised name for a variable without an example', () => {

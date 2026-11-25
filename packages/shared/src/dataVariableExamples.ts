@@ -27,11 +27,11 @@ export type DataVariableExampleValue = string | number | boolean | DataVariableE
 export type DataVariableExamples = Record<string, DataVariableExampleValue>;
 
 /**
- * Most characters the examples of one email may take as JSON. They are stored
+ * Most bytes the examples of one email may take as UTF-8 JSON. They are stored
  * on the email's row and read with it, by every list of the template library
  * too, so they stay small: a few rows of an order, not a real export.
  */
-export const MAX_DATA_VARIABLE_EXAMPLES_CHARS = 16_000;
+export const MAX_DATA_VARIABLE_EXAMPLES_BYTES = 16_000;
 
 /**
  * A field name inside a list entry: what `{{item.field}}` can name. Convex
@@ -42,6 +42,18 @@ const ITEM_FIELD_NAME = /^\w{1,64}$/;
 /** `2026-11-25`, or a full timestamp such as `2026-11-25T09:30:00Z`. */
 const ISO_DATE =
 	/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/**
+ * Whether an ISO date names a real calendar day. `Date.parse` rolls an
+ * impossible day over (`2026-02-30` is read as March 2), so the written year,
+ * month and day are checked against the day they produce.
+ */
+function isCalendarDate(value: string): boolean {
+	if (!ISO_DATE.test(value) || Number.isNaN(Date.parse(value))) return false;
+	const [year, month, day] = value.slice(0, 10).split('-').map(Number) as [number, number, number];
+	const date = new Date(Date.UTC(year, month - 1, day));
+	return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
 
 const isPrimitive = (value: unknown): value is string | number | boolean | null =>
 	value === null ||
@@ -86,7 +98,7 @@ export function dataVariableExampleError(type: string, value: unknown): string |
 		case 'boolean':
 			return typeof value === 'boolean' ? null : 'must be true or false';
 		case 'date':
-			return typeof value === 'string' && ISO_DATE.test(value) && !Number.isNaN(Date.parse(value))
+			return typeof value === 'string' && isCalendarDate(value)
 				? null
 				: 'must be an ISO date such as 2026-11-25';
 		case 'array': {
@@ -114,7 +126,7 @@ export interface DataVariableExamplesFault {
 /**
  * Why `examples` cannot be stored for `schema`, or `null` when they can: each
  * names a declared variable and matches its type, and together they fit in
- * {@link MAX_DATA_VARIABLE_EXAMPLES_CHARS}.
+ * {@link MAX_DATA_VARIABLE_EXAMPLES_BYTES}.
  */
 export function dataVariableExamplesFault(
 	schema: Readonly<Record<string, string>> | undefined,
@@ -132,9 +144,11 @@ export function dataVariableExamplesFault(
 		const error = type === undefined ? null : dataVariableExampleError(type, value);
 		if (error) return { variable: name, message: `The example for "${name}" ${error}` };
 	}
-	if (JSON.stringify(examples).length > MAX_DATA_VARIABLE_EXAMPLES_CHARS) {
+	if (
+		new TextEncoder().encode(JSON.stringify(examples)).length > MAX_DATA_VARIABLE_EXAMPLES_BYTES
+	) {
 		return {
-			message: `The examples are too large: together they must stay under ${MAX_DATA_VARIABLE_EXAMPLES_CHARS / 1000} KB as JSON`,
+			message: `The examples are too large: together they must stay under ${MAX_DATA_VARIABLE_EXAMPLES_BYTES / 1000} KB as JSON`,
 		};
 	}
 	return null;
