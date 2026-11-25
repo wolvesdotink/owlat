@@ -26,6 +26,7 @@ export interface CoeditSaveOverrides {
 	linkedBlockIds: string[];
 	attachments?: string;
 	showUnsubscribe?: boolean;
+	previewText?: string;
 }
 
 export interface CoeditSave {
@@ -66,6 +67,8 @@ export async function loadCoeditSave(
 		if (typeof fields['showUnsubscribe'] === 'boolean') {
 			overrides.showUnsubscribe = fields['showUnsubscribe'];
 		}
+		const previewText = text('previewText');
+		if (previewText !== undefined) overrides.previewText = previewText;
 	}
 	return { session, overrides };
 }

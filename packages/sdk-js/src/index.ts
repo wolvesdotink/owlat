@@ -14,6 +14,7 @@ export type {
 	CursorPaginatedResponse,
 	CursorPaginationMeta,
 	RequestOptions,
+	DataVariableValue,
 	JsonPrimitive,
 	// Errors
 	ApiErrorReason,

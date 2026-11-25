@@ -145,12 +145,17 @@ describe('schema and type agreement', () => {
 		>().toEqualTypeOf<true>();
 	});
 
-	it('template variables and event properties hold primitives only', () => {
+	it('template variables hold primitives and flat lists, event properties primitives only', () => {
 		type Variables = NonNullable<T.SendTransactionalRequest['dataVariables']>;
 		type Properties = NonNullable<T.SendEventRequest['eventProperties']>;
 		expectTypeOf<{ a: string; b: number; c: boolean; d: null }>().toExtend<Variables>();
 		expectTypeOf<{ nested: { a: string } }>().not.toExtend<Variables>();
-		expectTypeOf<{ list: string[] }>().not.toExtend<Variables>();
+		expectTypeOf<{
+			list: string[];
+			lines: { name: string; qty: number }[];
+		}>().toExtend<Variables>();
+		expectTypeOf<{ lines: { product: { id: number } }[] }>().not.toExtend<Variables>();
+		expectTypeOf<{ list: string[][] }>().not.toExtend<Variables>();
 		expectTypeOf<{ nested: { a: string } }>().not.toExtend<Properties>();
 		expectTypeOf<{ list: number[] }>().not.toExtend<Properties>();
 	});

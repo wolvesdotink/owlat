@@ -22,7 +22,7 @@ import { assertContentRevision } from '../lib/contentRevision';
 import {
 	assertEditableForPublishableChange,
 	buildEditablePatch,
-	publishedHtml,
+	publishedRender,
 	type EditableEmailArgs,
 	type EditableEmailPatch,
 } from '../lib/publishableEmail';
@@ -118,10 +118,12 @@ export async function publishTransactionalEmail(
 		throwInvalidState('Transactional email is already published');
 	}
 	assertContentRevision(email, expectedContentRevision, 'publish');
-	const html = publishedHtml(email, {
+	const { html, plainTextContent } = publishedRender(email, {
 		variableType: 'data',
 		theme: await loadEmailTheme(ctx),
 	});
+	// The text body goes live with the HTML it was rendered beside.
+	if (plainTextContent !== undefined) await ctx.db.patch(email._id, { plainTextContent });
 
 	const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 		emailId: email._id,

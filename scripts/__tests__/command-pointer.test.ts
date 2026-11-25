@@ -38,4 +38,15 @@ describe('command-pointer', () => {
 		expect(result.stdout).toBe('');
 		expect(result.stderr).toBe(`${pointerFor('ox:fmt')}\n`);
 	});
+
+	it('is never what the legacy setup wizard tells a developer to run next', () => {
+		const wizard = readFileSync(join(root, 'scripts/setup.sh'), 'utf8');
+		const summary = /^show_summary\(\) \{\n[\s\S]*?\n\}\n/m.exec(wizard)![0];
+		const named = [...summary.matchAll(/bun run (?!--)([\w:-]+)/g)].map(([, name]) => name!);
+		expect(named).toContain('dev:stack');
+		for (const name of named) {
+			expect(Object.keys(scripts), name).toContain(name);
+			expect(Object.keys(POINTERS), name).not.toContain(name);
+		}
+	});
 });

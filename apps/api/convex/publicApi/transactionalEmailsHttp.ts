@@ -107,7 +107,7 @@ type PreparedWrite =
 				content: string;
 				translations: string;
 				defaultLanguage: string;
-				dataVariablesSchema: Record<string, 'string' | 'number' | 'boolean' | 'date'>;
+				dataVariablesSchema: Record<string, 'string' | 'number' | 'boolean' | 'date' | 'array'>;
 				showUnsubscribe: boolean;
 			};
 			issues: TransactionalEmailWriteResult['issues'];

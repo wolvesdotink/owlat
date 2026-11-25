@@ -11,11 +11,17 @@
 		"sentDaysAgo": 6,
 		"stats": {
 			"sent": 5,
-			"delivered": 5,
+			"delivered": 4,
 			"opened": 3,
 			"clicked": 1,
-			"bounced": 0
-		}
+			"bounced": 1,
+			"failed": 1
+		},
+		"failure": {
+			"errorCode": "INVALID_RECIPIENT",
+			"errorMessage": "The provider refused the recipient address: 550 5.1.1 user unknown"
+		},
+		"bounceMessage": "452 4.2.2 Mailbox full: the recipient's mailbox is over its storage quota"
 	},
 	{
 		"slug": "june-announcements",

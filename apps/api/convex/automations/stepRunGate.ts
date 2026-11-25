@@ -4,7 +4,8 @@
  *
  * Checked twice for an email step: by the claim (`stepOrchestration.ts`), and
  * again by the non-campaign intake in the transaction that writes the Send
- * (`delivery/nonCampaignIntake.ts`). Between the two the email step reads its
+ * (`delivery/nonCampaignIntake.ts`). The worker re-checks the contact once more
+ * before dispatch (`delivery/marketingDispatchGate.ts`). Between the two the email step reads its
  * template and the default sender and personalizes the mail in an action, and a
  * pause, a deletion or a removed step landing in that window must still stop
  * the mail. The intake checks only the run, the automation and the step: it
@@ -14,12 +15,15 @@
 
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { contactMarketingIneligibility } from '../lib/marketingEligibility';
+import {
+	automationTopicIneligibility,
+	contactMarketingIneligibility,
+} from '../lib/marketingEligibility';
 import {
 	failStepAndCancelRun,
 	isTerminalStepRunStatus,
+	skipIneligibleEmailStepAndAdvance,
 	skipStepAndCancelRun,
-	skipUnsubscribedStepAndAdvance,
 	transitionStepRun,
 } from './stepRunTransitions';
 
@@ -79,7 +83,10 @@ async function gateStepRunContext(
 }
 
 /**
- * The claim's gate: {@link gateStepRunContext}, then the contact is eligible. A
+ * The claim's gate: {@link gateStepRunContext}, then the contact is eligible:
+ * not deleted, and for an email step neither unsubscribed from all marketing
+ * nor out of the automation's topic. The global unsubscribe is checked first,
+ * so it is the reason a contact who did both is recorded with. A
  * closed gate has already written its outcome (the step run skipped or failed,
  * and the run cancelled or moved on), so the caller only reports it.
  */
@@ -96,9 +103,16 @@ export async function gateStepRun(
 		await skipStepAndCancelRun(ctx, stepRun, 'Contact is no longer eligible: contact_deleted');
 		return { isOpen: false, isRunEnded: true, reason: 'Contact ineligible (contact_deleted)' };
 	}
-	if (ineligibility === 'contact_unsubscribed' && gate.step.stepType === 'email') {
-		await skipUnsubscribedStepAndAdvance(ctx, stepRun);
-		return { isOpen: false, isRunEnded: false, reason: 'Contact unsubscribed; email skipped' };
+	if (gate.step.stepType === 'email') {
+		if (ineligibility === 'contact_unsubscribed') {
+			await skipIneligibleEmailStepAndAdvance(ctx, stepRun, { reason: 'contact_unsubscribed' });
+			return { isOpen: false, isRunEnded: false, reason: 'Contact unsubscribed; email skipped' };
+		}
+		const leftTopic = await automationTopicIneligibility(ctx, gate.automation, contact);
+		if (leftTopic !== null) {
+			await skipIneligibleEmailStepAndAdvance(ctx, stepRun, leftTopic);
+			return { isOpen: false, isRunEnded: false, reason: 'Contact left the topic; email skipped' };
+		}
 	}
 
 	return { ...gate, contact };

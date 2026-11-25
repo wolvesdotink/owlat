@@ -138,6 +138,7 @@ const {
 	previewHtmlChanged,
 	togglePreviewMode,
 	previewSubject,
+	previewPreheader,
 	handlePreviewDarkMode,
 	handleDoubleClickBlock,
 	handleExitInlineEdit,
@@ -260,8 +261,10 @@ const canvasInnerElement = computed(
 						:variables="variables"
 						:show-data-variables="showDataVariables"
 						:data-variables="variables"
+						:preview-text="props.previewText"
 						@update:name="formName = $event"
 						@update:subject="formSubject = $event"
+						@update:preview-text="emit('update:previewText', $event)"
 						@add-variable="openVariableDialog"
 					/>
 				</template>
@@ -313,6 +316,7 @@ const canvasInnerElement = computed(
 			<PreviewPanel
 				:html="previewHtml"
 				:subject="previewSubject"
+				:preheader="previewPreheader"
 				:is-generating="isGeneratingHtml"
 				:dark-mode="previewDarkMode"
 				:plain-text="previewPlainText"

@@ -17,12 +17,14 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { IdempotencyRefusalReason } from '../auth/apiRequestReceipts';
 import type { SendIntakeAbuseState, SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
 import type { WorkerEnvelopeInput } from '../delivery/workerEnvelope';
-import type { jsonPrimitiveRecord } from '../lib/convexValidators';
+import type { dataVariablesRecord } from '../lib/convexValidators';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import {
+	MAX_REPEATED_BODY_CHARS,
 	mergeAttachments,
 	missingDataVariables,
+	oversizedRepeatVariables,
 	selectSendContent,
 	validateDataVariables,
 	type AttachmentRef,
@@ -249,6 +251,16 @@ export function decideSenderAndVariables(input: {
 			variables: missing,
 		};
 	}
+	const oversized = oversizedRepeatVariables(input.content, input.dataVariables);
+	if (oversized.length > 0) {
+		const names = oversized.map((name) => `"${name}"`).join(', ');
+		return {
+			ok: false,
+			reason: 'invalid_variables',
+			detail: `The email the entries of ${names} build is longer than ${MAX_REPEATED_BODY_CHARS} characters. Send fewer entries.`,
+			variables: oversized,
+		};
+	}
 	return undefined;
 }
 
@@ -277,7 +289,7 @@ export function planTransactionalSend(input: {
 	readonly request: {
 		readonly email: string;
 		readonly language: string | undefined;
-		readonly dataVariables: Infer<typeof jsonPrimitiveRecord> | undefined;
+		readonly dataVariables: Infer<typeof dataVariablesRecord> | undefined;
 		readonly attachmentRefs: AttachmentRef[] | undefined;
 	};
 	readonly contactId: Id<'contacts'>;

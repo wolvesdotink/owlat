@@ -1,4 +1,11 @@
-import type { EditorBlock } from '@owlat/shared';
+import type { CommonBlockProperties, EditorBlock } from '@owlat/shared';
+import {
+	CONDITION_REGION_END,
+	REPEAT_REGION_END,
+	conditionRegionStart,
+	repeatRegionStart,
+	stripSendRegionMarkers,
+} from '@owlat/shared/sendRegions';
 import type { RenderOptions } from './types';
 import { moduleFor } from './blocks/_registry';
 // Side-effect: ensure built-in modules are registered when plaintext rendering
@@ -39,13 +46,52 @@ const normalize = (text: string): string =>
  * Render an array of EditorBlocks to plain text.
  * Useful for multipart email (text/plain) which improves deliverability.
  */
-export const renderPlainText = (blocks: EditorBlock[], _options?: RenderOptions): string =>
+export const renderPlainText = (blocks: EditorBlock[], options?: RenderOptions): string =>
+	options?.sendTimeBlockLogic ? renderPlainTextForSend(blocks) : renderPlainTextBody(blocks);
+
+const renderPlainTextBody = (blocks: EditorBlock[]): string =>
 	normalize(
 		blocks
 			.map((block) => renderBlockPlainText(block))
 			.filter(Boolean)
 			.join('\n\n')
 	);
+
+/**
+ * The text body with each conditional or repeated Block between the region
+ * markers the send resolves (`renderEmailHtml`'s `sendTimeBlockLogic`). The
+ * blank line in front of such a Block sits inside its markers, so a dropped
+ * Block takes its spacing with it and every repeated copy brings its own; the
+ * send trims what is left at the ends. A body with no such Block is the
+ * ordinary one.
+ */
+const renderPlainTextForSend = (blocks: EditorBlock[]): string => {
+	const logic = (block: EditorBlock) => {
+		const c = block.content as CommonBlockProperties;
+		return { condition: c.condition, repeat: c.repeat };
+	};
+	if (!blocks.some((block) => logic(block).condition || logic(block).repeat)) {
+		return stripSendRegionMarkers(renderPlainTextBody(blocks));
+	}
+	let body = '';
+	for (const block of blocks) {
+		const text = normalize(stripSendRegionMarkers(renderBlockPlainText(block)));
+		if (!text) continue;
+		const { condition, repeat } = logic(block);
+		if (!condition && !repeat) {
+			body += body ? `\n\n${text}` : text;
+			continue;
+		}
+		const separated = `\n\n${text}`;
+		const repeated = repeat
+			? `${repeatRegionStart(repeat)}${separated}${REPEAT_REGION_END}`
+			: separated;
+		body += condition
+			? `${conditionRegionStart(condition)}${repeated}${CONDITION_REGION_END}`
+			: repeated;
+	}
+	return body;
+};
 
 /**
  * Whether a stored manual override actually carries content. Whitespace-only

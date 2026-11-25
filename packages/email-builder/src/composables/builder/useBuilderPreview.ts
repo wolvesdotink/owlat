@@ -12,6 +12,8 @@ interface UseBuilderPreviewOptions {
 	variableType: ComputedRef<VariableType>;
 	showMandatoryUnsubscribeFooter: ComputedRef<boolean>;
 	variables: ComputedRef<Variable[]>;
+	/** The email's own preview text, rendered as the preheader. */
+	previewText: ComputedRef<string | undefined>;
 }
 
 /**
@@ -26,6 +28,7 @@ export function useBuilderPreview({
 	variableType,
 	showMandatoryUnsubscribeFooter,
 	variables,
+	previewText,
 }: UseBuilderPreviewOptions) {
 	// Preview — driven entirely by usePreview, which wires the renderer's HTML /
 	// plain-text / AMP / analysis / diff generation through the user-controllable
@@ -42,6 +45,7 @@ export function useBuilderPreview({
 		showMandatoryUnsubscribeFooter,
 		renderOptions,
 		variables,
+		previewText,
 	});
 	const { previewMode, previewDarkMode, regenerate, regenerateHtml } = preview;
 
@@ -54,10 +58,22 @@ export function useBuilderPreview({
 		})
 	);
 
+	// The inbox preview line next to the subject, its tokens filled the same way.
+	const previewPreheader = computed(() =>
+		fillPreviewVariables(renderOptions.value.preheaderText ?? previewText.value ?? '', {
+			values: renderOptions.value.variableValues ?? {},
+			labels: Object.fromEntries(variables.value.map((v) => [v.key, v.label])),
+		})
+	);
+
 	// Keep the live editing reactivity the canvas had before: while a non-edit
 	// preview is open, re-render the moment the blocks change.
 	watch(blocksVersion, () => {
 		if (previewMode.value !== 'edit') regenerate();
+	});
+	// A co-editor can change the preview text while this preview is open.
+	watch(previewText, () => {
+		if (previewMode.value !== 'edit') regenerateHtml();
 	});
 
 	// Dark-mode toggle from the previewer re-renders the HTML against the new mode;
@@ -86,6 +102,7 @@ export function useBuilderPreview({
 		previewHtmlChanged: preview.htmlChanged,
 		togglePreviewMode: preview.togglePreviewMode,
 		previewSubject,
+		previewPreheader,
 		handlePreviewDarkMode,
 	};
 }

@@ -23,7 +23,7 @@ describe('decodeRequest', () => {
 
 	describe('an own __proto__ key, as JSON.parse creates it', () => {
 		const variablesMessage =
-			'dataVariables must be an object of string, number, boolean or null values';
+			'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them';
 		const propertiesMessage =
 			'eventProperties must be an object of string, number, boolean or null values';
 
@@ -196,15 +196,23 @@ describe('transactional request', () => {
 		[{ ...base, transactionalId: 7 }, 'transactionalId must be a string'],
 		[
 			{ ...base, dataVariables: { order: { id: 1 } } },
-			'dataVariables must be an object of string, number, boolean or null values',
+			'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them',
 		],
 		[
-			{ ...base, dataVariables: { tags: ['a'] } },
-			'dataVariables must be an object of string, number, boolean or null values',
+			{ ...base, dataVariables: { tags: [['a']] } },
+			'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them',
+		],
+		[
+			{ ...base, dataVariables: { lines: [{ product: { id: 1 } }] } },
+			'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them',
+		],
+		[
+			{ ...base, dataVariables: { lines: Array.from({ length: 501 }, () => 'x') } },
+			'dataVariables.lines can hold at most 500 entries',
 		],
 		[
 			{ ...base, dataVariables: ['a'] },
-			'dataVariables must be an object of string, number, boolean or null values',
+			'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them',
 		],
 		[{ ...base, language: null }, 'language must be a string'],
 		[

@@ -17,7 +17,7 @@ export const TRANSACTIONAL_EMAIL_STATUSES = ['draft', 'pending_review', 'publish
 export type TransactionalEmailStatus = (typeof TRANSACTIONAL_EMAIL_STATUSES)[number];
 
 /** The variable types a write may declare in `dataVariablesSchema`. */
-export const TEMPLATE_VARIABLE_TYPES = ['string', 'number', 'boolean', 'date'] as const;
+export const TEMPLATE_VARIABLE_TYPES = ['string', 'number', 'boolean', 'date', 'array'] as const;
 
 /** A variable type a write may declare. */
 export type TemplateVariableType = (typeof TEMPLATE_VARIABLE_TYPES)[number];

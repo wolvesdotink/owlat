@@ -41,7 +41,7 @@ export type { TranslatableBlockContent };
 
 /**
  * Per-language translation overlay, as this module writes it. `previewText` is
- * optional: email templates carry it, transactional emails do not. A stored
+ * optional: an overlay without one keeps the default's. A stored
  * overlay is read back as a {@link StoredTranslation}, whose `subject` and
  * `blocks` older rows may lack.
  */
@@ -72,7 +72,7 @@ interface TranslatableFields {
 }
 
 export const TEMPLATE_TRANSLATABLE_FIELDS: TranslatableFields = { hasPreviewText: true };
-export const TRANSACTIONAL_TRANSLATABLE_FIELDS: TranslatableFields = { hasPreviewText: false };
+export const TRANSACTIONAL_TRANSLATABLE_FIELDS: TranslatableFields = { hasPreviewText: true };
 
 const DEFAULT_LANGUAGE = 'en';
 
