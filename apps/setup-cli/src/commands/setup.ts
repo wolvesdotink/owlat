@@ -43,6 +43,7 @@ import { generateSetupToken } from '@owlat/shared/setupToken';
 import { persistResolvedSetup } from '../lib/persistSetup';
 import type { DeploymentMode } from '../lib/setupConfig';
 import { applySetupDefaults } from '../lib/setupEnvDefaults';
+import { publishedPort } from '../lib/localHost';
 import { assertFblDedupCutoverConfigured } from '../lib/fblDedupSetup';
 import { applyAssumeYes, applyConfigFile } from './setupNonInteractive';
 import { pickSendingProvider } from './setupSendingProvider';
@@ -378,7 +379,10 @@ async function collectAdmin(): Promise<{ email: string; name: string; password: 
 }
 
 async function launchWebWizard(opts: RunOptions): Promise<number> {
-	log.info(`Booting the web wizard at ${pc.cyan('http://localhost:3000/setup')}…`);
+	const envPath = join(opts.owlatDir, '.env');
+	const existing = await readEnv(envPath);
+	const wizardUrl = `http://localhost:${publishedPort(existing, 'WEB_PORT')}/setup`;
+	log.info(`Booting the web wizard at ${pc.cyan(wizardUrl)}…`);
 	log.info(
 		`Run ${pc.cyan('cd ' + opts.owlatDir + ' && owlat start')} in another shell, then visit the URL.`
 	);
@@ -389,8 +393,6 @@ async function launchWebWizard(opts: RunOptions): Promise<number> {
 	// The actual bootstrap (docker compose up with profile=setup) is handled by
 	// `owlat start` — this CLI's job is to prepare .env so apps/web can boot in
 	// setup mode. We write a minimal placeholder so the stack can come up.
-	const envPath = join(opts.owlatDir, '.env');
-	const existing = await readEnv(envPath);
 	const withSecrets = ensureSecrets(existing);
 	withSecrets['OWLAT_DEPLOYMENT_MODE'] = 'selfhost';
 	withSecrets['OWLAT_SETUP_MODE'] = 'true';
@@ -419,7 +421,7 @@ async function launchWebWizard(opts: RunOptions): Promise<number> {
 					: process.platform === 'win32'
 						? 'start'
 						: 'xdg-open';
-			spawn(cmd, ['http://localhost:3000/setup'], { stdio: 'ignore', detached: true }).unref();
+			spawn(cmd, [wizardUrl], { stdio: 'ignore', detached: true }).unref();
 		} catch {
 			// Best-effort.
 		}

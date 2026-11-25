@@ -10,7 +10,7 @@
  * adding a registry entry is a compile error.
  */
 
-import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
+import { brandFooterTextHtml, POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { preheaderTextHtml, stripPreheaderHtml } from '@owlat/email-renderer/preheader';
 
@@ -108,8 +108,9 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	// Compared on the rendered text, so bold or a link inside an address line
 	// still counts as printing it.
 	const htmlPrintsAddress =
-		POSTAL_ADDRESS_BLOCK_RE.test(composed.html) &&
-		printsEveryLine(htmlToPlainText(composed.html, { preserveBreaks: true }), lines);
+		(POSTAL_ADDRESS_BLOCK_RE.test(composed.html) &&
+			printsEveryLine(htmlToPlainText(composed.html, { preserveBreaks: true }), lines)) ||
+		printsUnmarkedFooterBlock(composed.html, config?.senderAddress);
 	if (!config || !htmlPrintsAddress) return { ...composed, text };
 	const { senderAddress: _printedByTheBody, ...transformConfig } = config;
 	return { ...composed, transformConfig, text };
@@ -147,6 +148,40 @@ const POSTAL_ADDRESS_BLOCK_RE = new RegExp(
 	`<[a-z][^>]*\\s${POSTAL_ADDRESS_BLOCK_ATTRIBUTE}(?=[\\s=/>])`,
 	'i'
 );
+
+/**
+ * Whether the body holds a brand kit footer block saved before the block
+ * carried the marker: an element whose whole content is the html the builder
+ * inserts for this sender's name and address, byte for byte. The sender
+ * address is `name\naddress` or the address alone, so both shapes are tried.
+ * A block whose address was edited, or that shows an older address, does not
+ * match, and the footer prints the address as before.
+ */
+function printsUnmarkedFooterBlock(html: string, senderAddress: string | undefined): boolean {
+	if (!senderAddress) return false;
+	const newline = senderAddress.indexOf('\n');
+	const shapes = [brandFooterTextHtml('', senderAddress)];
+	if (newline > 0) {
+		shapes.push(
+			brandFooterTextHtml(senderAddress.slice(0, newline), senderAddress.slice(newline + 1))
+		);
+	}
+	const body = renderedSpelling(html);
+	return shapes.some((shape) => body.includes(`>${renderedSpelling(shape)}</`));
+}
+
+/**
+ * The renderer's sanitizer re-serializes a text block: `<br>` comes out as
+ * `<br />`, and the quotes the builder escaped come out as plain characters
+ * (only `&`, `<` and `>` stay escaped in text). Both sides are brought to that
+ * spelling before they are compared; nothing else is normalized.
+ */
+function renderedSpelling(html: string): string {
+	return html
+		.replace(/<br\s*\/?>/gi, '<br>')
+		.replace(/&#39;|&#x27;|&apos;/gi, "'")
+		.replace(/&quot;|&#34;/gi, '"');
+}
 
 /**
  * Whether a body already prints every line of the sender's address, so the

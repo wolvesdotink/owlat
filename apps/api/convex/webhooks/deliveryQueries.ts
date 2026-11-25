@@ -13,6 +13,7 @@ import {
 	scheduleDeliveryAttempt,
 	WEBHOOK_ATTEMPT_LEASE_MS,
 } from './deliveryAttempts';
+import { isEventAllowedOverUrl } from './urlPolicy';
 
 // ============ INTERNAL MUTATIONS ============
 
@@ -92,12 +93,19 @@ export const claimDeliveryAttempt = internalMutation({
 
 		const webhook = await ctx.db.get(log.webhookId);
 		const featureOn = await isFeatureEnabled(ctx, 'webhooks');
-		if (!webhook || !webhook.isActive || !featureOn) {
+		if (
+			!webhook ||
+			!webhook.isActive ||
+			!featureOn ||
+			!isEventAllowedOverUrl(log.event, webhook.url)
+		) {
 			const errorMessage = !webhook
 				? 'Webhook not found'
 				: !webhook.isActive
 					? 'Webhook is disabled'
-					: 'Outbound webhooks are turned off';
+					: !featureOn
+						? 'Outbound webhooks are turned off'
+						: 'This event needs an HTTPS webhook URL';
 			await finishDelivery(ctx, log._id, { status: 'failed', errorMessage });
 			return { kind: 'skip', reason: errorMessage };
 		}

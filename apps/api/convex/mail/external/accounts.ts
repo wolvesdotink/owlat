@@ -306,7 +306,8 @@ export const _getRowInternal = internalQuery({
 
 /**
  * Accounts the worker should hold a connection for. Excludes `auth_error`
- * (waiting on the user to fix credentials) and `disconnected`. No secrets — the
+ * (waiting on the user to fix credentials), `disconnected`, and any row that
+ * holds no credential (the demo seed's connected mailbox). No secrets — the
  * worker fetches the password per-account via getCredentialsForWorker.
  *
  * SEED mailboxes are excluded outright. A seed is not a user inbox: it exists
@@ -332,9 +333,12 @@ export const listConnectableAccounts = internalQuery({
 				return rows.map((account) => ({ account, status }));
 			})
 		);
+		// A row without a credential envelope has nothing to connect with: the
+		// credential fetch answers it with the terminal `disconnected`, the
+		// connection halts, and the next reconcile would start it again.
 		return groups
 			.flat()
-			.filter(({ account }) => account.purpose !== 'seed')
+			.filter(({ account }) => account.purpose !== 'seed' && account.secretCiphertext !== undefined)
 			.map(({ account: a, status }) => ({
 				accountId: a._id,
 				mailboxId: a.mailboxId,

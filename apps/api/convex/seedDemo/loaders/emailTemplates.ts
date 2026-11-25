@@ -11,6 +11,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { sanitizeStoredBlocksJson } from '../../lib/emailContentSanitize';
 import { recordListingCounter } from '../../lib/listingCounters';
+import { templateNameSortKey } from '../../emailTemplates/listing';
 import { loadEmailTheme, renderPublishableEmail } from '../../lib/publishableEmailRender';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
@@ -61,6 +62,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 			htmlContent: rendered.html,
 			publishedAt: rec.status === 'published' ? now : undefined,
 			searchableText: `${rec.name} ${rec.subject}`,
+			nameSortKey: templateNameSortKey(rec.name),
 			seedTag: SEED_TAG,
 			createdAt: now,
 			updatedAt: now,

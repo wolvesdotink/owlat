@@ -19,6 +19,7 @@ import { instanceHotRowTables } from './schema/instanceHotRows';
 import { templateTables } from './schema/templates';
 import { alignmentTables } from './schema/alignment';
 import { sendAssignmentTables } from './schema/sendAssignments';
+import { sendingHoldAlertTables } from './schema/sendingHoldAlerts';
 import { sendCompletionFailureTables } from './schema/sendCompletionFailures';
 import { lostSendSweepTables } from './schema/lostSendSweep';
 import { derivedFieldTables } from './schema/derivedFields';
@@ -90,6 +91,7 @@ export default defineSchema({
 	...seedPlacementTables,
 	...alignmentTables,
 	...sendAssignmentTables,
+	...sendingHoldAlertTables,
 	...sendCompletionFailureTables,
 	...lostSendSweepTables,
 	...derivedFieldTables,

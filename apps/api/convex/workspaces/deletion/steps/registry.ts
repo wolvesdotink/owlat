@@ -134,6 +134,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	googlePostmasterStats: makeSweepStep('googlePostmasterStats'),
 	googlePostmasterCompliance: makeSweepStep('googlePostmasterCompliance'),
 	unsubscribeLatencyBuckets: makeSweepStep('unsubscribeLatencyBuckets'),
+	sendingHoldAlerts: makeSweepStep('sendingHoldAlerts'),
 	webhookDeliveryLogs: makeSweepStep('webhookDeliveryLogs'),
 	mtaCampaignAlertReceipts: makeSweepStep('mtaCampaignAlertReceipts'),
 	webhooks: makeSweepStep('webhooks'),

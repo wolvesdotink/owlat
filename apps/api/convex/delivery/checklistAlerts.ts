@@ -15,6 +15,7 @@ import {
 	type SystemMailRetryDisposition,
 } from '../lib/systemMailOutcome';
 
+import { alertEmailCopy } from './alertEmailCopy';
 import { loadDeliverabilityAlertAdminRecipients } from './checklistAlertAudience';
 
 export { loadDeliverabilityAlertAdminRecipients };
@@ -30,13 +31,6 @@ type RegressionEmailResult = {
 		| 'retry_scheduled'
 		| 'delivery_failed';
 };
-
-/**
- * This email may travel through the server the alert is about, so it names the
- * channels that do not: whoever reads it learns where to look when it is late.
- */
-export const OTHER_CHANNELS_LINE =
-	'Owlat also shows this alert in the app, sends it as a push notification to admins who have push turned on, and sends it to any webhook subscribed to deliverability alerts.';
 
 export function regressionEmailRetryDelay(attempt: number): number | null {
 	return REGRESSION_EMAIL_RETRY_DELAYS_MS[attempt] ?? null;
@@ -60,6 +54,8 @@ export type RegressionEmailDependencies = {
 		ctx: ActionCtx,
 		organizationId: string
 	) => Promise<DeliverabilityAlertAdminRecipient[]>;
+	/** Each recipient's interface language; one left out reads as English. */
+	loadLocales: (ctx: ActionCtx, userIds: string[]) => Promise<Map<string, string>>;
 	sendEmail: (ctx: ActionCtx, payload: RegressionEmailPayload) => Promise<SystemMailAttemptOutcome>;
 	boundaryFailureRetryDisposition: (payload: RegressionEmailPayload) => SystemMailRetryDisposition;
 	now: () => number;
@@ -68,6 +64,7 @@ export type RegressionEmailDependencies = {
 
 const regressionEmailDependencies: RegressionEmailDependencies = {
 	loadRecipients: loadDeliverabilityAlertAdminRecipients,
+	loadLocales: loadRecipientLocales,
 	sendEmail: (ctx, payload) =>
 		ctx.runAction(internal.maintenance.systemMail.trySendSystemEmail, payload),
 	boundaryFailureRetryDisposition: (payload) =>
@@ -79,6 +76,31 @@ const regressionEmailDependencies: RegressionEmailDependencies = {
 	now: Date.now,
 	randomId: () => crypto.randomUUID(),
 };
+
+/** `userProfiles.locale` for each of these accounts, for a Node action that has no `ctx.db`. */
+export async function loadRecipientLocales(
+	ctx: ActionCtx,
+	userIds: string[]
+): Promise<Map<string, string>> {
+	const rows = await ctx.runQuery(internal.auth.userProfiles.localesOf, { authUserIds: userIds });
+	return new Map(rows.map((row) => [row.authUserId, row.locale]));
+}
+
+/**
+ * The regression alert email. It may travel through the server the alert is
+ * about, so it names the channels that do not: whoever reads it learns where
+ * to look when it is late.
+ */
+export function regressionEmail(
+	message: string,
+	locale: string | undefined
+): { subject: string; html: string } {
+	const copy = alertEmailCopy(locale);
+	return {
+		subject: copy.regressionSubject,
+		html: `<p>${copy.regressionIntro}</p><p>${escapeHtml(message)}</p><p>${copy.regressionOpen}</p><p>${copy.otherChannels}</p>`,
+	};
+}
 
 function recipientIdempotencyKey(
 	organizationId: string,
@@ -153,6 +175,15 @@ export async function deliverRegressionEmailHandler(
 			: { sent: deferred.state === 'sent', reason: 'delivery_failed' };
 	}
 
+	// Read before the claim below: a failed lookup must not strand claimed
+	// recipients, and it costs them only the language, never the email.
+	const locales = await dependencies
+		.loadLocales(
+			ctx,
+			currentRecipients.map((recipient) => recipient.userId)
+		)
+		.catch(() => new Map<string, string>());
+
 	const attemptToken = dependencies.randomId();
 	// checkpoint: claims the recipients before the irreversible sends; the claim
 	// schedules expireRecipientAttempts, which settles a claim a crash strands as
@@ -194,8 +225,7 @@ export async function deliverRegressionEmailHandler(
 			const payload = {
 				to: claim.email,
 				from: `Owlat <${fromEmail}>`,
-				subject: 'Owlat deliverability regression detected',
-				html: `<p>Owlat detected that a previously verified deliverability check regressed.</p><p>${escapeHtml(prepared.message)}</p><p>Open the Deliverability Center to review the live evidence and remediation guidance.</p><p>${OTHER_CHANNELS_LINE}</p>`,
+				...regressionEmail(prepared.message, locales.get(claim.userId)),
 				idempotencyKey: recipientIdempotencyKey(
 					args.organizationId,
 					args.identity,

@@ -83,6 +83,11 @@ export const templateTables = {
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// Denormalized search field: "name subject" for full-text search
 		searchableText: v.optional(v.string()),
+		// `name` folded for the list's name sort (emailTemplates/listing.ts
+		// `templateNameSortKey`): an index on `name` itself orders by code
+		// point, so "Zebra" would sort before "apple". Written with `name`;
+		// absent on older rows until `0077_backfill_template_name_sort_key` fills it.
+		nameSortKey: v.optional(v.string()),
 		// Schema version for `content` (EditorBlock[]). Bump on block shape change.
 		contentBlockVersion: v.optional(v.number()),
 		// Editor-content revision: advanced by every write to the fields an
@@ -107,8 +112,14 @@ export const templateTables = {
 		// read), and the Recently deleted list and purge read `[0, cutoff)` from
 		// the same index. updatedAt is the default browse order; the compound
 		// serves type-filtered browse and the per-type counts index-natively.
+		// The created and name pairs serve the list's other sorts the same way,
+		// so every sort pages in order on the server, filtered by type or not.
 		.index('by_deleted_at_and_updated_at', ['deletedAt', 'updatedAt'])
 		.index('by_deleted_at_and_type_and_updated_at', ['deletedAt', 'type', 'updatedAt'])
+		.index('by_deleted_at_and_created_at', ['deletedAt', 'createdAt'])
+		.index('by_deleted_at_and_type_and_created_at', ['deletedAt', 'type', 'createdAt'])
+		.index('by_deleted_at_and_name_sort_key', ['deletedAt', 'nameSortKey'])
+		.index('by_deleted_at_and_type_and_name_sort_key', ['deletedAt', 'type', 'nameSortKey'])
 		.searchIndex('search_templates', {
 			searchField: 'searchableText',
 			filterFields: ['type', 'status', 'deletedAt'],
