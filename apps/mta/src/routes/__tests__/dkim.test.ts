@@ -304,4 +304,75 @@ describe('DKIM rotation routes (PR-29)', () => {
 			expect(res.status).toBe(401);
 		});
 	});
+	describe('the optional Ed25519 key', () => {
+		beforeEach(async () => {
+			await authedRequest(app, 'POST', '/example.com/register', { organizationId: 'org_a' });
+		});
+
+		it('POST creates the key once and answers the same record again', async () => {
+			const first = await authedRequest(app, 'POST', '/example.com/ed25519', {
+				organizationId: 'org_a',
+			});
+			const second = await authedRequest(app, 'POST', '/example.com/ed25519', {
+				organizationId: 'org_a',
+			});
+			const a = (await first.json()) as Record<string, unknown>;
+			const b = (await second.json()) as Record<string, unknown>;
+
+			expect(first.status).toBe(200);
+			expect(a).toMatchObject({ success: true, created: true });
+			expect(a['dnsRecord']).toMatch(/^v=DKIM1; k=ed25519; p=[A-Za-z0-9+/]{43}=$/);
+			expect(b).toMatchObject({
+				created: false,
+				selector: a['selector'],
+				dnsRecord: a['dnsRecord'],
+			});
+		});
+
+		it('POST answers 404 without an RSA key and 409 for another organization', async () => {
+			expect((await authedRequest(app, 'POST', '/unknown.com/ed25519')).status).toBe(404);
+			expect(
+				(await authedRequest(app, 'POST', '/example.com/ed25519', { organizationId: 'org_b' }))
+					.status
+			).toBe(409);
+		});
+
+		it('register never mints one but reports the one the domain has', async () => {
+			const before = (await (
+				await authedRequest(app, 'POST', '/example.com/register', { organizationId: 'org_a' })
+			).json()) as Record<string, unknown>;
+			expect(before['ed25519Selector']).toBeUndefined();
+			expect(await dkimStore.getDkimConfig(redis, 'example.com')).not.toHaveProperty('ed25519');
+
+			const created = (await (
+				await authedRequest(app, 'POST', '/example.com/ed25519')
+			).json()) as Record<string, unknown>;
+			const after = (await (
+				await authedRequest(app, 'POST', '/example.com/register', { organizationId: 'org_a' })
+			).json()) as Record<string, unknown>;
+
+			expect(after).toMatchObject({
+				created: false,
+				selector: before['selector'],
+				dnsRecord: before['dnsRecord'],
+				ed25519Selector: created['selector'],
+				ed25519DnsRecord: created['dnsRecord'],
+			});
+		});
+
+		it('DELETE removes it, keeps the RSA key, and is idempotent', async () => {
+			await authedRequest(app, 'POST', '/example.com/ed25519');
+			const rsaBefore = await dkimStore.getDkimConfig(redis, 'example.com');
+
+			const res = await authedRequest(app, 'DELETE', '/example.com/ed25519');
+			expect(await res.json()).toEqual({ success: true, domain: 'example.com', removed: true });
+			const again = await authedRequest(app, 'DELETE', '/example.com/ed25519');
+			expect(await again.json()).toMatchObject({ removed: false });
+
+			const rsaAfter = await dkimStore.getDkimConfig(redis, 'example.com');
+			expect(rsaAfter?.selector).toBe(rsaBefore?.selector);
+			expect(rsaAfter?.privateKey).toBe(rsaBefore?.privateKey);
+			expect(rsaAfter?.ed25519).toBeUndefined();
+		});
+	});
 });

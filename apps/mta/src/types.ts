@@ -393,6 +393,16 @@ export interface DkimKeyConfig {
 	 * keys, and on every key written before the field existed.
 	 */
 	awaitingDnsSince?: number;
+	/**
+	 * The domain's optional second key (Ed25519, RFC 8463), still sealed. Only
+	 * `smtp/dkimEd25519.ts` opens it, and nothing about it can hold a send.
+	 */
+	ed25519?: {
+		selector: string;
+		sealedPrivateKey: string;
+		/** Same meaning as {@link awaitingDnsSince}, for the Ed25519 record. */
+		awaitingDnsSince?: number;
+	};
 }
 
 // ============ Bounce Types ============

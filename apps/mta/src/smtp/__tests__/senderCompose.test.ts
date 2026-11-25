@@ -44,7 +44,17 @@ const {
 } = harness;
 
 import { generateKeyPairSync } from 'crypto';
+import { signMessageWithKeys } from '@owlat/mail-message';
+import { verifyDkim } from '@owlat/mail-auth';
 import { sendToMx } from '../sender.js';
+import { clearCache, ED25519_FIELDS, setDkimKey } from '../dkimStore.js';
+import {
+	clearEd25519PublicationCache,
+	createEd25519Key,
+	resolveOptionalEd25519Key,
+} from '../dkimEd25519.js';
+import { prepareSignedMessage } from '../send/compose.js';
+import { dkimEd25519SignaturesTotal } from '../../monitoring/collector.js';
 import { DkimSignatureUnavailableError, getDkimOptions, resolveRequiredDkimKey } from '../dkim.js';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
@@ -57,11 +67,12 @@ import {
 	smtpError,
 } from './helpers/senderFixtures.js';
 
-const privateKey = generateKeyPairSync('rsa', {
+const rsaPair = generateKeyPairSync('rsa', {
 	modulusLength: 1024,
 	publicKeyEncoding: { type: 'spki', format: 'pem' },
 	privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-}).privateKey;
+});
+const privateKey = rsaPair.privateKey;
 
 describe('sendToMx message composition', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -438,5 +449,159 @@ describe('sendToMx message composition', () => {
 			expect(result.success).toBe(true);
 			expect(headerBlockOf(0)).not.toMatch(/^DKIM-Signature:/m);
 		});
+	});
+	describe('a domain with an Ed25519 key', () => {
+		const DOMAIN = 'owlat.com';
+		const HASH = `mta:dkim:${DOMAIN}`;
+		const rsaRecord = `v=DKIM1; k=rsa; p=${rsaPair.publicKey
+			.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, '')
+			.replace(/\s/g, '')}`;
+		let ed: { selector: string; dnsRecord: string };
+
+		beforeEach(async () => {
+			clearCache();
+			clearEd25519PublicationCache();
+			await setDkimKey(redis, DOMAIN, 's1', privateKey, 'org-1');
+			const created = await createEd25519Key(redis, DOMAIN, 'org-1');
+			if (created.kind !== 'ok') throw new Error(created.kind);
+			ed = created;
+			vi.mocked(resolveRequiredDkimKey).mockResolvedValue({
+				kind: 'key',
+				key: { domainName: DOMAIN, keySelector: 's1', privateKey },
+			});
+			vi.mocked(getDkimOptions).mockResolvedValue({
+				domainName: DOMAIN,
+				keySelector: 's1',
+				privateKey,
+			});
+		});
+
+		afterEach(() => {
+			vi.mocked(getDkimOptions).mockResolvedValue(undefined);
+			vi.mocked(resolveRequiredDkimKey).mockResolvedValue({ kind: 'unavailable', cause: 'no_key' });
+			clearCache();
+		});
+
+		async function publish(): Promise<void> {
+			await redis.hdel(HASH, ED25519_FIELDS.awaitingDnsSince);
+			clearCache();
+		}
+
+		function signatures(call = 0): string[] {
+			return headerBlockOf(call)
+				.replace(/\r\n[ \t]+/g, ' ')
+				.split('\r\n')
+				.filter((line) => line.startsWith('DKIM-Signature:'));
+		}
+
+		const resolver = async (name: string): Promise<string[][]> =>
+			name === `s1._domainkey.${DOMAIN}`
+				? [[rsaRecord]]
+				: name === `${ed.selector}._domainkey.${DOMAIN}`
+					? [[ed.dnsRecord]]
+					: [];
+
+		it('sends with the RSA signature alone while the record is not published', async () => {
+			// Prime the negative cache the way a first lookup with no record would.
+			await resolveOptionalEd25519Key(redis, DOMAIN, 'org-1', async () => []);
+
+			const result = await sendToMx(
+				createJob({ requireDkimSignature: true }),
+				config,
+				redis,
+				'10.0.0.1'
+			);
+
+			expect(result.success).toBe(true);
+			expect(signatures()).toHaveLength(1);
+			expect(signatures()[0]).toMatch(/a=rsa-sha256;.*s=s1;/);
+		});
+
+		it('adds the Ed25519 signature below the RSA one once the record is published', async () => {
+			await publish();
+
+			const result = await sendToMx(
+				createJob({ requireDkimSignature: true }),
+				config,
+				redis,
+				'10.0.0.1'
+			);
+
+			expect(result.success).toBe(true);
+			const [rsa, second] = signatures();
+			expect(rsa).toMatch(/a=rsa-sha256;.*s=s1;/);
+			expect(second).toMatch(new RegExp(`a=ed25519-sha256;.*s=${ed.selector};`));
+			const verified = await verifyDkim(Buffer.from(rawOf(), 'utf8'), { resolver });
+			expect(verified.signatures.map((sig) => sig.verdict)).toEqual(['pass', 'pass']);
+		});
+
+		it('writes exactly the bytes of signing with both keys, the same on every attempt', async () => {
+			await publish();
+			const job = createJob({ firstEnqueuedAt: Date.parse('2026-06-21T12:00:00Z') });
+
+			const first = await prepareSignedMessage(job, config, redis);
+			const second = await prepareSignedMessage(job, config, redis);
+
+			expect(second.signedBytes.equals(first.signedBytes)).toBe(true);
+			const resolved = await resolveOptionalEd25519Key(redis, DOMAIN, 'org-1');
+			if (resolved.kind !== 'key') throw new Error(resolved.kind);
+			// Drop the two prepended signature fields to get the unsigned message back.
+			const unsigned = Buffer.from(
+				first.signedBytes
+					.toString('binary')
+					.split(/\r\n(?![ \t])/)
+					.slice(2)
+					.join('\r\n'),
+				'binary'
+			);
+			const expected = signMessageWithKeys(
+				unsigned,
+				[{ domainName: DOMAIN, keySelector: 's1', privateKey }, resolved.key],
+				Date.parse('2026-06-21T12:00:00Z')
+			);
+			expect(first.signedBytes.equals(expected)).toBe(true);
+		});
+
+		it.each([
+			[
+				'a key that does not open',
+				async (r: InstanceType<typeof Redis>) => {
+					await r.hset(HASH, { [ED25519_FIELDS.privateKey]: 'mtasealed:v1:garbage' });
+				},
+				'unreadable',
+			],
+			[
+				'a key for another organization',
+				async (r: InstanceType<typeof Redis>) => {
+					await r.hset(HASH, { organizationId: 'org-2' });
+				},
+				'org_mismatch',
+			],
+		])(
+			'sends with the RSA signature and holds nothing for %s',
+			async (_name, breakKey, outcome) => {
+				await publish();
+				await breakKey(redis);
+				clearCache();
+				const before = (await dkimEd25519SignaturesTotal.get()).values.find(
+					(v) => v.labels.outcome === outcome
+				)?.value;
+
+				const result = await sendToMx(
+					createJob({ requireDkimSignature: true }),
+					config,
+					redis,
+					'10.0.0.1'
+				);
+
+				expect(result.success).toBe(true);
+				expect(signatures()).toHaveLength(1);
+				expect(signatures()[0]).toMatch(/a=rsa-sha256;/);
+				const after = (await dkimEd25519SignaturesTotal.get()).values.find(
+					(v) => v.labels.outcome === outcome
+				)?.value;
+				expect(after).toBe((before ?? 0) + 1);
+			}
+		);
 	});
 });

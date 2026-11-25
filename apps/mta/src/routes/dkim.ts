@@ -8,6 +8,7 @@ import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as dkimStore from '../smtp/dkimStore.js';
 import * as dkimRotation from '../smtp/dkimRotation.js';
+import * as dkimEd25519 from '../smtp/dkimEd25519.js';
 import type { DkimRotationNotifier } from '../smtp/dkimRotation.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
@@ -30,6 +31,7 @@ const registerBody = v.object({
 });
 
 const selectorBody = v.object({ selector: v.optional(v.string()) });
+const ownerBody = v.object({ organizationId: v.optional(v.string()) });
 const activateBody = v.object({ force: v.optional(v.boolean()) });
 
 /** Callers may send these routes no body at all; that means "no options". */
@@ -170,6 +172,10 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 		// Echo the resolved return-path host so the caller (Convex) can confirm
 		// what was persisted. Omitted when the domain has no override.
 		const storedReturnPathHost = await dkimStore.getReturnPathHost(redis, domain);
+		// Registration never mints an Ed25519 key, but it reports the one the domain
+		// has: Convex replaces the domain's records with this answer, and leaving
+		// it out would drop a published optional record.
+		const ed25519 = await dkimEd25519.describeEd25519Key(redis, domain);
 		// `result` carries `ownership` (assigned | unchanged | unowned) — echoed via
 		// the spread so the org-ownership backfill migration can tally outcomes from
 		// the response without a second read.
@@ -178,7 +184,40 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 			domain,
 			...result,
 			...(storedReturnPathHost ? { returnPathHost: storedReturnPathHost } : {}),
+			...(ed25519
+				? { ed25519Selector: ed25519.selector, ed25519DnsRecord: ed25519.dnsRecord }
+				: {}),
 		});
+	});
+
+	// Give the domain its optional Ed25519 key (RFC 8463), or answer the one it
+	// has. Idempotent. The domain must already have its RSA key; the new key
+	// signs nothing until its record is seen in DNS.
+	app.post('/:domain/ed25519', async (c) => {
+		const domain = c.req.param('domain').toLowerCase();
+		const read = await readJsonBody(c, ownerBody, BODY_LESS);
+		if (!read.ok) return read.response;
+		const result = await dkimEd25519.createEd25519Key(redis, domain, read.value.organizationId);
+		if (result.kind === 'no_rsa_key') {
+			return c.json({ error: 'Domain has no DKIM key; register it first' }, 404);
+		}
+		if (result.kind === 'org_mismatch') {
+			return c.json({ error: `Domain ${domain} is registered to a different organization` }, 409);
+		}
+		return c.json({
+			success: true,
+			domain,
+			selector: result.selector,
+			dnsRecord: result.dnsRecord,
+			created: result.created,
+		});
+	});
+
+	// Remove the domain's Ed25519 key; the RSA key stays. Idempotent.
+	app.delete('/:domain/ed25519', async (c) => {
+		const domain = c.req.param('domain').toLowerCase();
+		const removed = await dkimEd25519.removeEd25519Key(redis, domain);
+		return c.json({ success: true, domain, removed });
 	});
 
 	// Rotate key.

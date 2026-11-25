@@ -12,6 +12,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import type Redis from 'ioredis';
 import {
+	buildDkimSignatureLine,
 	composeMessage,
 	htmlToPlainText,
 	signMessage,
@@ -21,7 +22,7 @@ import { extractDomainOrNull } from '@owlat/shared';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import { logger } from '../../monitoring/logger.js';
-import { cfblEmissionsTotal } from '../../monitoring/collector.js';
+import { cfblEmissionsTotal, dkimEd25519SignaturesTotal } from '../../monitoring/collector.js';
 import { buildVerpAddress } from '../../bounce/verp.js';
 import {
 	CFBL_ADDRESS_HEADER,
@@ -36,6 +37,7 @@ import {
 	type DkimSigningKey,
 } from '../dkim.js';
 import { getReturnPathHost } from '../dkimStore.js';
+import { resolveOptionalEd25519Key } from '../dkimEd25519.js';
 import { buildUnsubscribeAddress } from '@owlat/shared/verp';
 import { resolveSignedTokenKey } from '../../bounce/signedToken.js';
 
@@ -237,6 +239,7 @@ function buildSignedBytes(
 	job: EmailJob,
 	identity: MessageIdentity,
 	dkimConfig: DkimSigningKey | undefined,
+	ed25519Key: DkimSigningKey | undefined,
 	verpAddress: string,
 	feedbackHeaders: Record<string, string>
 ): { bytes: Buffer; signed: boolean } {
@@ -246,7 +249,11 @@ function buildSignedBytes(
 	if (!dkimConfig) return { bytes: raw, signed: false };
 	try {
 		// `t=` is the message date too, so a retry signs to the same signature.
-		return { bytes: signMessage(raw, dkimConfig, identity.date.getTime()), signed: true };
+		const rsaSigned = signMessage(raw, dkimConfig, identity.date.getTime());
+		return {
+			bytes: ed25519Key ? withEd25519Signature(rsaSigned, raw, ed25519Key, identity) : rsaSigned,
+			signed: true,
+		};
 	} catch (err) {
 		if (job.requireDkimSignature === true) {
 			logger.error(
@@ -261,6 +268,66 @@ function buildSignedBytes(
 		);
 		return { bytes: raw, signed: false };
 	}
+}
+
+/**
+ * Add the Ed25519 signature below the RSA one, or return the RSA-signed bytes
+ * unchanged when it cannot be made. Both are computed over the same unsigned
+ * `raw`, so the result equals `signMessageWithKeys(raw, [rsa, ed25519])`.
+ * Ed25519 signatures are deterministic, so a retry with the same key writes the
+ * same bytes.
+ */
+function withEd25519Signature(
+	rsaSigned: Buffer,
+	raw: Buffer,
+	key: DkimSigningKey,
+	identity: MessageIdentity
+): Buffer {
+	try {
+		const line = buildDkimSignatureLine(raw, key, identity.date.getTime());
+		dkimEd25519SignaturesTotal.inc({ outcome: 'signed' });
+		return Buffer.concat([
+			rsaSigned.subarray(0, rsaSigned.length - raw.length),
+			Buffer.from(`${line}\r\n`, 'utf8'),
+			raw,
+		]);
+	} catch (err) {
+		dkimEd25519SignaturesTotal.inc({ outcome: 'sign_failed' });
+		logger.warn(
+			{ err, domain: key.domainName, selector: key.keySelector },
+			'DKIM Ed25519 signing failed; sending with the RSA signature only'
+		);
+		return rsaSigned;
+	}
+}
+
+/**
+ * The Ed25519 key for the second signature, only next to an RSA key. Whether
+ * it signs can change between two attempts of one message: a record published
+ * in between, or a key added or removed. The later attempt then carries one
+ * DKIM-Signature more or less, while the RSA signature, Message-ID, Date and
+ * body stay byte-identical. That is all retry stability is for: a receiver
+ * that saw a deferred copy still recognises the same message, and the RSA
+ * signature it may have verified still verifies.
+ */
+async function resolveEd25519Key(
+	job: EmailJob,
+	redis: Redis,
+	rsaKey: DkimSigningKey | undefined
+): Promise<DkimSigningKey | undefined> {
+	if (!rsaKey) return undefined;
+	const resolved = await resolveOptionalEd25519Key(redis, job.dkimDomain, job.organizationId);
+	if (resolved.kind === 'key') return resolved.key;
+	if (resolved.kind === 'skipped') {
+		dkimEd25519SignaturesTotal.inc({ outcome: resolved.reason });
+		if (resolved.reason !== 'unpublished') {
+			logger.warn(
+				{ domain: job.dkimDomain, reason: resolved.reason },
+				'DKIM Ed25519 key unusable; sending with the RSA signature only'
+			);
+		}
+	}
+	return undefined;
 }
 
 async function resolveSigningKey(job: EmailJob, redis: Redis): Promise<DkimSigningKey | undefined> {
@@ -289,6 +356,7 @@ export async function prepareSignedMessage(
 	// is refused instead: the dispatch phase checked the key, but it can vanish or
 	// be replaced between that check and this one.
 	const dkimConfig = await resolveSigningKey(job, redis);
+	const ed25519Key = await resolveEd25519Key(job, redis, dkimConfig);
 
 	// VERP return-path host: a sending domain may register its own bounce host,
 	// making the MAIL FROM domain per-sending-domain instead of the single global
@@ -356,6 +424,7 @@ export async function prepareSignedMessage(
 		composedJob,
 		identity,
 		dkimConfig,
+		ed25519Key,
 		verpAddress,
 		cfbl.headers
 	);
