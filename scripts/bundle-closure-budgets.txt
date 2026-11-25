@@ -20,8 +20,16 @@
 # until it is deleted. A closure over its budget first moves the new code off
 # the page's static imports (a dynamic import(), defineAsyncComponent, a
 # smaller leaf module). Raise a line only with the reason in the pull request:
-# what grew and why it has to load with that page or feature. Lower lines when
-# a change shrinks a closure for good.
+# what grew and why it has to load with that page or feature, and the same
+# reason in a `#` line above the line. Lower lines when a change shrinks a
+# closure for good.
+#
+# Locale chunks (`owlat-i18n/areas/*`, `owlat-i18n/boot/*`) hold copy, and no
+# dynamic import shrinks a translated sentence. A change whose copy takes one
+# over its line sets the line to the rule above for that build, which the
+# failure prints; the added copy is the reason. When an area's line keeps
+# rising, cut the area along a route boundary instead (SUB_AREAS in
+# apps/web/i18n/catalogAreas.ts), so each part loads only its own pages' copy.
 
 route 9 pages/access-request.vue
 route 8 pages/archive.vue
@@ -100,7 +108,9 @@ route 55 pages/dashboard/automations/index.vue
 route 11 pages/dashboard/automations/new.vue
 route 63 pages/dashboard/campaigns/[id]/edit.vue
 route 36 pages/dashboard/campaigns/[id]/report.vue
-route 14 pages/dashboard/campaigns/[id]/sends/[sendId].vue
+# The page is a header and the send timeline it exists to show; deferring the
+# timeline would put the main content behind a second fetch.
+route 15 pages/dashboard/campaigns/[id]/sends/[sendId].vue
 route 55 pages/dashboard/campaigns/index.vue
 route 352 pages/dashboard/campaigns/new.vue
 route 66 pages/dashboard/chat.vue
@@ -249,9 +259,14 @@ deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-marketing.en.json
 deferred 12 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.de.json
 deferred 11 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.en.json
 deferred 30 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.de.json
-deferred 26 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.en.json
-deferred 20 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.de.json
-deferred 18 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.en.json
+# Copy for every preferences page. Each page is one route of its own, and the
+# pages share the mailbox, notification and readiness copy, so cutting one off
+# would carry that shared copy in both chunks.
+deferred 28 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.en.json
+deferred 16 ../node_modules/.cache/owlat-i18n/areas/dashboard-send-transactional.de.json
+deferred 15 ../node_modules/.cache/owlat-i18n/areas/dashboard-send-transactional.en.json
+deferred 15 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.de.json
+deferred 13 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.en.json
 deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-visualizations.de.json
 deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-visualizations.en.json
 deferred 5 ../node_modules/.cache/owlat-i18n/areas/dashboard.de.json
@@ -281,6 +296,7 @@ deferred 69 ../node_modules/.cache/owlat-i18n/boot/en.json
 deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
 deferred 19 FileUploadModal
+deferred 4 Input
 deferred 12 KnowledgeEntryForm
 deferred 18 PostboxMailboxConnectForm
 deferred 36 PostboxUndoSendToast
@@ -309,9 +325,10 @@ deferred 5 components/conditions/contact_property/Editor.vue
 deferred 4 components/conditions/email_activity/Editor.vue
 deferred 5 components/conditions/topic_membership/Editor.vue
 deferred 7 components/contacts/BulkDeleteModal.vue
-deferred 36 components/contacts/CsvImportModal.vue
-deferred 15 components/contacts/ExportModal.vue
-deferred 13 components/contacts/IntegrationImportModal.vue
+deferred 27 components/contacts/CsvImportModal.vue
+deferred 8 components/contacts/ExportModal.vue
+deferred 12 components/contacts/IntegrationImportModal.vue
+deferred 5 components/contacts/integrationImport/ConfigureStep.vue
 deferred 138 components/delivery/TransactionalReadinessLine.vue
 deferred 16 components/mail/TemplateLibraryModal.vue
 deferred 7 components/operator/AdminsTab.vue
@@ -322,7 +339,9 @@ deferred 11 components/postbox/PostboxContactsCardDavPanel.vue
 deferred 16 components/postbox/PostboxShareImageDialog.vue
 deferred 362 components/postbox/PostboxThreadReader.vue
 deferred 78 components/preferences/mcp/PreferencesMcpPendingActionCard.vue
-deferred 10 components/shell/BackendStatusHost.vue
+# The slow-save Details dialog opens while the backend is already slow, so it
+# loads with the host instead of behind a fetch at that moment.
+deferred 12 components/shell/BackendStatusHost.vue
 deferred 13 components/system/AppUpdatedBanner.vue
 deferred 21 components/transactional/CreateEmailModal.vue
 deferred 19 components/transactional/SenderDialog.vue

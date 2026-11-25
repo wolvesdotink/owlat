@@ -195,14 +195,16 @@ const labelEvery = computed(() => inboxAnalyticsLabelStep(volumeSeries.value.len
 			<!-- Range: one row of controls above every chart. -->
 			<div class="mb-6 flex flex-wrap items-end gap-3" data-testid="inbox-analytics-range">
 				<UiSegmentedControl v-model="preset" :options="presetOptions" size="sm" fit="content" />
+				<!-- The date fields load when someone picks a custom range: the preset
+				     starts at 30 days, so the page never paints them first. -->
 				<template v-if="preset === 'custom'">
-					<UiInput
+					<LazyUiInput
 						v-model="custom.from"
 						type="date"
 						size="sm"
 						:label="t('dashboard.inbox.analytics.range.from')"
 					/>
-					<UiInput
+					<LazyUiInput
 						v-model="custom.to"
 						type="date"
 						size="sm"
