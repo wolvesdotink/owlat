@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from '@owlat/mail-message/text/htmlToPlainText';
 import { escapeHtml } from '@owlat/shared/html';
 import { matchTemplateVariables, replaceTemplateVariables } from '@owlat/shared/templateVariables';
 import {
@@ -107,6 +108,14 @@ export function personalize(
 const valueText = (value: unknown): string =>
 	Array.isArray(value) ? JSON.stringify(value) : String(value);
 
+/**
+ * An entry field as text. A list sent as JSON text reaches the send without
+ * the intake's flat-entry check, so a field may still be an object, which
+ * `String()` can throw on.
+ */
+const fieldText = (value: unknown): string =>
+	typeof value === 'object' ? JSON.stringify(value) : String(value);
+
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -131,9 +140,13 @@ function personalizeRepeatItem(
 	let last = 0;
 	for (const match of segment.matchAll(itemToken)) {
 		out += personalize(segment.slice(last, match.index), variables, options);
-		const field = match[1];
+		// The renderer HTML-escapes text, so a field name such as `a&b` reaches
+		// the HTML as `a&amp;b`.
+		const field =
+			match[1] !== undefined && options.escape === 'html' ? decodeHtmlEntities(match[1]) : match[1];
 		const value = field === undefined ? item.index : ownValue(item.fields, field);
-		out += value === undefined || value === null ? '' : applyEscape(String(value), options.escape);
+		out +=
+			value === undefined || value === null ? '' : applyEscape(fieldText(value), options.escape);
 		last = match.index + match[0].length;
 	}
 	return out + personalize(segment.slice(last), variables, options);

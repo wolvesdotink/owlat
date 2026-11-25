@@ -11,7 +11,7 @@
 import { v } from 'convex/values';
 import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { pickHtmlTranslation } from '../lib/emailJson';
-import { repeatVariablesIn } from '@owlat/shared/sendRegions';
+import { ownValue, repeatVariablesIn } from '@owlat/shared/sendRegions';
 import {
 	personalizedBodyExceeds,
 	resolvedTemplate,
@@ -222,7 +222,7 @@ export function missingDataVariables(
 		for (const name of repeatVariablesIn(body, sent)) used.add(name);
 	}
 	const optional = new Set(optionalVariables);
-	return [...used].filter((name) => !optional.has(name) && variables?.[name] == null);
+	return [...used].filter((name) => !optional.has(name) && ownValue(sent, name) == null);
 }
 
 /**

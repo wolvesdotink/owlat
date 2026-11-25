@@ -1321,6 +1321,37 @@ describe('transactional.dispatch.dispatch — repeated blocks', () => {
 		expect(outcome).toMatchObject({ ok: false, reason: 'invalid_variables', variables: ['items'] });
 	});
 
+	it('refuses a request that leaves out a list named like an Object.prototype field', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t, { templateStatus: 'draft' });
+		await t.mutation(api.transactional.emails.update, {
+			id: templateId,
+			content: JSON.stringify([
+				{
+					id: 'line',
+					type: 'text',
+					content: {
+						html: '<p>{{item.name}}</p>',
+						repeat: { variable: 'constructor', itemAlias: 'item' },
+					},
+				},
+			]),
+		});
+		await t.mutation(api.transactional.emails.publish, { id: templateId });
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: {},
+		});
+
+		expect(outcome).toMatchObject({
+			ok: false,
+			reason: 'invalid_variables',
+			variables: ['constructor'],
+		});
+	});
+
 	it('sends an empty list without the block', async () => {
 		const t = newTest();
 		const templateId = await publishRepeated(t, '<p>Line {{item.name}}</p>');

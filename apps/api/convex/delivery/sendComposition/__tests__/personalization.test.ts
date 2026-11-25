@@ -463,6 +463,24 @@ describe('personalizeBody — request data the send cannot trust', () => {
 		expect(html).not.toContain('{{item.');
 	});
 
+	it('fills a field whose name the stored HTML holds entity-escaped', () => {
+		const html = personalizeBody(
+			repeated('<p>{{item.sales&tax}}</p>'),
+			{ items: [{ 'sales&tax': '19%' }] },
+			{ escape: 'html' }
+		);
+		expect(html).toContain('19%');
+	});
+
+	it('writes an object field of a list sent as JSON text instead of throwing', () => {
+		const html = personalizeBody(
+			repeated('<p>{{item.name}}</p>'),
+			{ items: '[{"name":{"toString":"x"}}]' },
+			{ escape: 'html' }
+		);
+		expect(html).toContain('{&quot;toString&quot;:&quot;x&quot;}');
+	});
+
 	it('leaves a field the entry does not hold empty, even one Object.prototype has', () => {
 		const html = personalizeBody(
 			repeated('<p>[{{item.toString}}]</p>'),
