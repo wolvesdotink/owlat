@@ -15,7 +15,9 @@
 # This script:
 #   1. Checks prerequisites (docker, docker compose v2, curl, git)
 #   2. Clones github.com/wolvesdotink/owlat if not already in a clone
-#   3. Delegates to scripts/setup.sh (the real wizard)
+#   3. Installs the `owlat` CLI and runs `owlat quickstart`: the setup wizard
+#      in the ghcr.io/wolvesdotink/setup container (apps/setup-cli).
+#      `--legacy`, or an image that cannot be pulled, runs scripts/setup.sh.
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -348,6 +350,28 @@ attach_terminal() {
 	fi
 }
 
+# A run that answers everything up front (--assume-yes, a config file) needs
+# no terminal in the containerized wizard. The legacy bash wizard prompts
+# whatever it is passed. The config path is the one scripts/owlat ends up with:
+# OWLAT_CONFIG_FILE, replaced by each `--config` flag in turn. An empty one
+# (`--config=`, `--config ""`) is no config file there, so not here either.
+wizard_answers_up_front() {
+	[[ "$OWLAT_ASSUME_YES" == "1" ]] && return 0
+	local config="$OWLAT_CONFIG_FILE"
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--assume-yes | -y) return 0 ;;
+			--config)
+				config="${2:-}"
+				[[ $# -gt 1 ]] && shift
+				;;
+			--config=*) config="${1#*=}" ;;
+		esac
+		shift
+	done
+	[[ -n "$config" ]]
+}
+
 # As of v0.2, the wizard lives in the owlat/setup Docker container (built from
 # apps/setup-cli/) so we don't require Bun or Node on the host. The legacy bash
 # wizard (scripts/setup.sh) is still available via `--legacy` for one release
@@ -373,18 +397,10 @@ run_wizard() {
 		fi
 	done
 
-	# A run that answers everything up front (--assume-yes, a config file) needs
-	# no terminal in the containerized wizard. The legacy bash wizard prompts
-	# whatever it is passed.
 	local needs_terminal=1
-	if [[ "$OWLAT_ASSUME_YES" == "1" || -n "$OWLAT_CONFIG_FILE" ]]; then
+	if wizard_answers_up_front ${args[@]+"${args[@]}"}; then
 		needs_terminal=0
 	fi
-	for arg in ${args[@]+"${args[@]}"}; do
-		case "$arg" in
-			--assume-yes | -y | --config | --config=*) needs_terminal=0 ;;
-		esac
-	done
 
 	# The bash wizard runs on the HOST, where the original config path is valid,
 	# so it can take `--config <host-path>` directly. The containerized wizard
