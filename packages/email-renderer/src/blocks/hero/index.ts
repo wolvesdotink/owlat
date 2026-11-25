@@ -18,6 +18,7 @@ import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
 import { escapeCssUrl, escapeCss } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
 import { px } from '../../helpers/padding';
+import { OWN_BACKGROUND_CLASS } from '../../helpers/table';
 import {
 	checkShape,
 	checkGradientStopLimit,
@@ -75,8 +76,15 @@ export const heroModule: BlockModule<'hero'> = {
 		const divStyle = [gradientCss, bgImageCss, heightStyle].filter(Boolean).join('');
 		parts.push(`<div style="${divStyle}">`);
 		parts.push(`<!--<![endif]-->`);
+		// The section wrapper marks a hero only for its background colour; the
+		// image, gradient and overlay are painted here.
+		const paintsBackground = !!(content.backgroundImage || gradientCss || overlayColor);
+		const ownBackground =
+			paintsBackground && !content.darkBackgroundColor && !content.darkTextColor
+				? ` class="${OWN_BACKGROUND_CLASS}"`
+				: '';
 		parts.push(
-			`<table width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${overlayStyle ? ` style="${overlayStyle}height:100%"` : ' style="height:100%"'}>`
+			`<table width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${ownBackground}${overlayStyle ? ` style="${overlayStyle}height:100%"` : ' style="height:100%"'}>`
 		);
 		parts.push(
 			`<tr><td valign="${vAlign}" style="padding:${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px;vertical-align:${vAlign}">`

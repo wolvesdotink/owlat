@@ -72,7 +72,7 @@ body{background-color:${bg}!important}
 .body-section{background-color:${bg}!important}
 .owlat-dark-bg{background-color:var(--dark-bg)!important}
 ${darkTextRules({ text, link }, (exclusions) => `:where(${exclusions})`)}
-.owlat-own-bg,${HIGHLIGHT}{color:${ownTextColor(ctx)}}
+${ownTextRules(ctx)}
 .${ctx.variableClass}{
 background:linear-gradient(135deg,rgba(212,255,0,0.25),rgba(212,255,0,0.15))!important;
 border-color:rgba(212,255,0,0.6)!important;
@@ -108,6 +108,18 @@ const HIGHLIGHT = 'span[style*="background"]:not([style*="transparent"])';
  * light-mode background, instead of the forced colour it would inherit.
  */
 const ownTextColor = (ctx: RenderContext): string => cssColorOr(ctx.theme.bodyTextColor, '#333333');
+
+/**
+ * Text without a colour of its own, on a surface or a highlight that keeps its
+ * light-mode background, gets the body text colour instead of inheriting the
+ * forced one. A highlight on such a surface is left out: it inherits the
+ * colour of the text around it, which that surface keeps.
+ */
+const ownTextRules = (ctx: RenderContext): string => {
+	const color = ownTextColor(ctx);
+	return `.owlat-own-bg{color:${color}}
+${HIGHLIGHT}:not(.owlat-own-bg *){color:${color}}`;
+};
 
 /**
  * A surface that paints its own background keeps it in dark mode, so its text
@@ -159,7 +171,6 @@ ${link}{color:${colors.link}!important}`;
  */
 export const getDarkModeMediaQuery = (ctx: RenderContext): string => {
 	const { bg, text, link } = darkModeColors(ctx);
-	const ownText = ownTextColor(ctx);
 	const ogscBlockText = [
 		'[data-ogsc] .owlat-dark-text',
 		...DARK_TEXT_TAGS.map((tag) => `[data-ogsc] .owlat-dark-text ${tag}`),
@@ -172,7 +183,7 @@ body,.body-bg{background-color:${bg}!important}
 .owlat-wrap{background-color:${bg}!important}
 .owlat-dark-bg{background-color:var(--dark-bg)!important}
 ${darkTextRules({ text, link }, (exclusions) => `:where(${exclusions})`)}
-.owlat-own-bg,${HIGHLIGHT}{color:${ownText}}
+${ownTextRules(ctx)}
 @supports not (selector(:where(a))){
 ${darkTextRules({ text, link }, (exclusions) => exclusions)}
 }

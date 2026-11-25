@@ -935,8 +935,29 @@ describe('dark mode overrides', () => {
 			expect(selector).toContain(`:not(${highlight}):not(${highlight} *)`);
 		}
 		// Text without a colour of its own on such a surface gets the body text
-		// colour instead of inheriting the forced light colour.
-		expect(selectorsSetting(html, 'color:#333333')).toEqual(['.owlat-own-bg', highlight]);
+		// colour instead of inheriting the forced light colour. A highlight on
+		// such a surface is left out, so it inherits the colour of the text
+		// around it.
+		expect(selectorsSetting(html, 'color:#333333')).toEqual([
+			'.owlat-own-bg',
+			`${highlight}:not(.owlat-own-bg *)`,
+		]);
+	});
+
+	it('marks a hero that paints an image, a gradient or an overlay', () => {
+		const hero = (content: Record<string, unknown>) =>
+			renderEmailHtml([
+				{
+					id: 'hero',
+					type: 'hero',
+					content: { height: 300, items: [], ...content },
+				} as EditorBlock,
+			]);
+		const image = { backgroundImage: 'https://example.com/hero.png' };
+		expect(hero(image)).toMatch(/<table [^>]*class="owlat-own-bg"/);
+		expect(hero({ overlayColor: '#FDE68A' })).toMatch(/<table [^>]*class="owlat-own-bg"/);
+		expect(hero({})).not.toMatch(/class="[^"]*owlat-own-bg/);
+		expect(hero({ ...image, darkTextColor: '#f0f0f0' })).not.toMatch(/class="[^"]*owlat-own-bg/);
 	});
 
 	it('gives darkTextColor to the elements inside the block', () => {
