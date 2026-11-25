@@ -273,7 +273,49 @@ describe('summaries', () => {
 		const rows = await t.query(api.automations.health.summaries, {
 			automationIds: [live.automationId, deleted.automationId, live.automationId],
 		});
-		expect(rows).toEqual([{ automationId: live.automationId, entered: 1, failed: 0, stalled: 0 }]);
+		expect(rows).toEqual([
+			{
+				automationId: live.automationId,
+				entered: 1,
+				failed: 0,
+				stalled: 0,
+				latestFailure: null,
+				waiting: null,
+			},
+		]);
+	});
+
+	it('names the reason of the latest failure in the window', async () => {
+		const t = await setup();
+		const { automationId, stepId } = await seedAutomation(t);
+		const failWith = async (reason: 'template_empty' | 'domain_not_verified' | undefined) => {
+			const { stepRunId } = await seedExecutingRun(t, automationId, stepId);
+			await t.run(async (ctx) => {
+				const stepRun = (await ctx.db.get(stepRunId)) as Doc<'automationStepRuns'>;
+				await failStepAndCancelRun(ctx, stepRun, 'It failed', {
+					countRunFailure: true,
+					stepFault: true,
+					failureReason: reason,
+				});
+			});
+		};
+		const latestFailure = async () =>
+			(await t.query(api.automations.health.summaries, { automationIds: [automationId] }))[0]
+				?.latestFailure;
+
+		await failWith('template_empty');
+		vi.setSystemTime(NOW + 1000);
+		await failWith('domain_not_verified');
+		expect(await latestFailure()).toBe('domain_not_verified');
+
+		// A failed step run without a code, as written before codes existed.
+		vi.setSystemTime(NOW + 2000);
+		await failWith(undefined);
+		expect(await latestFailure()).toBe('unknown');
+
+		// Once the failures have left the window, there is nothing to name.
+		vi.setSystemTime(NOW + 8 * DAY);
+		expect(await latestFailure()).toBeNull();
 	});
 
 	it('refuses more ids than one list page holds', async () => {

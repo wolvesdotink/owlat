@@ -39,6 +39,7 @@ import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
 import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import AutomationsIndex from '../index.vue';
+import { formatDateTime } from '~/utils/formatters';
 
 const created = Date.parse('2026-03-02T09:00:00Z');
 const WELCOME = {
@@ -65,10 +66,40 @@ const DRAFT = {
 	createdAt: created,
 };
 
+const WAIT_ENDS = Date.parse('2026-10-21T09:00:00Z');
 const HEALTH = [
-	{ automationId: 'au_welcome', entered: 230, failed: 1, stalled: 2 },
-	{ automationId: 'au_reengage', entered: 4, failed: 0, stalled: 0 },
-	{ automationId: 'au_draft', entered: 3, failed: 0, stalled: 1 },
+	{
+		automationId: 'au_welcome',
+		entered: 230,
+		failed: 1,
+		stalled: 2,
+		latestFailure: 'template_empty',
+		waiting: {
+			count: 40,
+			hasMore: false,
+			reasons: [{ reason: 'domain_not_verified', count: 40, until: WAIT_ENDS }],
+		},
+	},
+	{
+		automationId: 'au_reengage',
+		entered: 4,
+		failed: 0,
+		stalled: 0,
+		latestFailure: null,
+		waiting: {
+			count: 50,
+			hasMore: true,
+			reasons: [{ reason: 'no_default_sender', count: 50, until: WAIT_ENDS }],
+		},
+	},
+	{
+		automationId: 'au_draft',
+		entered: 3,
+		failed: 0,
+		stalled: 1,
+		latestFailure: null,
+		waiting: null,
+	},
 ];
 const STAMP = Date.parse('2026-10-20T10:00:00Z');
 
@@ -360,18 +391,32 @@ describe('automations list — last 7 days', () => {
 		tableFits.value = fits;
 		const wrapper = await mountList();
 		expect(healthLine(rowOf(wrapper, 'Welcome sequence'))).toMatch(
-			/230 entered ?· ?2 stalled ?· ?1 failed/
+			/230 entered ?· ?40 waiting ?· ?2 stalled ?· ?1 failed/
 		);
-		expect(healthLine(rowOf(wrapper, 'Re-engagement'))).toContain('4 entered');
+		expect(healthLine(rowOf(wrapper, 'Re-engagement'))).toMatch(/4 entered ?· ?50\+ waiting/);
 		expect(healthLine(rowOf(wrapper, 'Re-engagement'))).not.toContain('stalled');
 
 		const welcome = rowOf(wrapper, 'Welcome sequence');
 		const stalled = welcome.findAll('a').find((a) => a.text() === '2 stalled')!;
-		expect(stalled.attributes('href')).toBe('/dashboard/automations/au_welcome?runs=stalled');
+		expect(stalled.attributes('href')).toBe('/dashboard/automations/au_welcome?runs=stalled#runs');
 		const failed = welcome.findAll('a').find((a) => a.text() === '1 failed')!;
-		expect(failed.attributes('href')).toBe('/dashboard/automations/au_welcome?runs=failed');
+		expect(failed.attributes('href')).toBe('/dashboard/automations/au_welcome?runs=failed#runs');
 		// The red dot is decoration; the link text carries the meaning.
 		expect(failed.get('.bg-error').attributes('aria-hidden')).toBe('true');
+		const waiting = welcome.findAll('a').find((a) => a.text() === '40 waiting')!;
+		expect(waiting.attributes('href')).toBe('/dashboard/automations/au_welcome?runs=waiting#runs');
+
+		// Under the counts, the runs panel's sentences: what the runs wait for and
+		// why the latest one failed. Neither for a row with nothing to explain.
+		expect(welcome.get('[data-testid="health-note-waiting-domain_not_verified"]').text()).toBe(
+			`Waiting for the default sender's domain to be verified. The email goes out once it is, or the run gives up on ${formatDateTime(WAIT_ENDS)}.`
+		);
+		expect(welcome.get('[data-testid="health-note-failed"]').text()).toBe(
+			'The email this step sends has no content.'
+		);
+		expect(rowOf(wrapper, 'Birthday greeting').find('[data-testid^="health-note"]').exists()).toBe(
+			false
+		);
 
 		// A draft has no detail page: its counts are not links.
 		const draft = rowOf(wrapper, 'Birthday greeting');

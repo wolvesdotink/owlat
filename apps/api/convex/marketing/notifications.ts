@@ -140,7 +140,8 @@ export const fanOut = internalMutation({
 		}
 		// The alert row shows which channels carried it, including "nobody":
 		// every admin may have switched this kind off.
-		if (fields.alertId) await recordAlertInAppNotices(ctx, fields.alertId, written);
+		const countedOn = fields.alertId ?? fields.sendingHoldAlertId;
+		if (countedOn) await recordAlertInAppNotices(ctx, countedOn, written);
 		return { written };
 	},
 });
@@ -218,6 +219,7 @@ export const listRecent = authedQuery({
 				...(row.percent !== undefined ? { percent: row.percent } : {}),
 				...(row.count !== undefined ? { count: row.count } : {}),
 				...(row.detail !== undefined ? { detail: row.detail } : {}),
+				...(row.holdStatus !== undefined ? { holdStatus: row.holdStatus } : {}),
 				...(row.scheduledAt !== undefined ? { scheduledAt: row.scheduledAt } : {}),
 				...(liveness.liveUntil !== undefined ? { liveUntil: liveness.liveUntil } : {}),
 			});
