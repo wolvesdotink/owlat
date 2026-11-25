@@ -23,6 +23,7 @@ describe('DomainsResource', () => {
 						priority: null,
 						state: 'missing',
 						foundValue: null,
+						optional: false,
 					},
 				],
 			},

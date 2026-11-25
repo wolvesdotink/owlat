@@ -303,7 +303,11 @@ export async function runDnsLookups(
 				dkimRecord.type === 'CNAME'
 					? await verifyCnameRecord(dkimHostname, dkimRecord.value)
 					: await verifyTxtRecord(dkimHostname, dkimRecord.value);
-			results.dkim.push(dkimRecord.rotationPending ? { ...result, rotationPending: true } : result);
+			results.dkim.push({
+				...result,
+				...(dkimRecord.rotationPending ? { rotationPending: true } : {}),
+				...(dkimRecord.optional ? { optional: true } : {}),
+			});
 		}
 	}
 

@@ -333,7 +333,10 @@ class ResourceHttpTest {
         responseBody = "{\"data\":[{\"id\":\"d1\",\"domain\":\"news.example.com\",\"status\":\"failed\","
                 + "\"lastCheckedAt\":null,\"records\":[{\"purpose\":\"mail_from\",\"type\":\"MX\","
                 + "\"host\":\"bounce.news.example.com\",\"value\":\"feedback.owlat.example\",\"priority\":10,"
-                + "\"state\":\"wrong\",\"foundValue\":\"10 mx.example.net\"}]}]}";
+                + "\"state\":\"wrong\",\"foundValue\":\"10 mx.example.net\",\"optional\":false},"
+                + "{\"purpose\":\"dkim\",\"type\":\"TXT\",\"host\":\"e1._domainkey.news.example.com\","
+                + "\"value\":\"v=DKIM1; k=ed25519; p=KEY\",\"priority\":null,\"state\":\"missing\","
+                + "\"foundValue\":null,\"optional\":true}]}]}";
         List<SendingDomainSetup> domains = client().domains().list();
         assertEquals("GET", method);
         assertEquals("/api/v1/domains", rawPath);
@@ -344,6 +347,8 @@ class ResourceHttpTest {
         assertEquals("bounce.news.example.com", record.getHost());
         assertEquals(10, record.getPriority());
         assertEquals("wrong", record.getState());
+        assertFalse(record.isOptional());
+        assertTrue(domains.get(0).getRecords().get(1).isOptional());
         assertEquals("10 mx.example.net", record.getFoundValue());
     }
 

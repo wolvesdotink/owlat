@@ -16,12 +16,11 @@ interface DomainFixture {
 	status: 'verified';
 	providerType: 'mta';
 	dkimSelector: string;
+	/** Selector of the domain's optional Ed25519 key, when it has one. */
+	ed25519Selector?: string;
 }
 
-async function load(
-	ctx: MutationCtx,
-	rawRecords: unknown[],
-): Promise<LoadResult> {
+async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {
 	const records = rawRecords as DomainFixture[];
 	let inserted = 0;
 	let skipped = 0;
@@ -47,6 +46,16 @@ async function load(
 				spf: { type: 'TXT', host: '@', value: 'v=spf1 include:mta.demo include:_spf.demo ~all' },
 				dkim: [
 					{ type: 'TXT', host: `${rec.dkimSelector}._domainkey`, value: 'v=DKIM1; k=rsa; p=DEMO' },
+					...(rec.ed25519Selector
+						? [
+								{
+									type: 'TXT' as const,
+									host: `${rec.ed25519Selector}._domainkey`,
+									value: 'v=DKIM1; k=ed25519; p=DEMO',
+									optional: true,
+								},
+							]
+						: []),
 				],
 				dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
 			},

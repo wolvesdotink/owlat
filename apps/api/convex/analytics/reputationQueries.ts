@@ -304,7 +304,7 @@ export function domainAuthState(
 	results:
 		| {
 				spf?: { verified: boolean } | undefined;
-				dkim?: Array<{ verified: boolean }> | undefined;
+				dkim?: Array<{ verified: boolean; optional?: boolean }> | undefined;
 				dmarc?: { verified: boolean } | undefined;
 				mailFrom?: Array<{ verified: boolean }> | undefined;
 		  }
@@ -315,7 +315,8 @@ export function domainAuthState(
 		? results?.spf?.verified === true
 		: mailFromRecords.length > 0 &&
 			mailFromRecords.every((_, i) => results?.mailFrom?.[i]?.verified === true);
-	const dkimEntries = results?.dkim;
+	// The optional Ed25519 record never makes DKIM missing: the RSA one signs.
+	const dkimEntries = results?.dkim?.filter((r) => r.optional !== true);
 	const dkim = Array.isArray(dkimEntries)
 		? dkimEntries.length > 0 && dkimEntries.every((r) => r.verified)
 		: false;

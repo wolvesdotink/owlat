@@ -41,6 +41,12 @@ export interface SendingDomainRecord {
 	state: DnsRecordState;
 	/** The value the last check found instead, while `state` is `wrong`; otherwise `null`. */
 	foundValue: string | null;
+	/**
+	 * `true` for a record the domain does not need, so its `state` never decides
+	 * whether the domain is verified: the optional second DKIM key (Ed25519).
+	 * `false` for every other record.
+	 */
+	optional: boolean;
 }
 
 /** A sending domain with its verification state and the records it needs. */

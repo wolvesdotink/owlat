@@ -200,6 +200,49 @@ describe('domain checklist validation', () => {
 		});
 	});
 
+	describe('the optional Ed25519 DKIM record', () => {
+		const rsa = rsaDkimRecord(2048);
+		const ed = 'v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=';
+		const edRecord = { type: 'TXT', host: 'e1._domainkey', value: ed, optional: true };
+		const records = {
+			spf: { type: 'TXT', host: '@', value: 'v=spf1 include:sender.example -all' },
+			dkim: [{ type: 'TXT', host: 's1._domainkey', value: rsa }, edRecord],
+			dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+		};
+		const lookups = (edResult: Record<string, unknown>) => ({
+			spf: { verified: true, foundValue: 'v=spf1 include:sender.example -all' },
+			dkim: [
+				{ verified: true, foundValue: rsa },
+				{ ...edResult, optional: true },
+			],
+			dmarc: { verified: true, foundValue: 'v=DMARC1; p=none' },
+		});
+
+		it.each([
+			['missing', { verified: false, error: 'No matching TXT record found' }],
+			['published', { verified: true, foundValue: ed }],
+		])('passes DKIM with the Ed25519 record %s and calls no key weak', async (_state, edResult) => {
+			vi.mocked(runDnsLookups).mockResolvedValue(lookups(edResult) as never);
+			const observation = await observeDomainCheck(
+				{} as never,
+				'domain.dkim',
+				context({}, records),
+				true
+			);
+			expect(observation.status).toBe('pass');
+			expect(observation.observedValues).not.toContain('key-bits=unparseable');
+		});
+
+		it('passes DMARC alignment with the Ed25519 record missing', async () => {
+			vi.mocked(runDnsLookups).mockResolvedValue(
+				lookups({ verified: false, error: 'No matching TXT record found' }) as never
+			);
+			await expect(
+				observeDomainCheck({} as never, 'domain.dmarc', context({}, records), true)
+			).resolves.toMatchObject({ status: 'pass' });
+		});
+	});
+
 	it('retries strict SPF carrying a failure diagnostic before failing', async () => {
 		vi.mocked(runDnsLookups).mockResolvedValue({
 			spf: {

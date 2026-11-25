@@ -43,6 +43,11 @@ import {
 	type DkimKeyResolution,
 } from './checklistDkimValidation';
 
+/** DKIM records (or their results) without the optional Ed25519 one. */
+function requiredDkim<T extends { optional?: boolean }>(records: T[] | undefined): T[] | undefined {
+	return records?.filter((record) => record.optional !== true);
+}
+
 export async function observeDomainCheck(
 	ctx: ActionCtx,
 	itemId: DeliverabilityCheckId,
@@ -88,17 +93,20 @@ export async function observeDomainCheck(
 		}
 		case 'domain.dkim': {
 			if (!results) throw new Error('DKIM DNS observation was not loaded');
-			const configured = domain.dnsRecords.dkim ?? [];
+			// The optional Ed25519 record is not part of this check: the RSA key
+			// signs every message whether it is published or not.
+			const configured = requiredDkim(domain.dnsRecords.dkim) ?? [];
+			const dkimResults = requiredDkim(results.dkim);
 			const verified =
-				results.dkim?.length === configured.length &&
+				dkimResults?.length === configured.length &&
 				configured.length > 0 &&
-				results.dkim.every((result) => isSuccessfulDnsResult(result));
+				dkimResults.every((result) => isSuccessfulDnsResult(result));
 			const keyResolutions = await Promise.all(
 				configured.map(async (record, index): Promise<DkimKeyResolution> => {
 					if (record.type !== 'CNAME') {
 						return {
 							outcome: 'resolved',
-							bits: parsedDkimKeyBits(results.dkim?.[index]?.foundValue ?? record.value),
+							bits: parsedDkimKeyBits(dkimResults?.[index]?.foundValue ?? record.value),
 						};
 					}
 					return resolveDkimKey(`${record.host}.${domain.domain}`);
@@ -134,7 +142,7 @@ export async function observeDomainCheck(
 							? 'warn'
 							: 'pending-dns'
 						: pendingDnsStatus(isFinalDnsRetry)
-				: dnsBundleStatus(results.dkim, isFinalDnsRetry, configured.length);
+				: dnsBundleStatus(dkimResults, isFinalDnsRetry, configured.length);
 			return checklistObservation(
 				'dns.dkim',
 				status,
@@ -142,11 +150,11 @@ export async function observeDomainCheck(
 					? 'The provider-managed DKIM CNAME is live, but key strength needs message-level proof.'
 					: verified && !strong
 						? 'The live DKIM key is shorter than 2048 bits or could not be parsed.'
-						: (results.dkim?.find((result) => result.error)?.error ??
+						: (dkimResults?.find((result) => result.error)?.error ??
 							'Every DKIM selector is live with a 2048-bit-or-stronger key.'),
 				[
 					...providerValues,
-					...dnsBundleObservations('dkim', domain.domain, configured, results.dkim),
+					...dnsBundleObservations('dkim', domain.domain, configured, dkimResults),
 					...keyResolutions.map((resolution) =>
 						resolution.outcome === 'resolved'
 							? `key-bits=${resolution.bits ?? 'unparseable'}`
@@ -161,19 +169,21 @@ export async function observeDomainCheck(
 			// record, or the return-path host's when no apex record was generated.
 			const spfSource = checklistSpfSource(domain);
 			const spfResult = spfSource ? spfSourceResult(spfSource, results) : undefined;
+			// DMARC aligns on the RSA signature, which every message carries.
+			const configuredDkim = requiredDkim(domain.dnsRecords.dkim) ?? [];
+			const dkimResults = requiredDkim(results.dkim);
 			const authenticationReady =
 				isSuccessfulDnsResult(spfResult) &&
-				(domain.dnsRecords.dkim?.length ?? 0) > 0 &&
-				results.dkim?.length === (domain.dnsRecords.dkim?.length ?? 0) &&
-				results.dkim?.every((result) => isSuccessfulDnsResult(result)) === true;
+				configuredDkim.length > 0 &&
+				dkimResults?.length === configuredDkim.length &&
+				dkimResults.every((result) => isSuccessfulDnsResult(result));
 			const pass = isSuccessfulDnsResult(results.dmarc) && authenticationReady;
-			const authenticationInputsPresent =
-				spfResult !== undefined && (results.dkim?.length ?? 0) > 0;
+			const authenticationInputsPresent = spfResult !== undefined && (dkimResults?.length ?? 0) > 0;
 			const authenticationStatus = authenticationInputsPresent
 				? dnsBundleStatus(
-						[...(spfResult ? [spfResult] : []), ...(results.dkim ?? [])],
+						[...(spfResult ? [spfResult] : []), ...(dkimResults ?? [])],
 						isFinalDnsRetry,
-						1 + (domain.dnsRecords.dkim?.length ?? 0)
+						1 + configuredDkim.length
 					)
 				: pendingDnsStatus(isFinalDnsRetry);
 			return checklistObservation(
@@ -191,12 +201,7 @@ export async function observeDomainCheck(
 				[
 					...providerValues,
 					dnsRecordObservation('spf', domain.domain, spfSource?.record, spfResult),
-					...dnsBundleObservations(
-						'dkim',
-						domain.domain,
-						domain.dnsRecords.dkim ?? [],
-						results.dkim
-					),
+					...dnsBundleObservations('dkim', domain.domain, configuredDkim, dkimResults),
 					dnsRecordObservation('dmarc', domain.domain, domain.dnsRecords.dmarc, results.dmarc),
 				]
 			);

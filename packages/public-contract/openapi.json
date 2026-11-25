@@ -7825,7 +7825,18 @@
 													"value": "s1.dkim.owlat.example",
 													"priority": null,
 													"state": "wrong",
-													"foundValue": "old.dkim.example.net"
+													"foundValue": "old.dkim.example.net",
+													"optional": false
+												},
+												{
+													"purpose": "dkim",
+													"type": "TXT",
+													"host": "e1763700000000._domainkey.news.example.com",
+													"value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+													"priority": null,
+													"state": "missing",
+													"foundValue": null,
+													"optional": true
 												},
 												{
 													"purpose": "dmarc",
@@ -7834,7 +7845,8 @@
 													"value": "v=DMARC1; p=none",
 													"priority": null,
 													"state": "missing",
-													"foundValue": null
+													"foundValue": null,
+													"optional": false
 												},
 												{
 													"purpose": "mail_from",
@@ -7843,7 +7855,8 @@
 													"value": "feedback.owlat.example",
 													"priority": 10,
 													"state": "found",
-													"foundValue": null
+													"foundValue": null,
+													"optional": false
 												}
 											]
 										}
@@ -10283,9 +10296,22 @@
 								"foundValue": {
 									"description": "The value the last check found instead, while state is wrong; otherwise null.",
 									"type": ["string", "null"]
+								},
+								"optional": {
+									"type": "boolean",
+									"description": "True for a record the domain does not need, whose state never decides whether the domain is verified: the optional second DKIM key (Ed25519, k=ed25519). False for every other record."
 								}
 							},
-							"required": ["purpose", "type", "host", "value", "priority", "state", "foundValue"],
+							"required": [
+								"purpose",
+								"type",
+								"host",
+								"value",
+								"priority",
+								"state",
+								"foundValue",
+								"optional"
+							],
 							"additionalProperties": false
 						},
 						"description": "Every record to publish; empty while the domain is still being registered."

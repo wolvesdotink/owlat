@@ -4,6 +4,7 @@
 		"domain": "demo.localhost",
 		"status": "verified",
 		"providerType": "mta",
-		"dkimSelector": "s1demo"
+		"dkimSelector": "s1demo",
+		"ed25519Selector": "e1demo"
 	}
 ]

@@ -160,8 +160,9 @@ export const deliveryHealth = internalQuery({
 			domains: setups.map(({ domain, status, records }) => ({
 				domain,
 				status,
+				// An optional record (the second DKIM key) is never something to fix.
 				recordsToFix: records
-					.filter((record) => record.state !== 'found')
+					.filter((record) => record.state !== 'found' && !record.optional)
 					.map(({ purpose, type, host, state }) => ({ purpose, type, host, state })),
 			})),
 			sendHold: suspensionForModel(hold),

@@ -22,6 +22,14 @@ interface MtaRegistrationResult {
 	 * migration reads this to tally outcomes.
 	 */
 	ownership?: 'assigned' | 'unchanged' | 'unowned';
+	/** The domain's optional Ed25519 key, when it has one (never minted by register). */
+	ed25519?: MtaEd25519Key;
+}
+
+/** A domain's optional second DKIM key (Ed25519, RFC 8463) as the MTA reports it. */
+export interface MtaEd25519Key {
+	selector: string;
+	dnsRecord: string; // "v=DKIM1; k=ed25519; p=<raw 32-byte key>"
 }
 
 /**
@@ -52,7 +60,14 @@ const decodeDkimRegistration = validatorDecoder(
 		created: v.optional(v.boolean()),
 		/** Read as text: an outcome this build does not know is left out, not refused. */
 		ownership: v.optional(v.string()),
+		ed25519Selector: v.optional(v.string()),
+		ed25519DnsRecord: v.optional(v.string()),
 	})
+);
+
+/** The MTA's answer to creating (or re-reading) a domain's Ed25519 key. */
+const decodeEd25519Key = validatorDecoder(
+	v.object({ success: v.boolean(), selector: v.string(), dnsRecord: v.string() })
 );
 
 const DKIM_OWNERSHIP_OUTCOMES = ['assigned', 'unchanged', 'unowned'] as const;
@@ -146,7 +161,47 @@ export class MtaIdentityManager {
 			...(result.ownership !== undefined && isDkimOwnership(result.ownership)
 				? { ownership: result.ownership }
 				: {}),
+			...(result.ed25519Selector && result.ed25519DnsRecord
+				? { ed25519: { selector: result.ed25519Selector, dnsRecord: result.ed25519DnsRecord } }
+				: {}),
 		};
+	}
+
+	/**
+	 * Give the domain its optional Ed25519 key, or read the one it has (the MTA
+	 * route is idempotent). The domain must already be registered; the MTA
+	 * refuses a domain owned by another organization with a 409.
+	 */
+	async createEd25519Key(domain: string, organizationId: string): Promise<MtaEd25519Key> {
+		const response = await fetch(`${this.baseUrl}/dkim/${encodeURIComponent(domain)}/ed25519`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.apiKey}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ organizationId }),
+		});
+		if (!response.ok) {
+			const body = await response.text().catch(() => 'Unknown error');
+			throw new Error(`MTA Ed25519 key creation failed (${response.status}): ${body}`);
+		}
+		const decoded = decodeEd25519Key(await response.json());
+		if (!decoded.ok || !decoded.value.success) {
+			throw new Error('MTA did not return a valid Ed25519 key');
+		}
+		return { selector: decoded.value.selector, dnsRecord: decoded.value.dnsRecord };
+	}
+
+	/** Remove the domain's Ed25519 key; the RSA key stays. Idempotent on the MTA. */
+	async removeEd25519Key(domain: string): Promise<void> {
+		const response = await fetch(`${this.baseUrl}/dkim/${encodeURIComponent(domain)}/ed25519`, {
+			method: 'DELETE',
+			headers: { Authorization: `Bearer ${this.apiKey}` },
+		});
+		if (!response.ok) {
+			const body = await response.text().catch(() => 'Unknown error');
+			throw new Error(`MTA Ed25519 key removal failed (${response.status}): ${body}`);
+		}
 	}
 
 	/**
