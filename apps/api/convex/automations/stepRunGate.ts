@@ -4,8 +4,10 @@
  *
  * Checked twice for an email step: by the claim (`stepOrchestration.ts`), and
  * again by the non-campaign intake in the transaction that writes the Send
- * (`delivery/nonCampaignIntake.ts`). The worker re-checks the contact once more
- * before dispatch (`delivery/marketingDispatchGate.ts`). Between the two the email step reads its
+ * (`delivery/nonCampaignIntake.ts`). The worker re-checks the contact and the
+ * automation once more before dispatch (`delivery/marketingDispatchGate.ts`),
+ * and withdraws the queued mail of an automation paused since. Between the
+ * first two the email step reads its
  * template and the default sender and personalizes the mail in an action, and a
  * pause, a deletion or a removed step landing in that window must still stop
  * the mail. The intake checks only the run, the automation and the step: it

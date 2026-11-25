@@ -126,6 +126,9 @@ const emailSkipNote = (reason: string, topicName: string | null): string => {
 	if (reason === 'contact_unsubscribed') {
 		return t('dashboard.automations.detail.index.runs.emailSkip.unsubscribed');
 	}
+	if (reason === 'automation_paused') {
+		return t('dashboard.automations.detail.index.runs.emailSkip.automationPaused');
+	}
 	return topicName
 		? t('dashboard.automations.detail.index.runs.emailSkip.leftTopic', { name: topicName })
 		: t('dashboard.automations.detail.index.runs.emailSkip.leftDeletedTopic');
@@ -307,9 +310,14 @@ const loadPrevRuns = () => {
 							</UiTooltip>
 						</div>
 					</div>
-					<!-- Why this run skipped an email, aligned with the contact's name -->
+					<!-- Why this run skipped an email, aligned with the contact's name. A
+					withdrawn email is shown beside a failure note: the run can fail on a
+					later step while that email is still queued. -->
 					<p
-						v-if="run.emailSkip && !(run.failure ?? run.waiting)"
+						v-if="
+							run.emailSkip &&
+							(run.emailSkip.reason === 'automation_paused' || !(run.failure ?? run.waiting))
+						"
 						class="mt-2 sm:pl-13 text-sm text-text-secondary"
 						data-testid="run-email-skip"
 					>

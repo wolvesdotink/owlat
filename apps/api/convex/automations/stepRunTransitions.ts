@@ -291,6 +291,7 @@ export function completeSentStepAndAdvance(
 const EMAIL_SKIP_MESSAGE: Record<AutomationEmailSkipReason, string> = {
 	contact_unsubscribed: 'Contact unsubscribed from marketing; email step skipped',
 	topic_unsubscribed: "Contact is not subscribed to the automation's topic; email step skipped",
+	automation_paused: 'Automation was paused before the queued email went out; email withdrawn',
 };
 
 /**
@@ -316,6 +317,46 @@ export async function skipIneligibleEmailStepAndAdvance(
 	return await endStepAndAdvance(ctx, stepRun, 'skipped', {
 		errorMessage: EMAIL_SKIP_MESSAGE[skip.reason],
 	});
+}
+
+/**
+ * Record that the email an email step queued was withdrawn before dispatch
+ * because its automation was paused (`delivery/marketingDispatchGate.ts`).
+ *
+ * The step run is usually `completed` already: that means its Send was queued.
+ * This is the one move out of a terminal step run, to `skipped`, so the funnel
+ * and the sent count do not include the email. The step run can also still be
+ * `executing` when the worker beats the walker's finalize; it is skipped here
+ * too, and the finalize then finds it ended and does nothing.
+ *
+ * The run ends as a pause ends it at the step claim: cancelled, with no failure
+ * counted, and the note on the run. A run that had completed (the email was its
+ * last step) is moved to cancelled as well, with its counters, because the
+ * email it completed on never went out. A duplicate call changes nothing.
+ */
+export async function withdrawQueuedEmailStepRun(
+	ctx: MutationCtx,
+	stepRunId: Id<'automationStepRuns'>
+): Promise<void> {
+	const stepRun = await ctx.db.get(stepRunId);
+	if (!stepRun || stepRun.stepType !== 'email') return;
+	if (stepRun.status === 'skipped' || stepRun.status === 'failed') return;
+	await ctx.db.patch(stepRun._id, {
+		status: 'skipped',
+		errorMessage: EMAIL_SKIP_MESSAGE.automation_paused,
+		completedAt: stepRun.completedAt ?? Date.now(),
+		leaseExpiresAt: undefined,
+	});
+	await applyStepStatusTransition(ctx, stepRun.automationStepId, stepRun.status, 'skipped');
+	const run = await ctx.db.get(stepRun.automationRunId);
+	if (!run) return;
+	await ctx.db.patch(run._id, { emailSkip: { reason: 'automation_paused' } });
+	if (run.status === 'running') {
+		await cancelRun(ctx, run._id);
+	} else if (run.status === 'completed') {
+		await ctx.db.patch(run._id, { status: 'cancelled' });
+		await bumpAutomationStats(ctx, run.automationId, { statsCompleted: -1, statsCancelled: 1 });
+	}
 }
 
 /**

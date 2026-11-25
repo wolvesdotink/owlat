@@ -132,7 +132,9 @@ describe('automation builder header', () => {
 		await button(wrapper, 'Pause').trigger('click');
 		await flushPromises();
 		expect(runs.pause).toHaveBeenCalledWith({ automationId: 'au_1' });
-		expect(showToast).toHaveBeenCalledWith('Automation paused');
+		expect(showToast).toHaveBeenCalledWith(
+			"Automation paused. Emails it had queued won't be sent, even if you resume it."
+		);
 		wrapper.unmount();
 	});
 
