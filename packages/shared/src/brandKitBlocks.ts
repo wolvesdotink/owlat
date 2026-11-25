@@ -88,6 +88,21 @@ export function brandLogoBlock(
 }
 
 /**
+ * The rich-text html of the footer's company name and address block. The
+ * send-time footer also matches it against the rendered body, because footer
+ * blocks saved before they carried the `postalAddress` flag have exactly this
+ * html and no marker. Changing the shape here leaves those blocks unmatched.
+ */
+export function brandFooterTextHtml(name: string, address: string): string {
+	return [
+		name ? `<strong>${escapeHtml(name)}</strong>` : '',
+		address ? escapeHtmlWithBreaks(address) : '',
+	]
+		.filter(Boolean)
+		.join('<br>');
+}
+
+/**
  * The footer: the company name and postal address as a small centred text
  * Block, then the social links as a social Block. Either part is left out when
  * the kit has nothing for it; `[]` when it has neither.
@@ -97,12 +112,8 @@ export function brandFooterBlocks(design: BrandKitDesign, newId: () => string): 
 	const name = design.footerCompanyName.trim();
 	const address = design.footerAddress.trim();
 	if (name || address) {
-		const lines = [
-			name ? `<strong>${escapeHtml(name)}</strong>` : '',
-			address ? escapeHtmlWithBreaks(address) : '',
-		].filter(Boolean);
 		const content: TextBlockContent = {
-			html: lines.join('<br>'),
+			html: brandFooterTextHtml(name, address),
 			blockType: 'paragraph',
 			fontSize: 12,
 			textColor: design.textColor,

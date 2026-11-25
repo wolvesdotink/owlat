@@ -25,6 +25,7 @@ export const plainTextPreset: TemplatePreset = {
 			id: 'plain-text-1',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p>Hi {{firstName}},</p><p>I wanted to reach out personally to share something with you.</p><p>[Your message here]</p><p>If you have any questions, just reply to this email - I read every response.</p><p>Best,<br>[Your name]</p>',
 				fontSize: 16,
 				textColor: '#374151',

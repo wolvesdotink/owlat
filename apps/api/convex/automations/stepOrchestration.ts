@@ -47,14 +47,12 @@ import { v } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { MAX_RETRY_ATTEMPTS, RETRY_DELAYS_MS } from '../lib/constants';
 import { automationStepFailureReasonValidator } from '../lib/validators/automations';
-import {
-	contactMarketingIneligibility,
-	marketingIneligibilityValidator,
-} from '../lib/marketingEligibility';
+import { automationTopicId, marketingIneligibilityValidator } from '../lib/marketingEligibility';
 import { findStepRunSend } from './stepRunSend';
+import { gateStepRun } from './stepRunGate';
 import {
 	configurationWaitReason,
 	isWaitLongOver,
@@ -70,8 +68,8 @@ import {
 	failStepAndCancelRun,
 	isTerminalStepRunStatus,
 	recordSkippedSteps,
+	skipIneligibleEmailStepAndAdvance,
 	skipStepAndCancelRun,
-	skipUnsubscribedStepAndAdvance,
 	transitionStepRun,
 	PRE_UPGRADE_ABANDON_AFTER_MS,
 	PRE_UPGRADE_ABANDONED_ERROR,
@@ -147,69 +145,6 @@ function ownsStepRun(stepRun: Doc<'automationStepRuns'>, attempt: number): boole
 	return stepRun.status === 'executing' && (stepRun.retryCount ?? 0) === attempt;
 }
 
-export type StepRunGate =
-	| {
-			isOpen: true;
-			run: Doc<'automationRuns'>;
-			step: Doc<'automationSteps'>;
-			contact: Doc<'contacts'>;
-			automation: Doc<'automations'>;
-	  }
-	| { isOpen: false; isRunEnded: boolean; reason: string };
-
-/**
- * Re-check, in the claiming transaction, that a step run may still run its
- * side effect: the run is running, the automation active, the step present and
- * the contact eligible. A closed gate has already written its outcome — the
- * step run skipped or failed, and the run cancelled or moved on — so the
- * caller only reports it.
- */
-export async function gateStepRun(
-	ctx: MutationCtx,
-	stepRun: Doc<'automationStepRuns'>
-): Promise<StepRunGate> {
-	const run = await ctx.db.get(stepRun.automationRunId);
-	if (!run || run.status !== 'running') {
-		await transitionStepRun(ctx, stepRun, 'skipped', {
-			completedAt: Date.now(),
-			errorMessage: 'Automation run is no longer running',
-			leaseExpiresAt: undefined,
-		});
-		return { isOpen: false, isRunEnded: true, reason: 'Run not running' };
-	}
-
-	const automation = await ctx.db.get(run.automationId);
-	if (!automation || automation.status !== 'active') {
-		await failStepAndCancelRun(ctx, stepRun, 'Automation is no longer active', {
-			countRunFailure: false,
-			stepFault: false,
-		});
-		return { isOpen: false, isRunEnded: true, reason: 'Automation inactive' };
-	}
-
-	const step = await ctx.db.get(stepRun.automationStepId);
-	if (!step) {
-		await failStepAndCancelRun(ctx, stepRun, 'Step not found', {
-			countRunFailure: false,
-			stepFault: false,
-		});
-		return { isOpen: false, isRunEnded: true, reason: 'Step not found' };
-	}
-
-	const contact = await ctx.db.get(run.contactId);
-	const ineligibility = contactMarketingIneligibility(contact);
-	if (ineligibility === 'contact_deleted' || contact === null) {
-		await skipStepAndCancelRun(ctx, stepRun, 'Contact is no longer eligible: contact_deleted');
-		return { isOpen: false, isRunEnded: true, reason: 'Contact ineligible (contact_deleted)' };
-	}
-	if (ineligibility === 'contact_unsubscribed' && step.stepType === 'email') {
-		await skipUnsubscribedStepAndAdvance(ctx, stepRun);
-		return { isOpen: false, isRunEnded: false, reason: 'Contact unsubscribed; email skipped' };
-	}
-
-	return { isOpen: true, run, step, contact, automation };
-}
-
 /**
  * Claim `attempt` of a step run. Attempt 0 claims a `pending` row; attempt n>0
  * takes over an `executing` row owned by attempt n-1 (a scheduled retry or a
@@ -264,6 +199,7 @@ export const claimStepRun = internalMutation({
 			if (stepRun.stepType === 'email') {
 				if (emailSendId !== null) {
 					await completeSentStepAndAdvance(ctx, stepRun, emailSendId);
+					await releaseAfterWaitedSend(ctx, stepRun, emailSendId);
 					return { kind: 'dropped' };
 				}
 			}
@@ -341,12 +277,24 @@ const stepOutcomeValidator = v.union(
 	})
 );
 
+/** The topic the step run's automation belongs to, for the run's skip note. */
+async function topicOfStepRun(
+	ctx: MutationCtx,
+	stepRun: Doc<'automationStepRuns'>
+): Promise<{ topicId?: Id<'topics'> }> {
+	const run = await ctx.db.get(stepRun.automationRunId);
+	const automation = run ? await ctx.db.get(run.automationId) : null;
+	const topicId = automation ? automationTopicId(ctx, automation) : null;
+	return topicId === null ? {} : { topicId };
+}
+
 /**
  * Commit a successful attempt: complete the step run, record the steps a
  * forward branch skipped, then enter the next step (or complete the run). A
  * `contact_ineligible` outcome means the intake saw the contact change after
- * the claim: an unsubscribe skips the email step and moves the run on, a
- * deletion skips it and cancels the run.
+ * the claim: an unsubscribe from everything or from the automation's topic
+ * skips the email step and moves the run on, a deletion skips it and cancels
+ * the run.
  */
 export const finalizeStepRun = internalMutation({
 	args: {
@@ -365,7 +313,15 @@ export const finalizeStepRun = internalMutation({
 
 		if (args.outcome.kind === 'contact_ineligible') {
 			if (args.outcome.reason === 'contact_unsubscribed') {
-				return await skipUnsubscribedStepAndAdvance(ctx, stepRun);
+				return await skipIneligibleEmailStepAndAdvance(ctx, stepRun, {
+					reason: 'contact_unsubscribed',
+				});
+			}
+			if (args.outcome.reason === 'topic_unsubscribed') {
+				return await skipIneligibleEmailStepAndAdvance(ctx, stepRun, {
+					reason: 'topic_unsubscribed',
+					...(await topicOfStepRun(ctx, stepRun)),
+				});
 			}
 			await skipStepAndCancelRun(
 				ctx,

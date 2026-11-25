@@ -37,4 +37,13 @@ export function registerMigrationCrons(crons: Crons): void {
 		internal.migrations['0076_backfill_member_profiles'].ensure,
 		{}
 	);
+
+	// Template name sort keys: fill them on every install, so the template
+	// list's name sort covers templates from before the key existed.
+	crons.interval(
+		'ensure template name sort keys',
+		{ minutes: 10 },
+		internal.migrations['0077_backfill_template_name_sort_key'].ensure,
+		{}
+	);
 }

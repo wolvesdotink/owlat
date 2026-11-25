@@ -255,7 +255,8 @@ export function reduceFailed(
 	// duplicate arm above keeps it to once per send; a hold or a retry never
 	// reaches this reducer, so it fires only on the terminal answer.
 	//
-	// A recipient skipped at dispatch (suppressed, unsubscribed, deleted) is not
+	// A recipient skipped at dispatch (suppressed, unsubscribed, deleted), or an
+	// automation email withdrawn because its automation was paused, is not
 	// a delivery failure, and a campaign skips one per such recipient, so the
 	// event would arrive by the thousand. Only a send the API accepted keeps it:
 	// its caller was answered 202 and has no other signal that nothing went out.

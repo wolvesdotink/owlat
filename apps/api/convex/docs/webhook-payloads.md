@@ -181,6 +181,29 @@ Fired when a deliverability check that had passed regresses and Owlat raises an 
 
 `nextAction` is the check's fix sentence from `DELIVERABILITY_NEXT_ACTIONS` in `@owlat/shared`, the one the Deliverability Center shows; a test alert carries a fixed sentence. `emailMayNotArrive` is true when the alert is about the server its own email leaves through (a blocking server check while system mail uses the built-in MTA).
 
+Also fired once when sending on the instance stops (`delivery/sendingHoldAlerts.ts`, called by the Abuse status module on a transition that flips sending between allowed and stopped, or moves a stop between suspended and banned). It is not a `deliverabilityRegressionAlerts` row and its `alertId` is `sending_hold:<epoch ms sending stopped>`. These fields appear on this alert only:
+
+```json
+{
+  "alertId": "sending_hold:<epoch ms>",
+  "checkId": "deployment.sending_hold",
+  "check": "Sending suspended" | "Sending banned",
+  "severity": "blocking",
+  "scope": "deployment",
+  "domain": null,
+  "message": "<the reason stored with the status>",
+  "nextAction": "<how it lifts, from sendingHoldLiftSentence, and who acts>",
+  "observedAt": "<ISO-8601>",
+  "emailMayNotArrive": true,
+  "isTest": false,
+  "holdStatus": "suspended" | "banned",
+  "previousHoldStatus": "suspended" | "banned", // only on a raise that changed the status
+  "lift": "<JSON text of SendingHoldLift>"
+}
+```
+
+`lift` is `publicSendingHoldLift` (`delivery/sendingHoldLift.ts`), the object `GET /api/v1/status` and the transactional 403 return, JSON-encoded because `data` is flat. `emailMayNotArrive` is true while system mail uses the built-in MTA. Suspended to banned (or back) raises it again with the same `alertId`, the new `holdStatus` and `previousHoldStatus` (the status before); one resolve closes it when sending resumes. A new reason under the same status, and a warning, raise nothing.
+
 ### `deliverability.alert_resolved`
 
 Fired once when an alert announced by `deliverability.alert_raised` closes. `alertId` matches the raise.
@@ -197,7 +220,7 @@ Fired once when an alert announced by `deliverability.alert_raised` closes. `ale
 }
 ```
 
-`manual`: an admin resolved it. `automatic`: the check passed again, or Owlat closed it (IPv6 turned off, retention).
+`manual`: an admin resolved it. `automatic`: the check passed again, or Owlat closed it (IPv6 turned off, retention). For `deployment.sending_hold` it fires when sending resumes: `automatic` when the reputation check lifted the suspension, `manual` when a platform admin did.
 
 Both are typed in `@owlat/public-contract` (`DeliverabilityAlertRaisedWebhook`, `DeliverabilityAlertResolvedWebhook`).
 

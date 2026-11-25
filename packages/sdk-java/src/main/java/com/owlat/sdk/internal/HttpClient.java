@@ -26,6 +26,9 @@ public class HttpClient {
      */
     private static final long MAX_RETRY_AFTER_MS = 30_000L;
 
+    /** Pattern of a {@code Retry-After} header the client reads: whole seconds, no sign. */
+    private static final java.util.regex.Pattern DELAY_SECONDS = java.util.regex.Pattern.compile("\\d+");
+
     /**
      * HTTP methods safe to auto-retry on a transient 5xx or network failure.
      * Excludes {@code POST}: a transactional/event {@code POST} the server
@@ -95,11 +98,21 @@ public class HttpClient {
     }
 
     public <T> T get(String path, TypeReference<T> typeRef) {
-        return request(HttpMethod.GET, path, null, typeRef, null);
+        return request(HttpMethod.GET, path, null, typeRef, null, null);
     }
 
     public <T> T post(String path, Object body, TypeReference<T> typeRef) {
-        return request(HttpMethod.POST, path, body, typeRef, null);
+        return request(HttpMethod.POST, path, body, typeRef, null, null);
+    }
+
+    /**
+     * A {@code POST} or {@code PUT} that sends {@code ifMatch} as the
+     * {@code If-Match} header when it is not null: the revision the request was
+     * built on, which the server refuses once the resource has moved on.
+     */
+    public <T> T conditional(HttpMethod method, String path, Object body, TypeReference<T> typeRef,
+                             String ifMatch) {
+        return request(method, path, body, typeRef, null, ifMatch);
     }
 
     /**
@@ -109,19 +122,19 @@ public class HttpClient {
      */
     public <T> T post(String path, Object body, TypeReference<T> typeRef, RequestOptions options) {
         return request(HttpMethod.POST, path, body, typeRef,
-                options != null ? options.getIdempotencyKey() : null);
+                options != null ? options.getIdempotencyKey() : null, null);
     }
 
     public <T> T put(String path, Object body, TypeReference<T> typeRef) {
-        return request(HttpMethod.PUT, path, body, typeRef, null);
+        return request(HttpMethod.PUT, path, body, typeRef, null, null);
     }
 
     public <T> T delete(String path, TypeReference<T> typeRef) {
-        return request(HttpMethod.DELETE, path, null, typeRef, null);
+        return request(HttpMethod.DELETE, path, null, typeRef, null, null);
     }
 
     private <T> T request(HttpMethod method, String path, Object body, TypeReference<T> typeRef,
-                          String idempotencyKey) {
+                          String idempotencyKey, String ifMatch) {
         String url = baseUrl + path;
         OwlatException lastError = null;
         boolean replaySafe = IDEMPOTENT_METHODS.contains(method) || idempotencyKey != null;
@@ -147,6 +160,9 @@ public class HttpClient {
                 if (idempotencyKey != null) {
                     requestBuilder.header("Idempotency-Key", idempotencyKey);
                 }
+                if (ifMatch != null) {
+                    requestBuilder.header("If-Match", ifMatch);
+                }
 
                 if (json != null) {
                     requestBuilder.method(method.name(), HttpRequest.BodyPublishers.ofString(json));
@@ -168,29 +184,23 @@ public class HttpClient {
                 // retryable ones would never be retried.
                 if (response.statusCode() >= 400) {
                     int status = response.statusCode();
-                    int retryAfterSeconds = status == 429 ? parseHeader(response, "Retry-After", 0) : 0;
+                    // Only a 429 needs its body before the retry decision.
+                    Integer retryAfter = status == 429
+                            ? retryAfterSeconds(errorData(errorEnvelope(response.body())), response)
+                            : null;
                     // 429 is a pre-processing rejection — retryable for any
-                    // method, and we honor Retry-After. One asking for a longer
+                    // method, and we honor its wait. One asking for a longer
                     // wait than the client sleeps cannot be outwaited by
                     // retrying, so it is thrown at once. 5xx is only replayed
                     // for replay-safe requests so a POST the server may have
                     // already applied is never duplicated without an
                     // idempotency key. A 409 is never retried.
                     if (attempt < maxRetries && isRetryable(replaySafe, status)
-                            && retryAfterSeconds * 1000L <= MAX_RETRY_AFTER_MS) {
-                        long delayMs;
-                        if (status == 429) {
-                            // Retry-After is in seconds; fall back to backoff.
-                            delayMs = retryAfterSeconds > 0
-                                    ? retryAfterSeconds * 1000L
-                                    : backoffDelayMs(attempt);
-                        } else {
-                            delayMs = backoffDelayMs(attempt);
-                        }
-                        sleep(delayMs);
+                            && (retryAfter == null || retryAfter * 1000L <= MAX_RETRY_AFTER_MS)) {
+                        sleep(retryAfter != null ? retryAfter * 1000L : backoffDelayMs(attempt));
                         continue;
                     }
-                    handleError(response, rateLimit, url);
+                    handleError(response, retryAfter, rateLimit, url);
                 }
 
                 // Empty success response (e.g., 204 No Content). Only reached
@@ -202,9 +212,15 @@ public class HttpClient {
 
                 try {
                     return mapper.readValue(response.body(), typeRef);
-                } catch (com.fasterxml.jackson.core.JsonParseException e) {
-                    // The API answers every 2xx with JSON; an HTML page here is
-                    // most often the web app's address given as the base URL.
+                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                    // The API answers every 2xx with one JSON document. Anything
+                    // else (an HTML page, most often the web app's address given
+                    // as the base URL, a blank body, a document followed by more
+                    // content) is not its answer. A document that is one but does
+                    // not bind to the model keeps its original exception.
+                    if (isJsonDocument(response.body())) {
+                        throw e;
+                    }
                     throw new UnexpectedResponseException(response.statusCode(), displayUrl(url),
                             bodyExcerpt(response.body()), rateLimit);
                 }
@@ -298,7 +314,9 @@ public class HttpClient {
      * key is cut out before anything is kept.
      */
     private String bodyExcerpt(String rawBody) {
-        String text = rawBody.replaceAll("\\s+", " ").trim();
+        // (?U): Java's plain \\s is ASCII only and would keep the line
+        // separators U+2028 and U+2029.
+        String text = rawBody.replaceAll("(?U)\\s+", " ").trim();
         if (apiKey != null && !apiKey.isEmpty()) {
             text = text.replace(apiKey, "[redacted]");
         }
@@ -314,49 +332,98 @@ public class HttpClient {
         return withoutQuery.replaceFirst("^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", "$1");
     }
 
-    private void handleError(HttpResponse<String> response, RateLimitInfo rateLimit, String url) {
+    /** Whether the body is exactly one JSON document, with nothing after it. */
+    private boolean isJsonDocument(String body) {
+        try {
+            JsonNode tree = mapper.readTree(body);
+            return tree != null && !tree.isMissingNode();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * The {@code error} object of the API's {@code {"error": {...}}} envelope,
+     * or null when the body is empty or is not that envelope.
+     */
+    private JsonNode errorEnvelope(String rawBody) {
+        if (rawBody.isEmpty()) {
+            return null;
+        }
+        try {
+            JsonNode body = mapper.readTree(rawBody);
+            JsonNode candidate = body != null && body.isObject() ? body.get("error") : null;
+            return candidate != null && candidate.isObject() ? candidate : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** The envelope's {@code data} object, or null when there is none. */
+    private java.util.Map<String, Object> errorData(JsonNode error) {
+        JsonNode dataNode = error != null ? error.get("data") : null;
+        if (dataNode == null || !dataNode.isObject()) {
+            return null;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> parsed = mapper.convertValue(dataNode, java.util.Map.class);
+            return parsed;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The seconds a 429 asks the client to wait, or null when it names none the
+     * client can read. {@code data.retryAfter} in Owlat's error envelope wins
+     * over the {@code Retry-After} header: the envelope comes from the instance
+     * and goes with the {@code data.reason} it names, while the header may have
+     * been set by a proxy in front of it. A body value is any positive number,
+     * rounded up; a header value is a positive whole number of seconds, so an
+     * HTTP date, a sign or a decimal point leaves it unread. A larger wait than
+     * an {@code int} holds is capped. The JS SDK applies the same rule.
+     */
+    private static Integer retryAfterSeconds(java.util.Map<String, Object> data, HttpResponse<String> response) {
+        Object fromBody = data != null ? data.get("retryAfter") : null;
+        if (fromBody instanceof Number) {
+            double seconds = Math.ceil(((Number) fromBody).doubleValue());
+            if (seconds > 0) {
+                return seconds >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) seconds;
+            }
+        }
+        String header = response.headers().firstValue("Retry-After").map(String::trim).orElse("");
+        if (!DELAY_SECONDS.matcher(header).matches()) {
+            return null;
+        }
+        String digits = header.replaceFirst("^0+", "");
+        if (digits.isEmpty()) {
+            return null;
+        }
+        return digits.length() > 10 ? Integer.MAX_VALUE : (int) Math.min(Long.parseLong(digits), Integer.MAX_VALUE);
+    }
+
+    private void handleError(HttpResponse<String> response, Integer retryAfter, RateLimitInfo rateLimit, String url) {
         String message = "Unknown error";
         String category = "internal";
-        java.util.Map<String, Object> data = null;
         int statusCode = response.statusCode();
-        String rawBody = response.body();
+        JsonNode error = errorEnvelope(response.body());
+        java.util.Map<String, Object> data = errorData(error);
 
         // The API wraps every failure of its own in the envelope, so a body that
         // is there but is not one came from something else: a wrong host or
         // path, or a proxy. An empty body keeps the status's typed exception, and
         // a 429 stays a rate limit whoever sent it, since proxies throttle too.
-        JsonNode error = null;
-        if (!rawBody.isEmpty()) {
-            try {
-                JsonNode body = mapper.readTree(rawBody);
-                JsonNode candidate = body != null && body.isObject() ? body.get("error") : null;
-                if (candidate != null && candidate.isObject()) {
-                    error = candidate;
-                }
-            } catch (IOException ignored) {
-            }
-            if (error == null && statusCode != 429) {
-                throw new UnexpectedResponseException(statusCode, displayUrl(url), bodyExcerpt(rawBody), rateLimit);
-            }
+        if (error == null && !response.body().isEmpty() && statusCode != 429) {
+            throw new UnexpectedResponseException(statusCode, displayUrl(url), bodyExcerpt(response.body()), rateLimit);
         }
-
-        try {
-            if (error != null) {
-                if (error.has("message")) {
-                    message = error.get("message").asText();
-                }
-                if (error.has("category")) {
-                    category = error.get("category").asText();
-                }
-                JsonNode dataNode = error.get("data");
-                if (dataNode != null && dataNode.isObject()) {
-                    @SuppressWarnings("unchecked")
-                    java.util.Map<String, Object> parsed = mapper.convertValue(
-                            dataNode, java.util.Map.class);
-                    data = parsed;
-                }
+        if (error != null) {
+            if (error.has("message")) {
+                message = error.get("message").asText();
             }
-        } catch (IllegalArgumentException ignored) {
+            if (error.has("category")) {
+                category = error.get("category").asText();
+            }
         }
 
         switch (statusCode) {
@@ -373,11 +440,7 @@ public class HttpClient {
             case 422:
                 throw new InvalidStateException(message, rateLimit, data);
             case 429:
-                int retryAfterHeader = parseHeader(response, "Retry-After", 1);
-                int retryAfter = data != null && data.get("retryAfter") instanceof Number
-                        ? ((Number) data.get("retryAfter")).intValue()
-                        : retryAfterHeader;
-                throw new RateLimitException(message, rateLimit, retryAfter, data);
+                throw new RateLimitException(message, rateLimit, retryAfter != null ? retryAfter : 1, data);
             case 400:
                 throw new ValidationException(message, rateLimit, data);
             default:

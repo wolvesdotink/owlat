@@ -10,7 +10,12 @@
  * primitive renders its column-cell shell.
  */
 
-import { fullSupport } from '@owlat/shared';
+import {
+	fullSupport,
+	isValidColumnWidths,
+	MAX_COLUMN_COUNT,
+	MIN_COLUMN_WIDTH_PERCENT,
+} from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { toPixelWidth, toPercentNumber } from '../../helpers/dimensions';
 import { getColumnWidths } from '../../helpers/table';
@@ -41,7 +46,7 @@ export const columnsModule: BlockModule<'columns'> = {
 	},
 
 	html({ content, ctx, walk }) {
-		const widths = getColumnWidths(content.columnCount, content.ratio);
+		const widths = getColumnWidths(content.columnCount, content.ratio, content.columnWidths);
 		const verticalAlign = content.verticalAlign || 'top';
 		const gap = px(content.columnGap, 0);
 		const gapLeft = Math.floor(gap / 2);
@@ -53,6 +58,7 @@ export const columnsModule: BlockModule<'columns'> = {
 		if (direction === 'rtl') columnIndices = columnIndices.reverse();
 
 		const useTableCell = !content.mobileStacking;
+		let someColumnStacks = false;
 
 		const columnHtmlParts = columnIndices.map((colIdx) => {
 			const columnItems = content.columns[colIdx] || [];
@@ -66,6 +72,7 @@ export const columnsModule: BlockModule<'columns'> = {
 
 			const colStyle = content.columnStyles?.[colIdx];
 			const columnStacks = colStyle?.stackOnMobile ?? content.mobileStacking;
+			if (columnStacks) someColumnStacks = true;
 			const mobileClass = columnStacks ? ' class="owlat-col"' : '';
 
 			const colBg = colStyle?.backgroundColor
@@ -124,7 +131,22 @@ export const columnsModule: BlockModule<'columns'> = {
 		}
 
 		const inner = columnHtmlParts.join('');
-		return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="font-size:0;line-height:0;">${inner}</div>${msoColumnsClose()}`;
+		if (!useTableCell) {
+			return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="font-size:0;line-height:0;">${inner}</div>${msoColumnsClose()}`;
+		}
+		// `display:table-cell` columns need a table parent at full width; inside a
+		// plain block the browser wraps them in an anonymous table that shrinks to
+		// the content, and the percentage widths resolve against nothing. The
+		// layout stays automatic so an unbreakable word widens its column instead
+		// of running into the next one. A column that opts into stacking only
+		// leaves the row when the row stops being a table on mobile.
+		let rowClass = '';
+		if (someColumnStacks) {
+			rowClass = ' class="owlat-cols-row"';
+			const rule = '.owlat-cols-row{display:block!important}';
+			if (!ctx.responsiveRules.includes(rule)) ctx.responsiveRules.push(rule);
+		}
+		return `${msoColumnsOpen(ctx.baseWidth, direction)}<div${rowClass} style="display:table;width:100%;font-size:0;line-height:0;">${inner}</div>${msoColumnsClose()}`;
 	},
 
 	plaintext({ content, walk }) {
@@ -305,9 +327,9 @@ export const columnsModule: BlockModule<'columns'> = {
 			[
 				{
 					field: 'columnCount',
-					check: (v) => isNumber(v) && [1, 2, 3, 4].includes(v),
+					check: (v) => isNumber(v) && Number.isInteger(v) && v >= 1 && v <= MAX_COLUMN_COUNT,
 					code: 'COLUMNS_COUNT_INVALID',
-					message: 'columnCount must be 1, 2, 3, or 4',
+					message: `columnCount must be a whole number from 1 to ${MAX_COLUMN_COUNT}`,
 				},
 				{
 					field: 'ratio',
@@ -359,6 +381,21 @@ export const columnsModule: BlockModule<'columns'> = {
 					}
 				}
 			}
+		}
+
+		// Custom widths the renderer would ignore: it falls back to the ratio
+		// preset, so the row renders, but not at the widths that were set.
+		if (
+			ic['columnWidths'] !== undefined &&
+			!isValidColumnWidths(ic['columnWidths'], ic['columnCount'])
+		) {
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'columns',
+				severity: 'warning',
+				code: 'COLUMNS_WIDTHS_INVALID',
+				message: `columnWidths must hold one whole percentage per column, each at least ${MIN_COLUMN_WIDTH_PERCENT}, summing to 100; the ratio preset is used instead`,
+			});
 		}
 
 		// Semantic

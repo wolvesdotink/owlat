@@ -382,6 +382,7 @@ describe('the route and deferred-feature budgets', () => {
 			/route pages\/emails\/\[id\]\/edit\.vue: [\d.]+ KB gzip, over its 4 KB budget/
 		);
 		expect(failing.output).not.toContain('pages/index.vue: ');
+		expect(failing.output).toContain('`bun run ci:bundle` builds the web app and checks it again');
 
 		expect(run(output, '--budgets', budgets(64)).status).toBe(0);
 	});
@@ -393,6 +394,28 @@ describe('the route and deferred-feature budgets', () => {
 		expect(result.output).toMatch(
 			/deferred components\/SendTestEmailModal\.vue: [\d.]+ KB gzip, over its 0 KB budget/
 		);
+	});
+
+	it('prints the line a locale chunk over its budget takes, not the advice to defer code', () => {
+		const locale = '../node_modules/.cache/owlat-i18n/areas/send.en.json';
+		const output = build(
+			{
+				...CHUNKS,
+				'index.js':
+					'import{v}from"./vue.js";const l=()=>import(`./send.en.js`);export default v(l);\n',
+				'send.en.js': `export default "${incompressible(4 * 1024)}";\n`,
+			},
+			{ ...RESOURCES, [locale]: { file: 'send.en.js', src: locale } }
+		);
+		const gzip = report(output).deferred.find((chunk) => chunk.key === locale)?.beyondEntry
+			.gzip as number;
+
+		const result = run(output, '--budgets', budgetsFile(`${ROOMY}\ndeferred 1 ${locale}`));
+
+		expect(result.status).toBe(1);
+		expect(result.output).toContain('1 locale chunk is over budget');
+		expect(result.output).toContain(`  deferred ${suggestedBudgetKiB(gzip)} ${locale}`);
+		expect(result.output).not.toContain('closure is over budget');
 	});
 
 	it('records an over-budget build as JSON without failing', () => {

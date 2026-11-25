@@ -17,7 +17,9 @@
  * it (`abuseStatusTrigger`), which is what lets the check lift its own
  * suspension (`analytics/reputationResume.ts`), and the hold a platform
  * admin's lift puts on the check (`reputationCheckHold`). Sending stopping or
- * resuming notifies owners and admins.
+ * resuming, and a stop moving between suspended and banned, notifies owners
+ * and admins, and travels the deliverability alert channels
+ * (`delivery/sendingHoldAlerts.ts`).
  */
 
 import { v } from 'convex/values';
@@ -34,6 +36,7 @@ import {
 } from '../analytics/reputationEnforcement';
 import { MANUAL_LIFT_HOLD_MS } from '../analytics/reputationResume';
 import { readEnforcementEvidence } from '../analytics/reputationEvidence';
+import { scheduleSendingHoldAlert } from '../delivery/sendingHoldAlerts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -166,6 +169,14 @@ function reduce(
 			abuseStatusChangedAt: input.at,
 			abuseStatusChangedBy: input.changedBy,
 			abuseStatusTrigger: trigger,
+			...(isSendingAllowed(from) !== isSendingAllowed(input.to)
+				? { sendingStoppedAt: isSendingAllowed(input.to) ? undefined : input.at }
+				: // A stop recorded before `sendingStoppedAt` existed keeps the time it
+					// started across a move between suspended and banned, or the
+					// stretch's alert id would follow the newer status change.
+					!isSendingAllowed(from) && settings.sendingStoppedAt === undefined
+					? { sendingStoppedAt: settings.abuseStatusChangedAt ?? input.at }
+					: {}),
 			// Every lift replaces the hold (`null` clears it); otherwise it ends at
 			// its deadline. A warning or a suspension on another metric leaves it,
 			// or the held evidence would suspend again once that one clears.
@@ -224,11 +235,31 @@ async function dispatch(
 	if (Object.keys(result.patch).length > 0) {
 		await ctx.db.patch(settings._id, result.patch as Partial<Doc<'instanceSettings'>>);
 	}
-	if (result.applied === 'transitioned' && isSendingAllowed(from) !== isSendingAllowed(input.to)) {
-		await scheduleMarketingNotice(ctx, {
-			kind: isSendingAllowed(input.to) ? 'sending_resumed' : 'sending_suspended',
-			changedAt: input.at,
+	// Announced: sending stopping or resuming, and a stop moving between
+	// suspended and banned, which changes what owners and admins were told
+	// (who lifts it, and whether it lifts at all).
+	if (
+		result.applied === 'transitioned' &&
+		!(isSendingAllowed(from) && isSendingAllowed(input.to))
+	) {
+		const sendingHoldAlertId = await scheduleSendingHoldAlert(ctx, {
+			before: settings,
+			after: { ...settings, ...result.patch } as Doc<'instanceSettings'>,
+			at: input.at,
+			reason: input.reason,
+			isPlatformAdmin: options.adminOverride,
 		});
+		await scheduleMarketingNotice(
+			ctx,
+			input.to === 'suspended' || input.to === 'banned'
+				? {
+						kind: 'sending_suspended',
+						changedAt: input.at,
+						holdStatus: input.to,
+						...(sendingHoldAlertId ? { sendingHoldAlertId } : {}),
+					}
+				: { kind: 'sending_resumed', changedAt: input.at }
+		);
 	}
 
 	// Audit log fires on every transition (including `recorded` no-ops) —

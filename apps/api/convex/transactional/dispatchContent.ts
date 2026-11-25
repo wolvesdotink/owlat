@@ -11,7 +11,12 @@
 import { v } from 'convex/values';
 import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { pickHtmlTranslation } from '../lib/emailJson';
-import { variablesWithoutFallback } from '../delivery/sendComposition/personalization';
+import { ownValue, repeatVariablesIn } from '@owlat/shared/sendRegions';
+import {
+	personalizedBodyExceeds,
+	resolvedTemplate,
+	variablesWithoutFallback,
+} from '../delivery/sendComposition/personalization';
 
 /** A template-side attachment as the template's `attachments` JSON stores it. */
 const templateAttachmentsValidator = v.array(
@@ -38,7 +43,7 @@ export type AttachmentRef = {
 export function validateDataVariables(
 	variables: Record<string, unknown> | undefined,
 	schema: Record<string, string> | undefined
-): { valid: boolean; error?: string } {
+): { valid: boolean; error?: string; variable?: string } {
 	if (!schema) return { valid: true };
 	if (!variables) return { valid: true };
 
@@ -46,7 +51,7 @@ export function validateDataVariables(
 		const value = variables[key];
 		if (value == null) continue;
 
-		const actualType = typeof value;
+		const actualType = Array.isArray(value) ? 'array' : typeof value;
 		let isValid = false;
 
 		switch (expectedType) {
@@ -64,6 +69,9 @@ export function validateDataVariables(
 					(actualType === 'string' || actualType === 'number') &&
 					!isNaN(new Date(value as string | number).getTime());
 				break;
+			case 'array':
+				isValid = actualType === 'array';
+				break;
 			default:
 				isValid = true;
 		}
@@ -72,6 +80,7 @@ export function validateDataVariables(
 			return {
 				valid: false,
 				error: `Variable "${key}" should be of type "${expectedType}", got "${actualType}"`,
+				variable: key,
 			};
 		}
 	}
@@ -200,13 +209,52 @@ export function missingDataVariables(
 	variables: Record<string, unknown> | undefined,
 	optionalVariables: readonly string[] = []
 ): string[] {
+	// Only what this request's data keeps of the email's conditional and
+	// repeated Blocks counts: a variable used in a dropped Block is not needed.
+	const sent = variables ?? {};
 	const used = new Set([
 		...variablesWithoutFallback(content.subject),
-		...variablesWithoutFallback(content.html),
-		...variablesWithoutFallback(content.plainText ?? ''),
+		...variablesWithoutFallback(resolvedTemplate(content.html, sent), { html: true }),
+		...variablesWithoutFallback(resolvedTemplate(content.plainText ?? '', sent)),
 	]);
+	// A repeated Block's list counts as used: left out, the Block would vanish.
+	for (const body of [content.html, content.plainText ?? '']) {
+		for (const name of repeatVariablesIn(body, sent)) used.add(name);
+	}
 	const optional = new Set(optionalVariables);
-	return [...used].filter((name) => !optional.has(name) && variables?.[name] == null);
+	return [...used].filter((name) => !optional.has(name) && ownValue(sent, name) == null);
+}
+
+/**
+ * Most characters the html or text body of one send may reach once its
+ * repeated Blocks are written out. The request itself is capped well below
+ * this; the cap is for a short list repeating a large Block.
+ */
+export const MAX_REPEATED_BODY_CHARS = 1_000_000;
+
+/**
+ * The list variables whose repeated Blocks make this send's body longer than
+ * {@link MAX_REPEATED_BODY_CHARS}, or an empty list when it fits. Only a body
+ * with a repeat is measured, so every other send skips the work.
+ */
+export function oversizedRepeatVariables(
+	content: Pick<SendContent, 'html' | 'plainText'>,
+	variables: Record<string, unknown> | undefined
+): string[] {
+	const sent = variables ?? {};
+	const names = new Set<string>();
+	const bodies: [string, 'html' | 'plain'][] = [
+		[content.html, 'html'],
+		[content.plainText ?? '', 'plain'],
+	];
+	for (const [body, escape] of bodies) {
+		const repeats = repeatVariablesIn(body, sent);
+		if (repeats.length === 0) continue;
+		if (personalizedBodyExceeds(body, sent, { escape }, MAX_REPEATED_BODY_CHARS)) {
+			for (const name of repeats) names.add(name);
+		}
+	}
+	return [...names];
 }
 
 /**

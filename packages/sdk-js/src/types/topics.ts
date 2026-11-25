@@ -1,10 +1,17 @@
-import type { AddContactToTopicRequest } from '@owlat/public-contract';
+import type { AddContactToTopicRequest, ListQuery } from '@owlat/public-contract';
 
 export type {
 	AddToTopicResponse,
 	DoiStatus,
 	RemoveFromTopicResponse,
+	Topic,
 } from '@owlat/public-contract';
+
+/**
+ * Page size and cursor for listing topics. Topics have no search, so there
+ * is no `search` field.
+ */
+export type ListTopicsParams = Omit<ListQuery, 'search'>;
 
 /**
  * Parameters for adding a contact to a topic: the topic goes in the path, the

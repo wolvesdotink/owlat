@@ -49,9 +49,29 @@ const AVAILABLE_SCOPES = computed<
 		description: t('dashboard.admin.team.api.index.scopes.topicsWrite.description'),
 	},
 	{
+		value: 'topics:read',
+		label: t('dashboard.admin.team.api.index.scopes.topicsRead.label'),
+		description: t('dashboard.admin.team.api.index.scopes.topicsRead.description'),
+	},
+	{
 		value: 'status:read',
 		label: t('dashboard.admin.team.api.index.scopes.statusRead.label'),
 		description: t('dashboard.admin.team.api.index.scopes.statusRead.description'),
+	},
+	{
+		value: 'templates:read',
+		label: t('dashboard.admin.team.api.index.scopes.templatesRead.label'),
+		description: t('dashboard.admin.team.api.index.scopes.templatesRead.description'),
+	},
+	{
+		value: 'templates:write',
+		label: t('dashboard.admin.team.api.index.scopes.templatesWrite.label'),
+		description: t('dashboard.admin.team.api.index.scopes.templatesWrite.description'),
+	},
+	{
+		value: 'domains:verify',
+		label: t('dashboard.admin.team.api.index.scopes.domainsVerify.label'),
+		description: t('dashboard.admin.team.api.index.scopes.domainsVerify.description'),
 	},
 ]);
 </script>

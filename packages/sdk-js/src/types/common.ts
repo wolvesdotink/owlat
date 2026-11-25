@@ -8,11 +8,15 @@ export type {
 	ApiErrorResponse,
 	ApiKeyErrorReason,
 	ApiResponse,
+	CursorPaginatedResponse,
+	CursorPaginationMeta,
+	DataVariableValue,
 	JsonPrimitive,
 	ListQuery as PaginationParams,
 	PaginatedResponse,
 	PaginationMeta,
 	TransactionalRefusalReason,
+	WriteRefusalReason,
 } from '@owlat/public-contract';
 
 /**

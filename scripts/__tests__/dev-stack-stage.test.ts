@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveDevStackConfig } from '../dev-stack/config';
 import { resolveConvexTarget, selfHostedCliEnv } from '../dev-stack/convexTarget';
-import { syncStage } from '../dev-stack/stage';
+import { copyGeneratedBack, syncStage } from '../dev-stack/stage';
 import {
 	composeEnvEntries,
 	deploymentSecretEnv,
@@ -102,6 +102,39 @@ describe('syncStage', () => {
 
 	it('refuses a directory that is not apps/api', () => {
 		expect(() => syncStage(tempDir(), join(tempDir(), 'api'))).toThrow(/package.json/);
+	});
+});
+
+describe('copyGeneratedBack', () => {
+	it('copies changed files from every _generated directory, and only those', () => {
+		const api = tempDir();
+		const stage = tempDir();
+		write(api, 'convex/_generated/api.d.ts', 'old');
+		write(api, 'convex/_generated/server.js', 'same');
+		write(stage, 'convex/_generated/api.d.ts', 'new');
+		write(stage, 'convex/_generated/server.js', 'same');
+		write(stage, 'convex/betterAuth/_generated/component.ts', 'component');
+		write(stage, 'convex/mail/send.ts', 'stage copy of a source file');
+
+		expect(copyGeneratedBack(stage, api)).toBe(2);
+		expect(readFileSync(join(api, 'convex/_generated/api.d.ts'), 'utf8')).toBe('new');
+		expect(readFileSync(join(api, 'convex/betterAuth/_generated/component.ts'), 'utf8')).toBe(
+			'component'
+		);
+		expect(existsSync(join(api, 'convex/mail/send.ts'))).toBe(false);
+		expect(copyGeneratedBack(stage, api)).toBe(0);
+	});
+
+	it('keeps the stage mtime, so the next sync copies nothing back', () => {
+		const api = tempDir();
+		const stage = join(tempDir(), 'api');
+		write(api, 'package.json', '{"name":"@owlat/api"}');
+		write(api, 'convex/_generated/api.d.ts', 'old');
+		syncStage(api, stage);
+		write(stage, 'convex/_generated/api.d.ts', 'generated');
+
+		expect(copyGeneratedBack(stage, api)).toBe(1);
+		expect(syncStage(api, stage)).toEqual({ copied: 0, removed: 0 });
 	});
 });
 
@@ -220,7 +253,12 @@ describe('resolveConvexTarget', () => {
 
 	it('drops every inherited deployment selection for a self-hosted call', () => {
 		const env = selfHostedCliEnv(
-			{ CONVEX_DEPLOY_KEY: 'x', CONVEX_DEPLOYMENT: 'y', PATH: '/bin' },
+			{
+				CONVEX_DEPLOY_KEY: 'x',
+				CONVEX_DEPLOYMENT_TOKEN: 'z',
+				CONVEX_DEPLOYMENT: 'y',
+				PATH: '/bin',
+			},
 			'http://127.0.0.1:1',
 			'key'
 		);

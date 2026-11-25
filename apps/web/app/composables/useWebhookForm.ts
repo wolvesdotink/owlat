@@ -2,6 +2,7 @@ import { computed, ref, reactive } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useWebhookActions } from './useWebhookActions';
+import { DELIVERABILITY_ALERT_WEBHOOK_PRESET } from '~/utils/webhookPresets';
 
 const CREATED_SECRET_KEY = 'webhook-created-secret';
 
@@ -73,16 +74,16 @@ export const WEBHOOK_EVENTS = [
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]['value'];
 
-/**
- * The webhook the Deliverability Center's "Add alert webhook" opens the form
- * for: both deliverability alert events and nothing else, so the operator's
- * on-call endpoint is not flooded with email events.
- */
-export const DELIVERABILITY_ALERT_WEBHOOK_PRESET = 'deliverability-alerts';
 const DELIVERABILITY_ALERT_EVENTS: WebhookEvent[] = [
 	'deliverability.alert_raised',
 	'deliverability.alert_resolved',
 ];
+
+/** Alert payloads describe the instance's sending problems; the API refuses them over http. */
+function isAlertUrlAccepted(url: string, events: readonly WebhookEvent[]): boolean {
+	if (!events.some((event) => DELIVERABILITY_ALERT_EVENTS.includes(event))) return true;
+	return new URL(url.trim()).protocol === 'https:';
+}
 
 /**
  * The message KEY for an event's label, or the raw event id when no definition
@@ -202,6 +203,11 @@ export function useWebhookForm() {
 			return;
 		}
 
+		if (!isAlertUrlAccepted(createForm.url, createForm.events)) {
+			createFormError.value = t(`${K}.errors.urlAlertsNeedHttps`);
+			return;
+		}
+
 		isCreating.value = true;
 
 		const result = await createWebhook({
@@ -305,6 +311,11 @@ export function useWebhookForm() {
 
 		if (editForm.events.length === 0) {
 			editFormError.value = t(`${K}.errors.eventsRequired`);
+			return;
+		}
+
+		if (!isAlertUrlAccepted(editForm.url, editForm.events)) {
+			editFormError.value = t(`${K}.errors.urlAlertsNeedHttps`);
 			return;
 		}
 

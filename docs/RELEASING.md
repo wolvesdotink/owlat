@@ -65,15 +65,10 @@ carry the stable version and signatures.
 Testing a candidate means installing it by name, never by default:
 
 ```sh
-curl -fsSL https://get.owlat.app | OWLAT_REF=vX.Y.Z-rc.N bash   # fresh install
-owlat upgrade --version X.Y.Z-rc.N                           # an existing test install
-```
-
-When `get.owlat.app` does not answer, take the installer from the candidate's
-tag instead:
-
-```sh
+# fresh install, with the installer from the candidate's own tag
 curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/vX.Y.Z-rc.N/install.sh | OWLAT_REF=vX.Y.Z-rc.N bash
+# an existing test install
+owlat upgrade --version X.Y.Z-rc.N
 ```
 
 Desktop apps get it from the candidate's release assets, or through managed

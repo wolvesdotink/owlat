@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import PluginSettingsField from '~/components/settings/PluginSettingsField.vue';
@@ -25,6 +26,18 @@ definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const { t } = useI18n();
 const route = useRoute();
+// The dialogs stay closed until a click or a navigation away, so they and the
+// modal they draw load after the page instead of with it (the route's bundle
+// budget). Not suspensible: they render on the page's first pass, and the
+// page's Suspense would otherwise hold the whole page until the chunks arrive.
+const UiConfirmationDialog = defineAsyncComponent({
+	loader: () => import('@owlat/ui/components/ui/ConfirmationDialog.vue'),
+	suspensible: false,
+});
+const UiUnsavedChangesDialog = defineAsyncComponent({
+	loader: () => import('@owlat/ui/components/ui/UnsavedChangesDialog.vue'),
+	suspensible: false,
+});
 const pluginId = computed(() => String(route.params['id']));
 
 const manifest = computed(

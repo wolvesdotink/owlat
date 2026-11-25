@@ -13,7 +13,12 @@ export default defineConfig({
 		resolve: [
 			/^@owlat\/public-contract$/,
 			/^\.\/deliveryStatus$/,
+			/^\.\/domainSetup$/,
 			/^\.\/errorReasons$/,
+			/^\.\/sendLimits$/,
+			/^\.\/sendList$/,
+			/^\.\/templateTypes$/,
+			/^\.\/topicList$/,
 			/^\.\/webhookEvents$/,
 		],
 		compilerOptions: { rootDir: '../..' },

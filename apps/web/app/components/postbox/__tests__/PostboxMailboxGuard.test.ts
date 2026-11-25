@@ -154,16 +154,31 @@ describe('PostboxMailboxGuard with no mailbox and no reservation', () => {
 		expect(deadEnd.text()).not.toContain('Only an admin');
 	});
 
-	it('offers an admin no link while mail is turned off on the instance', () => {
+	it('tells an admin mail is off and links to Features while mail is turned off', () => {
 		role.value = 'owner';
 		postboxOn.value = false;
 		const w = mountGuard();
 
-		const deadEnd = w.get('[data-testid="mailbox-guard-deadend"]');
+		expect(w.find('[data-testid="mailbox-guard-deadend"]').exists()).toBe(false);
+		const mailOff = w.get('[data-testid="mailbox-guard-mail-off"]');
+		expect(mailOff.get('h2').text()).toBe('Mail is turned off in this workspace');
 		// The add-account page needs `postbox` or `mail.external`; a link there
 		// would only bounce back to the dashboard.
-		expect(deadEnd.find('button').exists()).toBe(false);
-		expect(deadEnd.text()).not.toContain('Ask an admin');
+		expect(mailOff.findAll('button').map((b) => b.attributes('data-to'))).toEqual([
+			'/dashboard/admin/instance/features',
+		]);
+		expect(mailOff.text()).not.toContain('No mailbox yet');
+	});
+
+	it('does not send a member to ask for a mailbox while mail is turned off', () => {
+		postboxOn.value = false;
+		const w = mountGuard();
+
+		const mailOff = w.get('[data-testid="mailbox-guard-mail-off"]');
+		expect(mailOff.get('h2').text()).toBe('Mail is turned off in this workspace');
+		expect(mailOff.text()).toContain('An admin can turn it on.');
+		expect(mailOff.find('button').exists()).toBe(false);
+		expect(mailOff.text()).not.toContain('Ask an admin');
 	});
 
 	it('keeps the ask-an-admin request for a member', () => {

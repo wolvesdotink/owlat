@@ -19,6 +19,11 @@ export interface FetchOptions {
 	 * at most once per key, which makes a POST safe to replay.
 	 */
 	idempotencyKey?: string;
+	/**
+	 * Sent as the `If-Match` header: the revision the request was built on. The
+	 * server refuses the request when the resource has moved on since.
+	 */
+	ifMatch?: string;
 }
 
 /** Longest key the API accepts. */
@@ -72,6 +77,35 @@ const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
  * Mirrors the Java SDK's `MAX_RETRY_AFTER_MS = 30_000L`.
  */
 const MAX_RETRY_AFTER_MS = 30_000;
+
+/**
+ * Largest `retryAfter` an error reports, in seconds: the Java SDK carries it in
+ * an `int`, and a bigger value handed to `setTimeout` would fire at once.
+ */
+const MAX_REPORTED_RETRY_AFTER_S = 2_147_483_647;
+
+/**
+ * The seconds a 429 asks the client to wait, or undefined when it names none
+ * the client can read. `data.retryAfter` in Owlat's error envelope wins over
+ * the `Retry-After` header: the envelope comes from the instance and goes with
+ * the `data.reason` it names, while the header may have been set by a proxy in
+ * front of it. A body value is any positive number, rounded up; a header value
+ * is a positive whole number of seconds, so an HTTP date, a sign or a decimal
+ * point leaves it unread. The Java SDK applies the same rule.
+ */
+function retryAfterSeconds(
+	data: Record<string, unknown> | undefined,
+	header: string | null
+): number | undefined {
+	const fromBody = data?.['retryAfter'];
+	let seconds: number | undefined;
+	if (typeof fromBody === 'number' && fromBody > 0) {
+		seconds = Math.ceil(fromBody);
+	} else if (header !== null && /^\d+$/.test(header.trim()) && Number(header) > 0) {
+		seconds = Number(header);
+	}
+	return seconds === undefined ? undefined : Math.min(seconds, MAX_REPORTED_RETRY_AFTER_S);
+}
 
 /**
  * HTTP methods safe to auto-retry on 5xx / network failure. Excludes `POST`:
@@ -252,6 +286,7 @@ export function createHttpClient(
 			if (options.idempotencyKey !== undefined) {
 				headers['Idempotency-Key'] = options.idempotencyKey;
 			}
+			if (options.ifMatch !== undefined) headers['If-Match'] = options.ifMatch;
 
 			const fetchOptions: RequestInit = {
 				method: options.method,
@@ -315,15 +350,16 @@ export function createHttpClient(
 					category: 'internal',
 					data: undefined,
 				};
-				const retryAfterHeader = response.headers.get('Retry-After');
-				const retryAfterData =
-					typeof data?.['retryAfter'] === 'number' ? data['retryAfter'] : undefined;
 				const retryAfter =
-					retryAfterData ?? (retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined);
+					response.status === 429
+						? retryAfterSeconds(data, response.headers.get('Retry-After'))
+						: undefined;
 
+				// Built only for the error that is thrown, not for an attempt that
+				// is retried: the excerpt scans and redacts the whole body.
 				// A 429 stays a rate-limit error whoever sent it: proxies and edges
 				// in front of an instance throttle too, and its Retry-After holds.
-				lastError =
+				const failure = () =>
 					envelope === null && response.status !== 429
 						? new UnexpectedResponseError(
 								response.status,
@@ -335,8 +371,8 @@ export function createHttpClient(
 
 				// A 429 asking for a longer wait than the client sleeps cannot be
 				// outwaited by retrying: hand the caller its `retryAfter` at once.
-				if (response.status === 429 && retryAfter && retryAfter * 1000 > MAX_RETRY_AFTER_MS) {
-					throw lastError;
+				if (retryAfter !== undefined && retryAfter * 1000 > MAX_RETRY_AFTER_MS) {
+					throw failure();
 				}
 
 				// Retry on transient errors (429 respects Retry-After, 5xx) — but
@@ -344,7 +380,7 @@ export function createHttpClient(
 				// already applied is never replayed without an idempotency key.
 				if (isRetryable(replaySafe, response.status) && attempt < maxRetries) {
 					const delay =
-						response.status === 429 && retryAfter
+						retryAfter !== undefined
 							? retryAfter * 1000
 							: // oxlint-disable-next-line owlat/no-inline-backoff -- the published SDK cannot depend on the private @owlat/shared
 								initialDelayMs * Math.pow(backoffMultiplier, attempt);
@@ -352,7 +388,7 @@ export function createHttpClient(
 					continue;
 				}
 
-				throw lastError;
+				throw failure();
 			}
 
 			// Empty success response (e.g., 204 No Content). Only reached once
@@ -405,7 +441,13 @@ export function createHttpClient(
 	return {
 		get: <T>(path: string, timeout?: number) => request<T>(path, { method: 'GET', timeout }),
 
-		post: <T>(path: string, body?: unknown, timeout?: number, requestOptions?: RequestOptions) =>
+		post: <T>(
+			path: string,
+			body?: unknown,
+			timeout?: number,
+			requestOptions?: RequestOptions,
+			ifMatch?: string
+		) =>
 			request<T>(path, {
 				method: 'POST',
 				body,
@@ -413,10 +455,16 @@ export function createHttpClient(
 				...(requestOptions?.idempotencyKey !== undefined
 					? { idempotencyKey: requestOptions.idempotencyKey }
 					: {}),
+				...(ifMatch !== undefined ? { ifMatch } : {}),
 			}),
 
-		put: <T>(path: string, body?: unknown, timeout?: number) =>
-			request<T>(path, { method: 'PUT', body, timeout }),
+		put: <T>(path: string, body?: unknown, timeout?: number, ifMatch?: string) =>
+			request<T>(path, {
+				method: 'PUT',
+				body,
+				timeout,
+				...(ifMatch !== undefined ? { ifMatch } : {}),
+			}),
 
 		delete: <T>(path: string, timeout?: number) => request<T>(path, { method: 'DELETE', timeout }),
 	};

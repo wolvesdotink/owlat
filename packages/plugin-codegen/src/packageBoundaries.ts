@@ -26,8 +26,10 @@ const SOURCE_EXTENSIONS = new Set([
 	'.tsx',
 	'.vue',
 ]);
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
-const MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024;
+export const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+// Owlat's own apps and packages hold about 70 MB of source; the limit leaves room to grow, and
+// the scan over the real checkout in repositoryScan.test.ts fails before a checkout outgrows it.
+export const MAX_TOTAL_SOURCE_BYTES = 256 * 1024 * 1024;
 export const GENERATED_COMPOSITION_FILES: ReadonlySet<string> = new Set(
 	Object.values(GENERATED_ARTIFACT_PATHS)
 );
@@ -49,18 +51,10 @@ export async function checkDirectPluginImports(
 	const repositoryFiles = await listRepositoryFiles(workspaceRoot);
 	const aliases = await readRepositoryModuleAliases(workspaceRoot, repositoryFiles);
 	const scan = createBoundaryScan(packageNames, aliases);
-	const files = repositoryFiles.filter((file) => {
-		const relativeFile = normalizePath(relative(workspaceRoot, file));
-		return (
-			(relativeFile.startsWith('apps/') || relativeFile.startsWith('packages/')) &&
-			isPluginBoundarySourceFile(file)
-		);
-	});
 	const findings: DirectPluginImport[] = [];
 	const sourceBudget = new Utf8ByteBudget(MAX_TOTAL_SOURCE_BYTES);
-	for (const file of files) {
+	for (const file of selectBoundarySourceFiles(workspaceRoot, repositoryFiles)) {
 		const relativeFile = normalizePath(relative(workspaceRoot, file));
-		if (GENERATED_COMPOSITION_FILES.has(relativeFile)) continue;
 		let source: string;
 		try {
 			source = await readBoundedRepositoryUtf8File(workspaceRoot, file, MAX_SOURCE_BYTES);
@@ -86,6 +80,21 @@ export async function checkDirectPluginImports(
 			details
 		);
 	}
+}
+
+/** The repository files the boundary scan reads, from the inventory `listRepositoryFiles` built. */
+export function selectBoundarySourceFiles(
+	workspaceRoot: string,
+	repositoryFiles: readonly string[]
+): readonly string[] {
+	return repositoryFiles.filter((file) => {
+		const relativeFile = normalizePath(relative(workspaceRoot, file));
+		return (
+			(relativeFile.startsWith('apps/') || relativeFile.startsWith('packages/')) &&
+			isPluginBoundarySourceFile(file) &&
+			!GENERATED_COMPOSITION_FILES.has(relativeFile)
+		);
+	});
 }
 
 export function findDirectPluginImports(

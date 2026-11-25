@@ -42,6 +42,7 @@ const props = defineProps<{
 	clickedAt?: number;
 	bouncedAt?: number;
 	complainedAt?: number;
+	failedAt?: number;
 	openCount?: number;
 	clickedLinks?: ClickedLink[];
 	errorMessage?: string;
@@ -67,6 +68,7 @@ const statusConfig: Record<string, { icon: IconComponent; color: string }> = {
 	clicked: { icon: CursorClickIcon, color: 'bg-warning/10 text-warning' },
 	bounced: { icon: CircleCloseIcon, color: 'bg-error/10 text-error' },
 	complained: { icon: TriangleWarningIcon, color: 'bg-error/10 text-error' },
+	failed: { icon: CircleCloseIcon, color: 'bg-error/10 text-error' },
 };
 
 const { t, locale } = useI18n();
@@ -113,9 +115,9 @@ const formatDelta = (fromTs: number, toTs: number): string => {
 		: t('components.dashboard.emailSendTimeline.duration.days', { days });
 };
 
-// Status progression order — bounced/complained branch off
+// Status progression order — bounced/complained/failed branch off
 const progressionOrder = ['queued', 'sent', 'delivered', 'opened', 'clicked'];
-const errorStatuses = ['bounced', 'complained'];
+const errorStatuses = ['bounced', 'complained', 'failed'];
 
 const timelineEvents = computed<TimelineEvent[]>(() => {
 	const events: TimelineEvent[] = [];
@@ -127,10 +129,17 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 		clicked: props.clickedAt,
 		bounced: props.bouncedAt,
 		complained: props.complainedAt,
+		failed: props.failedAt,
 	};
 
 	// Determine the highest reached status in the progression
 	const currentStatusIndex = progressionOrder.indexOf(props.status);
+	// A failed, bounced or complained send has ended, so the timeline lists only
+	// the steps that carry a timestamp and ends at that state instead of showing
+	// the rest as not yet reached. A soft bounce ends it too: the MTA reports one
+	// only after its own retries ran out, and Owlat never sends that row again.
+	// Evidence recorded later (a late delivery callback, an open or click on a
+	// soft-bounced or complained send) sets its timestamp and is shown then.
 	const isError = errorStatuses.includes(props.status);
 
 	// Build normal progression events
@@ -141,6 +150,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 		const key = progressionOrder[i]!;
 		const ts = timestamps[key];
 		const reached = isError ? ts != null : i <= currentStatusIndex && ts != null;
+		if (isError && !reached) continue;
 		const cfg = statusConfig[key]!;
 
 		let delta: string | undefined;
@@ -180,10 +190,10 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 	// Add error events if they occurred
 	for (const errKey of errorStatuses) {
 		const ts = timestamps[errKey];
-		if (ts) {
+		if (ts || errKey === props.status) {
 			const cfg = statusConfig[errKey]!;
 			let delta: string | undefined;
-			if (prevTimestamp) {
+			if (prevTimestamp && ts) {
 				const d = formatDelta(prevTimestamp, ts);
 				if (d)
 					delta = t('components.dashboard.emailSendTimeline.afterEvent', {
@@ -254,7 +264,13 @@ const copyMessageId = async () => {
 			</h3>
 
 			<div class="space-y-1">
-				<div v-for="(event, index) in timelineEvents" :key="event.key" class="relative">
+				<div
+					v-for="(event, index) in timelineEvents"
+					:key="event.key"
+					class="relative"
+					data-testid="timeline-event"
+					:data-key="event.key"
+				>
 					<!-- Timeline connector line -->
 					<div
 						v-if="index < timelineEvents.length - 1"

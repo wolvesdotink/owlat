@@ -35,6 +35,7 @@ import { meterLlmCall } from '../analytics/meteredSpend';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
 import { scrubForInjection, clampText } from './prompt';
 import { ASK_MAILBOX_SPEND, answerFromMail } from '../mail/ai/askMailbox';
+import { buildGetTransactionalSends } from './transactionalSendsTool';
 import {
 	ASSISTANT_TOOL_DRAFT_SPEND,
 	hasFlaggedModule,
@@ -265,7 +266,7 @@ function buildGetEmailStats(ctx: ActionCtx): Tool {
 function buildGetDeliveryHealth(ctx: ActionCtx): Tool {
 	return tool({
 		description:
-			"Check whether the workspace's email sending is healthy and, if not, why and how to fix it. Use it first when someone asks why mail is not arriving or not going out, why opens or deliveries dropped, or whether sending is healthy. Returns the overall level (ok, warn, error), the main reason with an explanation, the page that shows the problem (`fix.route`) and who can make the fix (`fix.who`: most fixes need a workspace admin, a suspension needs a platform admin of the instance, and missing feedback settings are set in the deployment's environment by whoever runs it), each sending domain's verification status, the 30-day bounce and complaint rates against their limits, and `sendHold` with the recorded reason when sending is suspended or banned. `sendHold.lift` says how it lifts: `automatic` lifts by itself once `condition.trigger` (the 30-day bounce or complaint rate, or Gmail's spam rate for `condition.domain`) is under `condition.limitPct` (it is `condition.currentPct` now; `isClear` means it resumes at the next hourly check; `clearsAt` is when the last bad Gmail reading leaves the 30-day window), `manual_setting` means the instance waits for a platform admin even after the rates recover, `admin` means only a platform admin can lift it.",
+			"Check whether the workspace's email sending is healthy and, if not, why and how to fix it. Use it first when someone asks why mail is not arriving or not going out, why opens or deliveries dropped, or whether sending is healthy. Returns the overall level (ok, warn, error), the main reason with an explanation, the page that shows the problem (`fix.route`) and who can make the fix (`fix.who`: most fixes need a workspace admin, a suspension needs a platform admin of the instance, and missing feedback settings are set in the deployment's environment by whoever runs it), each sending domain's verification status with `recordsToFix`, the DNS records it still needs by name, type and state (`wrong`, `missing`, or `unchecked` when no check has answered; the values to publish are on the Domains page), the 30-day bounce and complaint rates against their limits, and `sendHold` with the recorded reason when sending is suspended or banned. `sendHold.lift` says how it lifts: `automatic` lifts by itself once `condition.trigger` (the 30-day bounce or complaint rate, or Gmail's spam rate for `condition.domain`) is under `condition.limitPct` (it is `condition.currentPct` now; `isClear` means it resumes at the next hourly check; `clearsAt` is when the last bad Gmail reading leaves the 30-day window), `manual_setting` means the instance waits for a platform admin even after the rates recover, `admin` means only a platform admin can lift it.",
 		inputSchema: z.object({}),
 		execute: async () => ctx.runQuery(internal.assistant.insights.deliveryHealth, {}),
 	});
@@ -354,8 +355,9 @@ function buildDraftCampaignCopy(
  * the single source of truth for built-in membership and metadata; the same set
  * powers both the personal assistant and @assistant-in-chat. The assistant is
  * gated as a whole by `ai.assistant`; `searchKnowledge` is also gated by
- * `ai.knowledge`, like Quick Query, and `askMailbox` by `ai`, like the rest of
- * Postbox AI. No built-in writes or sends.
+ * `ai.knowledge`, like Quick Query, `askMailbox` by `ai`, like the rest of
+ * Postbox AI, and `getTransactionalSends` by `transactional`, like the send log.
+ * No built-in writes or sends.
  */
 export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze([
 	{
@@ -419,6 +421,15 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scrubOutput: true,
 		isRetrieval: false,
 		build: buildGetDeliveryHealth,
+	},
+	{
+		name: 'getTransactionalSends',
+		flag: 'transactional',
+		scope: 'workspace:read',
+		spend: null,
+		scrubOutput: true,
+		isRetrieval: false,
+		build: buildGetTransactionalSends,
 	},
 	{
 		name: 'draftEmailReply',

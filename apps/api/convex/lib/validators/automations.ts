@@ -19,6 +19,26 @@ export const automationRunEndReasonValidator = v.union(
 export type AutomationRunEndReason = Infer<typeof automationRunEndReasonValidator>;
 
 /**
+ * Why a run did not send one of its emails:
+ *   - `contact_unsubscribed`: the contact unsubscribed from all marketing (the
+ *     email step is skipped and the run moves on);
+ *   - `topic_unsubscribed`: the contact is no longer subscribed to the topic
+ *     the automation belongs to (skipped, the run moves on);
+ *   - `automation_paused`: the email was queued, and the automation was paused
+ *     (or reverted to draft, or deleted, both of which need a pause first)
+ *     before it went out. The queued mail is withdrawn and the run ends, as a
+ *     pause ends a run at the step claim.
+ * A deleted contact is not here: that cancels the run.
+ */
+export const automationEmailSkipReasonValidator = v.union(
+	v.literal('contact_unsubscribed'),
+	v.literal('topic_unsubscribed'),
+	v.literal('automation_paused')
+);
+
+export type AutomationEmailSkipReason = Infer<typeof automationEmailSkipReasonValidator>;
+
+/**
  * Why a step run failed, from a closed set the runs panel turns into one
  * translated sentence and, where a page fixes it, a link. Stored next to the
  * step run's English `errorMessage`, which stays the detail.

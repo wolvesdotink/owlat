@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import Redis from 'ioredis';
 import { awaitContainerLog, REDIS_READY_LOG } from './dockerLogs.js';
+import { REDIS_IMAGE } from './redisCluster.js';
 
 export interface RedisStandaloneFixture {
 	client: Redis;
@@ -9,7 +10,7 @@ export interface RedisStandaloneFixture {
 }
 
 /**
- * A throwaway single-node redis:8-alpine container on a loopback port, for the
+ * A throwaway single-node `REDIS_IMAGE` container on a loopback port, for the
  * suites that need real Redis semantics (Lua scripts, TTLs) without a cluster.
  * Gate the suite with `describe.runIf(dockerRedisAvailable())`.
  */
@@ -18,7 +19,7 @@ export async function startRedisStandaloneFixture(prefix: string): Promise<Redis
 	const port = 18_000 + Math.floor(Math.random() * 2_000);
 	execFileSync(
 		'docker',
-		['run', '-d', '--rm', '--name', container, '-p', `127.0.0.1:${port}:6379`, 'redis:8-alpine'],
+		['run', '-d', '--rm', '--name', container, '-p', `127.0.0.1:${port}:6379`, REDIS_IMAGE],
 		{ stdio: 'ignore' }
 	);
 	// Connect only once Redis logs that it listens. Before that, Docker's port

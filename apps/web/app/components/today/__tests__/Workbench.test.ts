@@ -5,14 +5,19 @@
  *   - "Filed away" shows one tile per kind with its count and a few senders,
  *     each opening that exact list in this inbox, and nothing for empty kinds;
  *   - the scope header names the inbox and jumps to its bands;
- *   - none of the three has axe violations.
+ *   - with no inbox, the empty state offers a way to add one only where that
+ *     page opens, and sends a member where a member may add one; with mail
+ *     switched off it says so, and links an admin to Features;
+ *   - none of them has axe violations.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { inject, provide } from 'vue';
+import { inject, provide, ref } from 'vue';
+import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { mount } from '@vue/test-utils';
 import TodayWorkbenchTabs from '../TodayWorkbenchTabs.vue';
 import TodayFiledAway from '../TodayFiledAway.vue';
 import TodayScopeHeader from '../TodayScopeHeader.vue';
+import TodayNoInbox from '../TodayNoInbox.vue';
 import { auditA11y } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { WorkbenchTab } from '~/utils/workbench';
@@ -20,8 +25,16 @@ import { FILED_CATEGORIES } from '@owlat/shared/threadStatus';
 import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 import { MegaphoneIcon } from '@coolicons/vue';
 
+// The empty state's flags and role; each test sets its own.
+const enabledFlags = new Set<FeatureFlagKey>();
+const isAdmin = ref(true);
+
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	vi.stubGlobal('useFeatureFlag', () => ({
+		isEnabled: (flag: FeatureFlagKey) => enabledFlags.has(flag),
+	}));
+	vi.stubGlobal('usePermissions', () => ({ isAdmin }));
 	// The real UiDropdownMenu (audited below) uses these two Nuxt auto-imports.
 	vi.stubGlobal('provide', provide);
 	vi.stubGlobal('inject', inject);
@@ -290,6 +303,73 @@ describe('TodayScopeHeader', () => {
 				await wrapper.get('button[aria-label="More for Support"]').trigger('click');
 				expect(document.querySelectorAll('[role="menuitem"]')).toHaveLength(2);
 			},
+		});
+		expect(violations).toEqual([]);
+	});
+});
+
+describe('TodayNoInbox', () => {
+	const noInboxStubs = {
+		UiButton: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+	};
+	function mountEmpty(opts: { mail: FeatureFlagKey | null; admin: boolean }) {
+		enabledFlags.clear();
+		if (opts.mail) enabledFlags.add(opts.mail);
+		isAdmin.value = opts.admin;
+		return mount(TodayNoInbox, {
+			global: { plugins: [createTestI18n()], stubs: noInboxStubs },
+		});
+	}
+	const hrefs = (w: ReturnType<typeof mountEmpty>) =>
+		w.findAll('a').map((a) => a.attributes('href'));
+
+	it.each(['postbox', 'mail.external'] as const)(
+		'sends an admin to set up a mailbox while %s is on',
+		(flag) => {
+			const w = mountEmpty({ mail: flag, admin: true });
+			expect(w.find('h2').text()).toBe('No inbox to work from yet');
+			expect(hrefs(w)).toEqual(['/dashboard/preferences/add-account']);
+			expect(w.text()).toContain('Connect a mailbox');
+		}
+	);
+
+	it('sends a member to the connect wizard, not to a form the server refuses them', () => {
+		const w = mountEmpty({ mail: 'mail.external', admin: false });
+		expect(w.find('h2').text()).toBe('No inbox to work from yet');
+		expect(hrefs(w)).toEqual(['/dashboard/postbox/migrate']);
+		expect(w.text()).toContain('Connect an account');
+	});
+
+	it('sends a member without external accounts to ask an admin for a mailbox', () => {
+		const w = mountEmpty({ mail: 'postbox', admin: false });
+		expect(hrefs(w)).toEqual(['/dashboard/postbox']);
+		expect(w.text()).toContain('Ask an admin for a mailbox');
+	});
+
+	it('says mail is off and links an admin to Features, not to a page that bounces', () => {
+		const w = mountEmpty({ mail: null, admin: true });
+		expect(w.find('h2').text()).toBe('Mail is turned off in this workspace');
+		expect(w.text()).toContain('Features');
+		expect(hrefs(w)).toEqual(['/dashboard/admin/instance/features']);
+		expect(w.text()).toContain('Open Features');
+	});
+
+	it('tells a member mail is off, with no link', () => {
+		const w = mountEmpty({ mail: null, admin: false });
+		expect(w.find('h2').text()).toBe('Mail is turned off in this workspace');
+		expect(w.text()).toContain('An admin can turn it on.');
+		expect(hrefs(w)).toEqual([]);
+	});
+
+	it.each([
+		['mail on', true],
+		['mail off', false],
+	])('has no axe violations with %s', async (_state, mail) => {
+		enabledFlags.clear();
+		if (mail) enabledFlags.add('postbox');
+		isAdmin.value = true;
+		const violations = await auditA11y(TodayNoInbox, {
+			global: { plugins: [createTestI18n()], stubs: { NuxtLink: stubs.NuxtLink } },
 		});
 		expect(violations).toEqual([]);
 	});

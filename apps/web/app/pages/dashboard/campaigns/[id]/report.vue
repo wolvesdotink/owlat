@@ -15,7 +15,7 @@ import CampaignReportContacts, {
 } from '~/components/campaigns/report/ReportContacts.vue';
 import CampaignReportHeader from '~/components/campaigns/report/ReportHeader.vue';
 import CampaignReportOpensTimeline from '~/components/campaigns/report/ReportOpensTimeline.vue';
-import { selectPreviousComparable } from '~/utils/campaignReport';
+import { reportSendCounts, selectPreviousComparable } from '~/utils/campaignReport';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import { ChartBarVerticalIcon, FlameIcon } from '@coolicons/vue';
@@ -205,11 +205,8 @@ const archiveUrl = computed(() => {
 	return `${siteUrl}/archive?token=${campaign.value.archiveToken}`;
 });
 
-// Everything dispatched to the provider (the delivery-rate denominator).
-const sentCount = computed(() => {
-	if (!stats.value) return 0;
-	return stats.value.total - stats.value.queued - stats.value.failed;
-});
+const sendCounts = computed(() => reportSendCounts(stats.value));
+const sentCount = computed(() => sendCounts.value.sent);
 
 // The previous comparable campaign, for the comparison row -----------------
 const previousComparable = computed(() => {
@@ -271,7 +268,7 @@ const currentSnapshot = computed(() => ({
 					:campaign="campaign"
 					:report-status="reportStatus"
 					:has-send-started="hasSendStarted"
-					:sent-count="sentCount"
+					:recipient-count="sendCounts.recipients"
 					:send-plan="sendPlan"
 					:is-duplicating="isDuplicating"
 					@duplicate="handleDuplicate"

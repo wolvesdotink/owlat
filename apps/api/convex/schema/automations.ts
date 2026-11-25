@@ -9,6 +9,7 @@ import {
 import { stepKindValidator } from '../automations/steps/catalog';
 import { triggerKindValidator } from '../automations/triggers/catalog';
 import {
+	automationEmailSkipReasonValidator,
 	automationRunEndReasonValidator,
 	automationStepFailureReasonValidator,
 	automationStepWaitReasonValidator,
@@ -41,6 +42,12 @@ export const automationTables = {
 		// event_received: { eventName: string }
 		// topic_subscribed: { topicId: Id<"topics"> }
 		triggerConfig: v.optional(triggerConfigValidator),
+		// The topic this automation's emails are sent for: a contact who is no
+		// longer a mailable member of it gets none of them. `null` is an explicit
+		// "no topic". Unset means the trigger decides: a "Subscribed to topic"
+		// automation belongs to its trigger's topic, any other to none
+		// (`automationTopicId` in lib/marketingEligibility.ts).
+		topicId: v.optional(v.union(v.id('topics'), v.null())),
 		// Automation status
 		status: v.union(v.literal('draft'), v.literal('active'), v.literal('paused')),
 		// Stats
@@ -105,7 +112,10 @@ export const automationTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_automation', ['automationId'])
-		.index('by_automation_and_index', ['automationId', 'stepIndex']),
+		.index('by_automation_and_index', ['automationId', 'stepIndex'])
+		// The email steps that send a template, for the scan of a write to it
+		// (emailTemplates/liveContentScan.ts). Other step kinds index as absent.
+		.index('by_email_template', ['config.emailTemplateId']),
 
 	// Automation Runs - tracks contacts going through automations
 	automationRuns: defineTable({
@@ -129,6 +139,15 @@ export const automationTables = {
 		// Set on a cancelled run that ended because a step failed or the run
 		// stalled; the list's health links read runs through it.
 		endReason: v.optional(automationRunEndReasonValidator),
+		// Set when an email step of this run was skipped because the contact may
+		// no longer receive this mail, so the runs panel can say why: the latest
+		// such reason, and the topic the contact left for `topic_unsubscribed`.
+		emailSkip: v.optional(
+			v.object({
+				reason: automationEmailSkipReasonValidator,
+				topicId: v.optional(v.id('topics')),
+			})
+		),
 	})
 		.index('by_automation', ['automationId'])
 		.index('by_contact', ['contactId'])
@@ -197,7 +216,10 @@ export const automationTables = {
 		.index('by_status', ['status'])
 		.index('by_status_and_delay_until', ['status', 'delayUntil'])
 		.index('by_status_and_lease_expires_at', ['status', 'leaseExpiresAt'])
-		.index('by_status_and_waiting_checked_at', ['status', 'waitingCheckedAt']),
+		.index('by_status_and_waiting_checked_at', ['status', 'waitingCheckedAt'])
+		// An automation's waiting runs, read from its email steps
+		// (automations/waitingRuns.ts).
+		.index('by_step_status_waiting_for', ['automationStepId', 'status', 'waitingFor']),
 
 	// Write-sharded automation run counters (inc-only: entered/completed/cancelled).
 	// fireTrigger / complete / cancel bump a RANDOM shard instead of the single

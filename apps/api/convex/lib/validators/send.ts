@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { bounceTypeValidator } from '../literalValidators';
+import { bounceCauseValidator, bounceTypeValidator } from '../literalValidators';
 
 /**
  * Send vocabulary shared by the two per-recipient send tables, `emailSends`
@@ -42,6 +42,11 @@ export const sendTrackingFields = {
 	// Bounce classification; required-via-runtime-guard when status='bounced'.
 	// See CONTEXT.md "Send status" — canonical encoding of bounce class.
 	bounceType: v.optional(bounceTypeValidator),
+	// Who the bounce was about: `sender` when the receiver refused our sending
+	// identity, otherwise `recipient`. It is the classification the lifecycle
+	// acted on and the `email.bounced` webhook reported. Absent on rows bounced
+	// before the field existed, which cannot say.
+	bounceCause: v.optional(bounceCauseValidator),
 	complainedAt: v.optional(v.number()),
 	// When this send absorbed the recipient's unsubscribe. NOT a status — the
 	// send itself succeeded — and NOT the contact's unsubscribe record either

@@ -112,6 +112,24 @@ describe('presentMarketingNotice', () => {
 	});
 });
 
+describe('a sending stop', () => {
+	it('says suspended, or banned when the notice names a ban', () => {
+		expect(render({ kind: 'sending_suspended' }).title).toBe('Sending suspended');
+		expect(render({ kind: 'sending_suspended', holdStatus: 'suspended' }).title).toBe(
+			'Sending suspended'
+		);
+		const banned = render({ kind: 'sending_suspended', holdStatus: 'banned' });
+		expect(banned.title).toBe('Sending banned');
+		expect(banned.body).toContain('until a platform admin lifts the ban');
+		const native = presentNativeMarketingNotice(
+			{ id: 'n1', createdAt: 0, url: '/x', kind: 'sending_suspended', holdStatus: 'banned' },
+			0,
+			true
+		);
+		expect(resolve(native.body)).toBe('No new mail goes out from this instance');
+	});
+});
+
 describe('freshMarketingNotices', () => {
 	it('keeps the unseen ones, oldest first', () => {
 		const notices: MarketingNoticeView[] = [

@@ -381,32 +381,14 @@ export function routingPolicyProblem(
 export const GUARD_NOT_RUN_REASONS = ['spam_archived', 'agent_disabled', 'budget_refused'] as const;
 export type GuardNotRunReason = (typeof GUARD_NOT_RUN_REASONS)[number];
 
-/** Why a Team message waits for a person instead of the model path. */
-export const BUDGET_HOLD_REASONS = [
-	'daily_ceiling',
-	'monthly_ceiling',
-	'spend_unverifiable',
-] as const;
-export type BudgetHoldReason = (typeof BUDGET_HOLD_REASONS)[number];
-
-/** The model judgments a held message is missing. */
-export const MISSING_JUDGMENTS = ['guard', 'classify', 'interpret', 'clarify', 'draft'] as const;
-export type MissingJudgment = (typeof MISSING_JUDGMENTS)[number];
-
-/**
- * The stable code a spend-admission refusal carries. A refused paid
- * call throws `ConvexError({ category: 'forbidden', message, data: { code,
- * reason } })`, where `reason` is a {@link BudgetHoldReason}; the web reads
- * `error.data.data.code` to show the budget state instead of a generic error.
- */
-export const AI_BUDGET_ERROR_CODE = 'AI_BUDGET_EXHAUSTED';
-
-/**
- * The error text a Team message held by the ceiling fails with. The
- * reason and the missing judgments are on the message's `budgetHold`.
- */
-export const BUDGET_HOLD_ERROR_MESSAGE =
-	'AI spend budget reached: the message waits for a person (no paid model calls ran).';
+export {
+	AI_BUDGET_ERROR_CODE,
+	BUDGET_HOLD_ERROR_MESSAGE,
+	BUDGET_HOLD_REASONS,
+	type BudgetHoldReason,
+	MISSING_JUDGMENTS,
+	type MissingJudgment,
+} from './aiBudget';
 
 /**
  * Where an embedding row's space assignment came from. `measured`: stamped by

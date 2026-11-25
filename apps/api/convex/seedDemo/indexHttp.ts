@@ -20,13 +20,14 @@
  */
 
 import { httpAction } from '../_generated/server';
+import type { HttpRouter } from 'convex/server';
 import { internal } from '../_generated/api';
 import { requireInstanceSecret } from '../lib/instanceSecret';
 import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
 
-export const seedDemoHttp = httpAction(async (ctx, request) => {
+const seedDemoHttp = httpAction(async (ctx, request) => {
 	const devResp = devDeploymentResponseOrNull();
 	if (devResp) return devResp;
 
@@ -54,3 +55,46 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 		return errorResponse('internal', 'Internal error');
 	}
 });
+
+/**
+ * `POST /seed/demo/sending` — the sending switch (`seedDemo/sendingState.ts`).
+ *   Query: ?suspended=true to suspend sending, ?suspended=false to lift it;
+ *          without it, only reports the current state.
+ * Same guards as `/seed/demo`.
+ */
+const seedDemoSendingHttp = httpAction(async (ctx, request) => {
+	const devResp = devDeploymentResponseOrNull();
+	if (devResp) return devResp;
+
+	const denied = await requireInstanceSecret(ctx, request, { limitType: 'instanceSecret' });
+	if (denied) return denied;
+
+	const param = new URL(request.url).searchParams.get('suspended');
+	if (param !== null && param !== 'true' && param !== 'false') {
+		return errorResponse('invalid_input', 'suspended must be true or false');
+	}
+
+	try {
+		const state =
+			param === null
+				? await ctx.runQuery(internal.seedDemo.sendingState.getDemoSendingState, {})
+				: await ctx.runMutation(internal.seedDemo.sendingState.setDemoSendingSuspended, {
+						suspended: param === 'true',
+					});
+		if (!state) return errorResponse('conflict', 'No instance settings yet: run the seed first');
+		return jsonResponse(state);
+	} catch (error) {
+		logError('[seedDemo] sending switch failed:', error);
+		return errorResponse('internal', 'Internal error');
+	}
+});
+
+/**
+ * Register the demo seed's routes. Kept here rather than as `http.route`
+ * blocks in `http.ts`, which sits at the 500-LOC ratchet
+ * (`scripts/check-file-size.sh`).
+ */
+export function registerSeedDemoRoutes(http: HttpRouter): void {
+	http.route({ path: '/seed/demo', method: 'POST', handler: seedDemoHttp });
+	http.route({ path: '/seed/demo/sending', method: 'POST', handler: seedDemoSendingHttp });
+}

@@ -575,6 +575,7 @@
 					"getCampaignStats": "Looked up campaign stats",
 					"getDeliveryHealth": "Checked delivery health",
 					"getEmailStats": "Looked up email stats",
+					"getTransactionalSends": "Looked up the emails sent to an address",
 					"searchEverything": "Searched workspace",
 					"searchFiles": "Searched files",
 					"searchKnowledge": "Searched knowledge"
@@ -782,6 +783,18 @@
 						"topicPlaceholder": "Select a topic..."
 					}
 				}
+			},
+			"mailTopic": {
+				"deleted": "This topic was deleted, so this automation sends no more emails. Choose another topic or No topic.",
+				"deletedOption": "Deleted topic",
+				"hintWithTopic": "Contacts who leave this topic stop getting this automation's emails. Its other steps still run for them.",
+				"hintWithoutTopic": "Without a topic, only an unsubscribe from all emails stops this automation's emails.",
+				"label": "Topic",
+				"none": "No topic",
+				"operation": "Change the automation's topic",
+				"sameAsTrigger": "Same as the trigger: {name}",
+				"sameAsTriggerUnnamed": "Same as the trigger",
+				"saved": "Topic saved"
 			}
 		},
 		"autonomy": {
@@ -2881,6 +2894,7 @@
 					"clicked": "Clicked",
 					"complained": "Complained",
 					"delivered": "Delivered",
+					"failed": "Failed",
 					"opened": "Opened",
 					"queued": "Queued",
 					"sent": "Sent"
@@ -3151,6 +3165,19 @@
 				"heading": "Deliverability regression detected | Deliverability regressions detected",
 				"openCheck": "Open check",
 				"resolve": "Resolve alert",
+				"sendingHold": {
+					"changedFrom": {
+						"banned": "It was banned before.",
+						"suspended": "It was suspended before."
+					},
+					"heading": "Sending is stopped",
+					"openHealth": "Open delivery health",
+					"subheading": "No new mail goes out from this instance until it lifts.",
+					"title": {
+						"banned": "Sending banned",
+						"suspended": "Sending suspended"
+					}
+				},
 				"statusLabel": "Status:",
 				"subheading": "A check that previously passed is failing again. Review it before your next send."
 			},
@@ -3789,7 +3816,8 @@
 					"push": "Push on {count} device | Push on {count} devices",
 					"noPush": "No push",
 					"webhook": "Webhook to {count} endpoint | Webhook to {count} endpoints",
-					"noWebhook": "Webhook not set"
+					"noWebhook": "Webhook not set",
+					"webhookCleartext": "Webhook needs HTTPS"
 				},
 				"email": {
 					"title": "Email",
@@ -3823,6 +3851,7 @@
 					"reach": "Sent to {count} webhook, signed and retried. | Sent to {count} webhooks, signed and retried.",
 					"notSet": "No webhook receives deliverability alerts. Send them to your on-call tool or team chat.",
 					"off": "Outbound webhooks are turned off on this instance.",
+					"cleartext": "{count} webhook subscribed to alerts has an http:// URL and gets no alerts until its URL starts with https://. | {count} webhooks subscribed to alerts have an http:// URL and get no alerts until their URLs start with https://.",
 					"add": "Add alert webhook",
 					"manage": "Manage webhooks"
 				}
@@ -4346,6 +4375,7 @@
 					"attachments": "the attachments",
 					"name": "the name",
 					"plainText": "the plain-text version",
+					"previewText": "the preview text",
 					"subject": "the subject",
 					"unsubscribe": "the unsubscribe setting"
 				},
@@ -5372,6 +5402,8 @@
 				"listLabel": "Emoji"
 			},
 			"postboxFilterRuleBuilder": {
+				"actionNeverRuns": "This action never runs in a synced mailbox. Run on existing mail skips Forward to, Move to trash and Discard.",
+				"connectedNotice": "This mailbox is synced from your provider, so this filter does not run on new mail. It applies only when you use Run on existing mail, which skips Forward to, Move to trash and Discard.",
 				"actions": {
 					"addLabel": "Add label",
 					"delete": "Move to trash",
@@ -7952,7 +7984,12 @@
 			},
 			"sendOptions": {
 				"description": "These apply to the next send right away, also while the email is published.",
+				"exampleDialog": {
+					"label": "Example value",
+					"title": "Example value for {name}"
+				},
 				"operations": {
+					"example": "Update the example value",
 					"recipientLimit": "Update the recipient limit",
 					"variable": "Update the variable"
 				},
@@ -7963,7 +8000,11 @@
 				"title": "Sending",
 				"variables": {
 					"description": "A request that leaves out a variable the email uses without a fallback is refused with an error naming it. Mark a variable optional to let requests leave it out: it then sends empty, or as its fallback.",
+					"editExample": "Edit the example value of {name}",
 					"empty": "This email has no data variables yet.",
+					"example": "Example: {value}",
+					"exampleButton": "Example",
+					"noExample": "No example",
 					"optional": "Optional",
 					"required": "Required unless it has a fallback",
 					"title": "Data variables",
@@ -8069,7 +8110,7 @@
 				"containerPrefix": "{prefix}Container {index}",
 				"defaultBadge": "default",
 				"emailFallbackName": "Email",
-				"emptyDescription": "Add text, buttons, or images with alt text to your email to enable translations.",
+				"emptyDescription": "Add text, buttons, images with alt text, lists, tables or menus to your email to enable translations.",
 				"emptyTitle": "No translatable content",
 				"fieldColumn": "Field",
 				"goBack": "Go back",
@@ -8097,6 +8138,25 @@
 				"subjectLine": "Subject line",
 				"textBlock": "{prefix}text block {index}",
 				"unsavedChanges": "Unsaved changes",
+				"accordionSectionTitle": "{prefix}Accordion {index}, section {section} title",
+				"groupedField": "{group}, {label}",
+				"listBlock": "{prefix}List {index}",
+				"listItem": "Item {index}",
+				"menuBlock": "{prefix}Menu {index}",
+				"menuLink": "Link {index}",
+				"progress": "{done} of {total} translated",
+				"repeatedText": "{label} (+{count} more)",
+				"sharedCarousel": "Carousel images",
+				"sharedImages": "Image files",
+				"sharedLinks": "Link addresses of buttons, images and menus",
+				"sharedRawHtml": "Raw HTML blocks",
+				"sharedTitle": "Same in every language",
+				"sharedVideo": "Video blocks",
+				"tableBlock": "{prefix}Table {index}",
+				"tableCaption": "Caption",
+				"tableCell": "Row {row}, column {column}",
+				"tableFooter": "Footer {index}",
+				"tableHeader": "Header {index}",
 				"autoTranslateNamed": "Auto-translate {language} with AI",
 				"removeLanguageNamed": "Remove {language}"
 			}
@@ -8968,7 +9028,9 @@
 						"title": "Microsoft reputation (SNDS)",
 						"red": "SNDS rates {ip} red for {day}: Outlook.com and Hotmail filter most of its mail. Owlat sends Microsoft mail from this address at a reduced rate until SNDS rates it green again. Other addresses and providers are not affected.",
 						"yellow": "SNDS rates {ip} yellow for {day}: Microsoft filters some of its mail. Nothing is held back yet.",
-						"action": "How to recover a red address"
+						"action": "How to recover a red address",
+						"trapHits": "SNDS counted {count} spam-trap hit for {ip} on {day}. Your list holds an address that never signed up, or one abandoned long ago and turned into a trap. Waiting does not fix this: find the list or import it came from, and remove contacts that never confirmed or have not engaged in a long time. | SNDS counted {count} spam-trap hits for {ip} on {day}. Your list holds addresses that never signed up, or ones abandoned long ago and turned into traps. Waiting does not fix this: find the list or import they came from, and remove contacts that never confirmed or have not engaged in a long time.",
+						"trapAction": "How to clean up after trap hits"
 					}
 				},
 				"dmarc": {
@@ -10819,12 +10881,29 @@
 						"baseUrlTitle": "Your API base URL",
 						"createContact": "Create a contact",
 						"endpoints": {
+							"blockSchema": "The JSON Schema of block content, for writing templates and saved blocks",
 							"contact": "Read, update, or delete a contact",
 							"contacts": "List or create contacts",
+							"domains": "Sending domains and the DNS records each needs",
+							"domainVerify": "Ask for a fresh DNS check of one sending domain",
 							"events": "Track custom events",
 							"health": "Health probe",
-							"topics": "Manage topics and subscriptions",
-							"transactional": "Send a transactional email (slug in body)"
+							"limits": "This key's send limits and what is left",
+							"openapi": "This instance's OpenAPI document, for API clients and AI agents",
+							"render": "Render blocks as this instance would, without storing them, with the issues a write reports",
+							"savedBlock": "Read or replace a saved block",
+							"savedBlocks": "List or create saved blocks",
+							"status": "Whether this instance can send, and why not",
+							"topicContactAdd": "Add a contact to a topic",
+							"topicContactRemove": "Remove a contact from a topic",
+							"topics": "List topics",
+							"transactional": "Send a transactional email (slug in body), or list sends",
+							"transactionalDryRun": "What a send would do, without sending: the composed email and any refusal",
+							"transactionalEmail": "Read a transactional email, or create or replace it by slug",
+							"transactionalEmailPublish": "Publish a transactional email",
+							"transactionalEmailUnpublish": "Return a transactional email to draft",
+							"transactionalEmails": "List or create transactional emails",
+							"transactionalSend": "Delivery status of one send"
 						},
 						"fullReference": "Full API reference",
 						"intro": "Authenticate with a scoped API key from {settingsLink}.",
@@ -10920,20 +10999,36 @@
 								"description": "Create, update, and delete contacts.",
 								"label": "Contacts — write"
 							},
+							"domainsVerify": {
+								"description": "Ask for a fresh DNS check of a sending domain, which can change its verification state.",
+								"label": "Domains — check"
+							},
 							"eventsWrite": {
 								"description": "Ingest events that can trigger automations.",
 								"label": "Events — write"
 							},
 							"statusRead": {
-								"description": "See whether this instance can send, and why not.",
+								"description": "See whether this instance can send, why not, and which DNS records each sending domain still needs.",
 								"label": "Status — read"
+							},
+							"templatesRead": {
+								"description": "Read transactional emails and saved blocks: content, translations and variable schema.",
+								"label": "Templates — read"
+							},
+							"templatesWrite": {
+								"description": "Create and change transactional emails and saved blocks, and publish or unpublish them.",
+								"label": "Templates — write"
+							},
+							"topicsRead": {
+								"description": "List topics and the IDs used to add contacts to them.",
+								"label": "Topics — read"
 							},
 							"topicsWrite": {
 								"description": "Add or remove contacts on topics.",
 								"label": "Topics — write"
 							},
 							"transactionalSend": {
-								"description": "Send transactional emails.",
+								"description": "Send transactional emails, and list the sends with their recipients and delivery status.",
 								"label": "Transactional — send"
 							}
 						},
@@ -11957,7 +12052,7 @@
 					"toasts": {
 						"activated": "Automation activated",
 						"draftSaved": "Draft saved",
-						"paused": "Automation paused",
+						"paused": "Automation paused. Emails it had queued won't be sent, even if you resume it.",
 						"resumeBlocked": "Your step changes couldn't be saved, so the automation wasn't resumed.",
 						"resumed": "Automation resumed",
 						"stepSaveFailed": "Your step changes couldn't be saved."
@@ -11992,13 +12087,29 @@
 						"trigger": "Trigger",
 						"loadError": "Couldn't load the step funnel"
 					},
+					"health": {
+						"waitingTitle": "{count} run is waiting for the sending setup | {count} runs are waiting for the sending setup",
+						"waitingTitleMore": "More than {count} runs are waiting for the sending setup",
+						"failedTitle": "{count} run failed in the last 7 days | {count} runs failed in the last 7 days",
+						"latestFailure": "The latest failure:",
+						"showWaiting": "Show waiting runs",
+						"showFailed": "Show failed runs"
+					},
 					"loading": "Loading automation...",
+					"mailTopic": "Topic: {name}",
+					"mailTopicDeleted": "Topic deleted",
 					"notFoundDescription": "This automation may have been deleted or you don't have access to it.",
 					"notFoundTitle": "Automation not found",
 					"pageTitle": "Automation details — Owlat",
 					"runs": {
 						"cancelled": "Cancelled",
 						"completed": "Completed",
+						"emailSkip": {
+							"automationPaused": "Not sent: the automation was paused before this email went out.",
+							"leftDeletedTopic": "Emails skipped: this contact is not subscribed to the automation's topic.",
+							"leftTopic": "Emails skipped: this contact is not subscribed to the topic {name}.",
+							"unsubscribed": "Emails skipped: this contact unsubscribed from all emails."
+						},
 						"emptyDescription": "Contacts will appear here when the automation is triggered",
 						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",
@@ -12042,7 +12153,8 @@
 							"sendingNotAllowed": "Waiting for sending to be resumed on this instance. The email goes out once it is, or the run gives up on {date}.",
 							"unknown": "Waiting for sending to work again. The email goes out once it does, or the run gives up on {date}."
 						},
-						"waitingBadge": "Waiting"
+						"waitingBadge": "Waiting",
+						"waitingNote": "Runs whose email waits for the sending setup to be fixed. Each one sends once it is, or gives up a day after it started waiting."
 					},
 					"stats": {
 						"completed": "Completed",
@@ -12071,7 +12183,9 @@
 					"cardLabel": "7 days:",
 					"entered": "{count} entered",
 					"failed": "{count} failed",
-					"stalled": "{count} stalled"
+					"stalled": "{count} stalled",
+					"waiting": "{count} waiting",
+					"waitingMore": "{count}+ waiting"
 				},
 				"newAutomation": "New automation",
 				"noResults": {
@@ -12106,7 +12220,7 @@
 					"activated": "\"{name}\" is now active",
 					"draftNotToggleable": "Please complete and activate this automation from the builder",
 					"duplicated": "Automation duplicated successfully",
-					"paused": "\"{name}\" has been paused"
+					"paused": "\"{name}\" has been paused. Emails it had queued won't be sent, even if you resume it."
 				},
 				"noStatusResults": {
 					"title": "No automations with the status “{status}”",
@@ -12297,7 +12411,7 @@
 					},
 					"linksCount": "1 link | {count} links",
 					"loadingLabel": "Loading report...",
-					"moreLinks": "+{count} more links",
+					"moreLinks": "+{count} more link | +{count} more links",
 					"noEmail": "No email",
 					"notFoundDescription": "This campaign may have been deleted or you don't have access to it.",
 					"notFoundTitle": "Campaign not found",
@@ -12309,7 +12423,7 @@
 						"previous": "Previous",
 						"range": "{from}-{to} of {total}"
 					},
-					"recipients": "{count} recipients",
+					"recipients": "{count} recipient | {count} recipients",
 					"scheduledFor": "Sends {date}",
 					"sentAt": "Sent {date}",
 					"sentBadge": "Sent",
@@ -13681,7 +13795,7 @@
 				"activeFilters": "Active filters",
 				"createFilter": "Create filter",
 				"deleteConfirm": "Delete filter",
-				"deleteDescription": "This filter will stop routing inbound mail. This action cannot be undone.",
+				"deleteDescription": "This filter will be deleted. This action cannot be undone.",
 				"deleteTitle": "Delete filter?",
 				"empty": "No filters yet. Create your first one to start routing mail.",
 				"intro": "Auto-route inbound mail to folders, apply labels, mark read, or forward.",
@@ -13695,7 +13809,13 @@
 				"ruleSummaryAny": "Any of {conditions} condition(s) · {actions} action(s)",
 				"moveUp": "Move {name} earlier",
 				"moveDown": "Move {name} later",
-				"fromSenderName": "Mail from {sender}"
+				"fromSenderName": "Mail from {sender}",
+				"connectedNotice": "{address} is synced from your provider, so filters built here do not run on its new mail. Set up filters for new mail at your provider. Run on existing mail applies a filter to the mail already in this mailbox. Rules in your words still run on new mail.",
+				"connectedTeamNotice": "{address} is synced from your provider, so no filter or rule runs on its new mail. Set up filters for new mail at your provider. Run on existing mail applies a filter to the mail already in this mailbox.",
+				"appliedFilters": "Filters you apply yourself",
+				"introConnected": "Filters here apply to mail already in this mailbox when you run them. They can move, label, mark read, star or pin mail to a section.",
+				"neverRuns": "Never runs here",
+				"runsOnApply": "Runs only when you apply it"
 			},
 			"forwarding": {
 				"connectedNotice": "{address} is synced from your provider, so Owlat cannot forward its mail. Set forwarding up at your provider.",
@@ -14158,6 +14278,7 @@
 				"pageTitle": "Templates — Owlat",
 				"searchPlaceholder": "Search templates...",
 				"sortLabel": "Sort templates",
+				"sortedByRelevance": "Sorted by relevance",
 				"subtitle": "Email designs you reuse in campaigns and automations.",
 				"toasts": {
 					"duplicated": "Template duplicated successfully"
@@ -14390,7 +14511,14 @@
 			"noInbox": {
 				"title": "No inbox to work from yet",
 				"body": "Each inbox you read gets its own workbench here, with what needs you, what moved and what arrived. Connect a mailbox to get started.",
-				"cta": "Connect a mailbox"
+				"cta": "Connect a mailbox",
+				"ctaAsk": "Ask an admin for a mailbox",
+				"ctaMember": "Connect an account",
+				"mailOff": {
+					"title": "Mail is turned off in this workspace",
+					"bodyAdmin": "Each inbox you read gets its own workbench here. Turn on personal mail or external mailboxes in Features to add one.",
+					"bodyMember": "Each inbox you read would get its own workbench here. An admin can turn it on."
+				}
 			}
 		},
 		"answer": {
@@ -14874,6 +15002,10 @@
 			"externalCta": "Connect an account",
 			"externalHeading": "Connect your mail",
 			"loading": "Loading mailbox",
+			"mailOffAdminBody": "Turn on personal mail or external mailboxes in Features to set up a mailbox.",
+			"mailOffCta": "Open Features",
+			"mailOffHeading": "Mail is turned off in this workspace",
+			"mailOffMemberBody": "Nobody can set up a mailbox while mail is off. An admin can turn it on.",
 			"requestOperation": "Request a mailbox",
 			"reservedBody": "{address} is reserved for you. It'll appear here automatically as soon as it's ready.",
 			"reservedHeading": "Your mailbox is being set up"
@@ -16814,7 +16946,7 @@
 					"title": "Email authentication"
 				},
 				"bounces": {
-					"action": "Review suppressions",
+					"action": "Review bounced addresses",
 					"over": "{rate} of your mail bounced, over the {limit} limit. Remove addresses that bounce before the next campaign.",
 					"title": "Bounce rate",
 					"under": "{rate} of your mail bounced, under the {limit} limit."
@@ -16828,7 +16960,7 @@
 					"usedUp": "Today's warm-up capacity is used up; campaigns continue tomorrow."
 				},
 				"complaints": {
-					"action": "Review suppressions",
+					"action": "Review complaints",
 					"over": "{rate} of recipients complained, over the {limit} limit. Clean your list before the next campaign.",
 					"title": "Complaint rate",
 					"under": "{rate} of recipients complained, under the {limit} limit."
@@ -18107,6 +18239,7 @@
 			"hideProviderText": "Hide error details",
 			"labels": {
 				"addressUnsupported": "Address not supported",
+				"automationPaused": "Automation paused",
 				"blocklisted": "On the blocklist",
 				"contactDeleted": "Contact deleted",
 				"content": "Content refused",
@@ -18129,6 +18262,7 @@
 			},
 			"reasons": {
 				"addressUnsupported": "The mail server used for this send cannot handle addresses with characters outside plain ASCII, such as ü, in the sender or the recipient.",
+				"automationPaused": "Not sent because its automation was paused before the message went out. Resuming the automation does not send it.",
 				"blocklisted": "Skipped because the address is on the blocklist. Owlat does this on its own, so there is nothing to do.",
 				"contactDeleted": "Skipped because the contact was deleted before the message went out.",
 				"content": "The provider refused the content of the message, for example as spam. Change the content before you send it again.",
@@ -19485,6 +19619,11 @@
 				"bodyNoCheck": "A check stopped passing",
 				"private": "A deliverability check stopped passing"
 			},
+			"sendingBanned": {
+				"body": "No new mail goes out from this instance until a platform admin lifts the ban. Open Delivery health to see why",
+				"private": "No new mail goes out from this instance",
+				"title": "Sending banned"
+			},
 			"sendingSuspended": {
 				"body": "No new mail goes out from this instance. Open Delivery health to see why",
 				"private": "No new mail goes out from this instance",
@@ -19763,6 +19902,7 @@
 				"eventsRequired": "At least one event must be selected",
 				"nameRequired": "Name is required",
 				"urlInvalid": "Invalid URL format",
+				"urlAlertsNeedHttps": "Deliverability alerts are sent only to an https:// URL",
 				"urlProtocol": "URL must use HTTP or HTTPS protocol",
 				"urlRequired": "URL is required"
 			},
@@ -19805,11 +19945,11 @@
 				},
 				"deliverabilityAlertRaised": {
 					"label": "Deliverability alert raised",
-					"description": "When a deliverability check that passed starts failing, such as a blocked port 25"
+					"description": "When a deliverability check that passed starts failing, such as a blocked port 25, or sending on the instance is suspended"
 				},
 				"deliverabilityAlertResolved": {
 					"label": "Deliverability alert resolved",
-					"description": "When a deliverability alert is resolved"
+					"description": "When a deliverability alert is resolved, or sending resumes"
 				}
 			},
 			"updateOperation": "Update webhook",

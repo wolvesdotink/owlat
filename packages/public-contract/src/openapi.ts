@@ -5,15 +5,19 @@
  */
 
 import { z } from 'zod';
-import { apiErrorResponseSchema, paginationMetaSchema } from './common';
+import { apiErrorResponseSchema, cursorPaginationMetaSchema, paginationMetaSchema } from './common';
 import { OPERATION_EXAMPLES, type OperationExample } from './examples';
 import {
+	ANY_KEY,
 	KEYED_ERROR_STATUSES,
 	PUBLIC_OPERATIONS,
 	reasonsAt,
 	type PublicOperation,
 } from './operations';
+import { sendingDomainSetupSchema } from './domains';
+import { emailHealthSchema, sendRefusalSchema } from './render';
 import { sendingHoldLiftSchema } from './status';
+import { contentIssueSchema, emailBlockSchema, emailTranslationSchema } from './templates';
 import { transactionalAttachmentSchema } from './transactional';
 import type { ApiErrorReason } from './types';
 
@@ -24,8 +28,8 @@ const STATUS_TEXT: Record<number, string> = {
 	401: 'The API key is missing, malformed or unknown.',
 	403: 'The API key lacks the scope this operation needs, or the feature is disabled.',
 	404: 'A resource the request names does not exist.',
-	409: 'The request conflicts with existing data or reuses an Idempotency-Key.',
-	422: 'The workspace is not in a state that can carry out the request.',
+	409: 'The request conflicts with existing data, reuses an Idempotency-Key or names a revision that is no longer current.',
+	422: 'The workspace or the resource is not in a state that can carry out the request.',
 	429: 'Too many requests; retry after the `Retry-After` header.',
 	500: 'The server failed to complete the request.',
 };
@@ -94,7 +98,8 @@ function withoutSafeIntegerBounds(node: unknown): unknown {
 function successBody(operation: PublicOperation): JsonObject {
 	const { name, paginated } = operation.success;
 	const data = paginated ? { type: 'array', items: ref(name) } : ref(name);
-	const properties: JsonObject = paginated ? { data, pagination: ref('PaginationMeta') } : { data };
+	const pagination = paginated === 'cursor' ? 'CursorPaginationMeta' : 'PaginationMeta';
+	const properties: JsonObject = paginated ? { data, pagination: ref(pagination) } : { data };
 	return {
 		type: 'object',
 		properties,
@@ -109,6 +114,46 @@ function successBody(operation: PublicOperation): JsonObject {
  * open to fields a later release adds.
  */
 const REASON_DATA: Partial<Record<ApiErrorReason, JsonObject>> = {
+	invalid_content: {
+		field: {
+			type: 'string',
+			description: 'The request field at fault: `blocks` on an `invalid_content` refusal.',
+		},
+		blockId: {
+			type: 'string',
+			description: 'The id of the first block at fault.',
+		},
+		issues: {
+			type: 'array',
+			items: ref('ContentIssue'),
+			description: 'Everything the content check found, each error with the id of its block.',
+		},
+	},
+	revision_mismatch: {
+		currentRevision: {
+			type: ['integer', 'null'],
+			description:
+				"The email's current revision on a `revision_mismatch` refusal, or null when no email has the slug.",
+		},
+	},
+	content_blocked: {
+		scanScore: {
+			type: 'integer',
+			description: "The content scan's score out of 100, on a `content_blocked` refusal.",
+		},
+	},
+	invalid_variables: {
+		field: {
+			type: 'string',
+			description: 'The request field at fault: `dataVariables` on an `invalid_variables` refusal.',
+		},
+		variables: {
+			type: 'array',
+			items: { type: 'string' },
+			description:
+				'The data variables at fault: the one of the wrong type, or every one the email uses without a fallback that the request left out.',
+		},
+	},
 	abuse_blocked: {
 		status: {
 			type: 'string',
@@ -204,6 +249,18 @@ function operationObject(operation: PublicOperation): JsonObject {
 			description: parameter.description,
 			schema: parameter.schema,
 		})),
+		...(operation.conditional && operation.method !== 'GET'
+			? [
+					{
+						name: 'If-Match',
+						in: 'header',
+						required: false,
+						description:
+							'The revision the request was built on, as the `ETag` of a read sent it (`"3"`). A resource that has moved on since is refused with `revision_mismatch`.',
+						schema: { type: 'string' },
+					},
+				]
+			: []),
 		...(operation.idempotent
 			? [
 					{
@@ -219,6 +276,14 @@ function operationObject(operation: PublicOperation): JsonObject {
 	];
 	const successHeaders: JsonObject = {
 		...(keyed ? RATE_LIMIT_HEADERS : {}),
+		...(operation.conditional
+			? {
+					ETag: {
+						description: 'The revision of the resource in the body, quoted, for an `If-Match`.',
+						schema: { type: 'string' },
+					},
+				}
+			: {}),
 		...(operation.idempotent
 			? {
 					'Idempotent-Replayed': {
@@ -228,14 +293,18 @@ function operationObject(operation: PublicOperation): JsonObject {
 				}
 			: {}),
 	};
-	const errorStatuses = [
-		...new Set([...(keyed ? KEYED_ERROR_STATUSES : []), ...operation.errors]),
-	].sort((a, b) => a - b);
+	// A key without a scope to lack has no 403 to receive.
+	const keyedStatuses = KEYED_ERROR_STATUSES.filter(
+		(status) => status !== 403 || operation.scope !== ANY_KEY
+	);
+	const errorStatuses = [...new Set([...(keyed ? keyedStatuses : []), ...operation.errors])].sort(
+		(a, b) => a - b
+	);
 	return {
 		operationId: operation.operationId,
 		tags: [operation.tag],
 		summary: operation.summary,
-		security: keyed ? [{ apiKey: [operation.scope] }] : [],
+		security: keyed ? [{ apiKey: operation.scope === ANY_KEY ? [] : [operation.scope] }] : [],
 		...(parameters.length ? { parameters } : {}),
 		...(operation.request
 			? {
@@ -271,9 +340,32 @@ function operationObject(operation: PublicOperation): JsonObject {
 	};
 }
 
-/** The OpenAPI document, deterministic for a given contract. */
+/** The placeholder server of the committed document, which every caller fills in. */
+const TEMPLATE_SERVER: JsonObject = {
+	url: '{baseUrl}',
+	// Every install serves its own API; a real host as the default
+	// would send a caller's key to someone else's server.
+	variables: {
+		baseUrl: {
+			default: 'https://rest.api.example.com',
+			description:
+				"Your instance's API URL: 'Your API base URL' under Settings → API → API quickstart, set by the operator as NUXT_PUBLIC_CONVEX_SITE_URL.",
+		},
+	},
+};
+
+export interface OpenApiDocumentOptions {
+	/**
+	 * The API address of the instance serving the document. Without it the
+	 * document carries a placeholder server for the caller to fill in.
+	 */
+	serverUrl?: string;
+}
+
+/** The OpenAPI document, deterministic for a given contract and options. */
 export function buildOpenApiDocument(
-	operations: readonly PublicOperation[] = PUBLIC_OPERATIONS
+	operations: readonly PublicOperation[] = PUBLIC_OPERATIONS,
+	options: OpenApiDocumentOptions = {}
 ): JsonObject {
 	const requests = componentSchemas(
 		[
@@ -287,9 +379,16 @@ export function buildOpenApiDocument(
 	const responses = componentSchemas(
 		[
 			['ApiErrorResponse', apiErrorResponseSchema],
+			['ContentIssue', contentIssueSchema],
+			['EmailBlock', emailBlockSchema],
+			['EmailTranslation', emailTranslationSchema],
+			['CursorPaginationMeta', cursorPaginationMetaSchema],
 			['PaginationMeta', paginationMetaSchema],
+			['SendingDomainSetup', sendingDomainSetupSchema],
 			['SendingHoldLift', sendingHoldLiftSchema],
 			...operations.map((operation) => [operation.success.name, operation.success.data] as const),
+			['SendRefusal', sendRefusalSchema],
+			['EmailHealth', emailHealthSchema],
 		],
 		'output'
 	);
@@ -306,25 +405,19 @@ export function buildOpenApiDocument(
 			title: 'Owlat API',
 			version: 'v1',
 			description:
-				'The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand.',
+				'The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand. Every instance serves its own copy at `/api/v1/openapi.json`, with its own API address as the server.',
 		},
-		servers: [
-			{
-				url: '{baseUrl}',
-				// Every install serves its own API; a real host as the default
-				// would send a caller's key to someone else's server.
-				variables: {
-					baseUrl: {
-						default: 'https://rest.api.example.com',
-						description:
-							"Your instance's API URL: 'Your API base URL' under Settings → API → API quickstart, set by the operator as NUXT_PUBLIC_CONVEX_SITE_URL.",
-					},
-				},
-			},
-		],
-		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Status', 'Health'].map((name) => ({
-			name,
-		})),
+		servers: [options.serverUrl ? { url: options.serverUrl } : TEMPLATE_SERVER],
+		tags: [
+			'Contacts',
+			'Events',
+			'Transactional',
+			'Templates',
+			'Topics',
+			'Status',
+			'Domains',
+			'Health',
+		].map((name) => ({ name })),
 		paths,
 		components: {
 			securitySchemes: {
@@ -332,7 +425,7 @@ export function buildOpenApiDocument(
 					type: 'http',
 					scheme: 'bearer',
 					description:
-						'An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs.',
+						'An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs; one that lists none takes any key.',
 				},
 			},
 			schemas: sortKeys({ ...requests, ...responses }),

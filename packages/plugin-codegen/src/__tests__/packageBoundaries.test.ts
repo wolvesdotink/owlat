@@ -234,6 +234,44 @@ describe('plugin package boundary lint', () => {
 		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
 	});
 
+	it('accepts a canonical ESM directory bound under another name', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `import 'safe-alias';`,
+			'apps/api/vitest.config.ts': `import { resolve } from 'node:path';
+				import { fileURLToPath } from 'node:url';
+				const rootDir = fileURLToPath(new URL('.', import.meta.url));
+				export default { resolve: { alias: [
+					{ find: 'safe-alias', replacement: resolve(rootDir, 'src/index.ts') },
+				] } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+	});
+
+	it.each([
+		`const rootDir = '/tmp/node_modules/@acme/mail-plugin';`,
+		`let rootDir = fileURLToPath(new URL('.', import.meta.url));`,
+		`const rootDir = fileURLToPath(new URL('.', import.meta.url));
+			const other = rootDir;
+			function shadow(rootDir: string) { return rootDir; }`,
+	])(
+		'fails closed on a config directory that is not the canonical ESM one: %s',
+		async (binding) => {
+			const root = await createRepository({
+				'apps/api/core.ts': `export const safe = true;`,
+				'apps/api/vite.config.ts': `import { resolve } from 'node:path';
+				import { fileURLToPath } from 'node:url';
+				${binding}
+				export default { resolve: { alias: { safe: resolve(rootDir, 'index.js') } } };`,
+			});
+
+			await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+				code: 'repository_config_invalid',
+				details: ['apps/api/vite.config.ts'],
+			});
+		}
+	);
+
 	it.each(['import', 'import type'])(
 		'fails closed when a TypeScript %s-equals declaration shadows legacy dirname',
 		async (importKind) => {
@@ -393,10 +431,40 @@ describe('plugin package boundary lint', () => {
 		});
 	});
 
-	it('fails closed on non-exact static RegExp alias rules', async () => {
+	it('resolves Vite RegExp aliases with one capture group as wildcard rules', async () => {
+		const root = await createRepository({
+			'apps/api/capture.ts': `import 'mail-runtime';`,
+			'apps/api/constant.ts': `import 'plugin-anything.js';`,
+			'apps/api/near.ts': `import 'mailer-runtime';`,
+			'apps/api/vite.config.ts': `export default { resolve: { alias: [
+				{ find: /^mail-(.+)$/, replacement: '@acme/mail-plugin/$1' },
+				{ find: /^plugin-(.*)\\.js$/, replacement: '@acme/mail-plugin' },
+				{ find: /^mailer-(.+)$/, replacement: 'unrelated/$1' },
+			] } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'direct_plugin_import',
+			details: [
+				'apps/api/capture.ts: imports mail-runtime',
+				'apps/api/constant.ts: imports plugin-anything.js',
+			],
+		});
+	});
+
+	it.each([
+		'{ find: /^mail-(a|b)$/, replacement: "@acme/mail-plugin" }',
+		'{ find: /^mail-(.+)-(.+)$/, replacement: "$1" }',
+		'{ find: /^mail-(.+)$/, replacement: "@acme/$2" }',
+		'{ find: /^mail-(.+)$/, replacement: "$&" }',
+		'{ find: /^mail-(.+)$/, replacement: "@acme/$$1" }',
+		'{ find: /^mail-(.+)$/, replacement: "@acme/*" }',
+		'{ find: /^mail-\\*(.+)$/, replacement: "$1" }',
+		'{ find: /^mail-(.+)$/i, replacement: "$1" }',
+	])('fails closed on a RegExp alias rule it cannot model: %s', async (rule) => {
 		const root = await createRepository({
 			'apps/api/core.ts': `export const safe = true;`,
-			'apps/api/vite.config.ts': `export default { resolve: { alias: [{ find: /^mail-(.+)$/, replacement: '@acme/mail-plugin' }] } };`,
+			'apps/api/vite.config.ts': `export default { resolve: { alias: [${rule}] } };`,
 		});
 
 		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
@@ -465,6 +533,15 @@ describe('plugin package boundary lint', () => {
 		});
 	});
 
+	it('substitutes wildcard text verbatim, without replacement patterns', () => {
+		const matcher = createRepositoryPackageMatcher(configuredPackages, [
+			{ matchKind: 'wildcard', specifierPattern: 'x-*', targetPattern: '*' },
+			{ matchKind: 'exact', specifierPattern: 'fwd-$&', targetPattern: '@acme/mail-plugin' },
+		]);
+
+		expect(matcher('x-fwd-$&')).toBe(true);
+	});
+
 	it('allows the exact alias matcher work budget and fails closed one comparison later', () => {
 		const aliases: RepositoryModuleAlias[] = Array.from({ length: 1024 }, (_, index) => ({
 			matchKind: 'exact',
@@ -490,9 +567,9 @@ describe('plugin package boundary lint', () => {
 		);
 	});
 
-	it('shares the exact alias comparison budget across the repository scan', async () => {
+	it('gives every import specifier its own alias comparison budget', async () => {
 		const files = Object.fromEntries(
-			Array.from({ length: 8 }, (_, index) => [
+			Array.from({ length: 64 }, (_, index) => [
 				`apps/api/safe-${index}.ts`,
 				`import 'unmatched-${index}';`,
 			])
@@ -512,12 +589,6 @@ describe('plugin package boundary lint', () => {
 			})
 		);
 		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
-
-		await writeFile(join(root, 'apps/api/safe-8.ts'), `import 'unmatched-8';`);
-		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
-			code: 'repository_config_invalid',
-			details: ['apps/api/safe-8.ts'],
-		});
 	});
 
 	it('bounds accumulated findings at the exact scan-wide limit', () => {

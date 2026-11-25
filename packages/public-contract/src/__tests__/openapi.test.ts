@@ -6,6 +6,7 @@ import { OPERATION_EXAMPLES } from '../examples';
 import { buildOpenApiDocument } from '../openapi';
 import { ERROR_REASON_STATUS } from '../errors';
 import {
+	ANY_KEY,
 	KEYED_ERROR_STATUSES,
 	PUBLIC_OPERATIONS,
 	publicOperation,
@@ -16,6 +17,9 @@ import { sendTransactionalRequestSchema } from '../transactional';
 import {
 	API_KEY_ERROR_REASONS,
 	DELIVERY_STATUS_REASONS,
+	DNS_RECORD_PURPOSES,
+	DNS_RECORD_STATES,
+	DNS_RECORD_TYPES,
 	TRANSACTIONAL_REFUSAL_REASONS,
 } from '../types';
 
@@ -72,6 +76,83 @@ describe('openapi.json', () => {
 	});
 });
 
+describe('a document an instance serves', () => {
+	it('names the instance as its only server and differs from the committed file in nothing else', () => {
+		const served = buildOpenApiDocument(PUBLIC_OPERATIONS, {
+			serverUrl: 'https://api.owlat.example',
+		});
+		expect(served['servers']).toEqual([{ url: 'https://api.owlat.example' }]);
+		const { servers: _served, ...rest } = served;
+		const { servers: _committed, ...committedRest } = committed;
+		expect(rest).toEqual(committedRest);
+	});
+
+	it('keeps the placeholder server without an address', () => {
+		const servers = committed['servers'] as { url: string }[];
+		expect(servers.map((server) => server.url)).toEqual(['{baseUrl}']);
+	});
+});
+
+describe('sending domains', () => {
+	it('lists every record state, purpose and type the domain list can name', () => {
+		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;
+		const record = schemas['SendingDomainSetup'].properties.records.items.properties;
+		expect(record.state.enum).toEqual([...DNS_RECORD_STATES]);
+		expect(record.purpose.enum).toEqual([...DNS_RECORD_PURPOSES]);
+		expect(record.type.enum).toEqual([...DNS_RECORD_TYPES]);
+		expect(schemas['SendingDomainSetupList']).toEqual({
+			type: 'array',
+			items: { $ref: '#/components/schemas/SendingDomainSetup' },
+		});
+	});
+});
+
+describe('the limits', () => {
+	it('take any key, and answer 403 or 404 only for the count of one template and address', () => {
+		const limits = (committed['paths'] as Record<string, any>)['/api/v1/limits'].get;
+		expect(limits.security).toEqual([{ apiKey: [] }]);
+		expect(Object.keys(limits.responses)).toEqual([
+			'200',
+			'400',
+			'401',
+			'403',
+			'404',
+			'429',
+			'500',
+		]);
+		expect(limits.parameters.map((parameter: { name: string }) => parameter.name)).toEqual([
+			'email',
+			'slug',
+			'transactionalId',
+		]);
+	});
+});
+
+describe('the send list', () => {
+	it('pages without a total, since counting the matches would read them all', () => {
+		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;
+		const list = (committed['paths'] as Record<string, any>)['/api/v1/transactional'].get;
+		const body = list.responses['200'].content['application/json'].schema;
+		expect(body.properties).toEqual({
+			data: { type: 'array', items: { $ref: '#/components/schemas/TransactionalSendStatus' } },
+			pagination: { $ref: '#/components/schemas/CursorPaginationMeta' },
+		});
+		expect(Object.keys(schemas['CursorPaginationMeta'].properties)).toEqual([
+			'limit',
+			'cursor',
+			'isDone',
+		]);
+		expect(list.parameters.map((parameter: { name: string }) => parameter.name)).toEqual([
+			'limit',
+			'cursor',
+			'email',
+			'status',
+			'since',
+			'until',
+		]);
+	});
+});
+
 describe('delivery status', () => {
 	it('lists every reason code the status can name, and only those', () => {
 		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;
@@ -111,12 +192,50 @@ describe('error reasons', () => {
 		}
 	});
 
+	it('lists the deletion refusal on every operation that writes, and on no read', () => {
+		// A render and a dry run are POSTs that store nothing.
+		const reads = new Set<string>(['renderEmail', 'dryRunTransactional']);
+		for (const operation of PUBLIC_OPERATIONS) {
+			const listed = reasonsListed(operation.operationId, 422);
+			if (operation.method === 'GET' || reads.has(operation.operationId)) {
+				expect(listed, operation.operationId).not.toContain('workspace_deletion_in_progress');
+			} else {
+				expect(listed, operation.operationId).toContain('workspace_deletion_in_progress');
+			}
+		}
+	});
+
+	it("describes the send route's invalid_variables data: the field and the variables", () => {
+		const send = Object.values(paths)
+			.flatMap((methods) => Object.values(methods))
+			.find((op) => op.operationId === 'sendTransactional')!;
+		const invalid = send.responses['400']!.content['application/json'].schema as {
+			allOf: Array<{
+				properties?: { error: { properties: { data: { properties: Record<string, unknown> } } } };
+			}>;
+		};
+		expect(invalid.allOf[1]!.properties!.error.properties.data.properties).toMatchObject({
+			reason: { enum: ['invalid_variables'] },
+			field: { type: 'string' },
+			variables: { type: 'array', items: { type: 'string' } },
+		});
+		// Every other 400 of the route names its own field.
+		expect(
+			invalid.allOf[1]!.properties!.error.properties.data.properties['field']
+		).not.toHaveProperty('enum');
+	});
+
 	it('lists the key refusals on every keyed operation and none on the open probe', () => {
 		for (const operation of PUBLIC_OPERATIONS) {
 			for (const reason of API_KEY_ERROR_REASONS) {
 				const listed = reasonsListed(operation.operationId, ERROR_REASON_STATUS[reason]);
 				if (operation.scope === null) expect(listed, operation.operationId).toEqual([]);
-				else expect(listed, `${operation.operationId} ${reason}`).toContain(reason);
+				else if (operation.scope === ANY_KEY && reason === 'missing_scope') {
+					// Only a part of an any-key operation that needs a scope can lack one.
+					const ownReasons: readonly string[] = operation.reasons;
+					if (ownReasons.includes(reason)) expect(listed, operation.operationId).toContain(reason);
+					else expect(listed, operation.operationId).not.toContain(reason);
+				} else expect(listed, `${operation.operationId} ${reason}`).toContain(reason);
 			}
 		}
 	});
@@ -178,6 +297,17 @@ describe('examples', () => {
 			);
 			expect(result.error?.issues, operation.operationId).toBeUndefined();
 		}
+	});
+
+	it('a dry run answers on its own path and status, and a send body has no dryRun field', () => {
+		const dryRun = publicOperation('dryRunTransactional');
+		const send = publicOperation('sendTransactional');
+		expect(dryRun.path).not.toBe(send.path);
+		expect(dryRun.success.status).not.toBe(send.success.status);
+		expect(
+			successBodySchema(dryRun).safeParse(OPERATION_EXAMPLES.sendTransactional.response).success
+		).toBe(false);
+		expect(Object.keys(sendTransactionalRequestSchema.shape)).not.toContain('dryRun');
 	});
 
 	it('a response with an undocumented field is not a valid body', () => {

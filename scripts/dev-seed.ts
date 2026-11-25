@@ -26,6 +26,12 @@
  *   --reset   wipe seed-tagged demo rows first, then reseed (accounts persist)
  *   --wipe    full `POST /dev/reset` (blank instance, ALL data + accounts
  *             deleted) before seeding from scratch
+ *   --suspend  suspend sending on the instance (no seeding), for a capture of
+ *              the suspended state; `POST /seed/demo/sending?suspended=true`
+ *   --resume   lift that suspension again (no seeding)
+ *
+ * Every run ends by printing whether the instance may send. A suspension is
+ * never part of the seed itself: it would block sending in every other capture.
  *
  * The credentials printed at the end mirror the accounts fixture — keep the
  * two in sync when editing either.
@@ -106,13 +112,35 @@ function summarize(label: string, counts: unknown): void {
 	console.log(`  ${label}: ${entries.map(([k, n]) => `${k} ${n}`).join(', ')}`);
 }
 
+/** Switch sending (`query` = `?suspended=…`) or only read it (`''`), and print the state. */
+async function printSendingState(siteUrl: string, secret: string, query: string): Promise<void> {
+	const result = await post(siteUrl, secret, `/seed/demo/sending${query}`);
+	if (result.status !== 200) {
+		fail(`/seed/demo/sending failed (${result.status}): ${JSON.stringify(result.body)}`);
+	}
+	const status = result.body['abuseStatus'];
+	const isBlocked = status === 'suspended' || status === 'banned';
+	console.log(
+		isBlocked
+			? `  sending: ${String(status)} — undo with bun run dev:seed --resume`
+			: '  sending: allowed — suspend for a capture with bun run dev:seed --suspend'
+	);
+}
+
 async function main(): Promise<void> {
 	const args = new Set(process.argv.slice(2));
 	if (args.has('--help') || args.has('-h')) {
-		console.log('Usage: bun run dev:seed [--reset] [--wipe]');
-		console.log('  --reset  wipe seed-tagged demo rows, then reseed (accounts persist)');
-		console.log('  --wipe   POST /dev/reset first: blank instance, then seed from scratch');
+		console.log('Usage: bun run dev:seed [--reset] [--wipe] | --suspend | --resume');
+		console.log('  --reset    wipe seed-tagged demo rows, then reseed (accounts persist)');
+		console.log('  --wipe     POST /dev/reset first: blank instance, then seed from scratch');
+		console.log('  --suspend  suspend sending on the instance (no seeding)');
+		console.log('  --resume   allow sending again (no seeding)');
 		return;
+	}
+	const switchTo = args.has('--suspend') ? 'true' : args.has('--resume') ? 'false' : null;
+	if (args.has('--suspend') && args.has('--resume')) fail('Pass --suspend or --resume, not both.');
+	if (switchTo !== null && (args.has('--reset') || args.has('--wipe'))) {
+		fail('--suspend and --resume only switch sending; run the seed separately.');
 	}
 
 	const siteUrl = target.siteUrl;
@@ -140,6 +168,11 @@ async function main(): Promise<void> {
 	}
 	if (getDeploymentEnv('OWLAT_DEV_MODE') !== 'true') {
 		setDeploymentEnv('OWLAT_DEV_MODE', 'true');
+	}
+
+	if (switchTo !== null) {
+		await printSendingState(siteUrl, secret, `?suspended=${switchTo}`);
+		return;
 	}
 
 	// 2. Optional full wipe back to a blank instance.
@@ -176,6 +209,8 @@ async function main(): Promise<void> {
 	summarize('deleted', demoResult.body['deleted']);
 	summarize('inserted', demoResult.body['inserted']);
 	summarize('skipped (already present)', demoResult.body['skipped']);
+
+	await printSendingState(siteUrl, secret, '');
 
 	const appUrl = getDeploymentEnv('SITE_URL') ?? 'http://localhost:3000';
 	console.log(`\n✓ Done. Sign in at ${appUrl}`);

@@ -8,8 +8,10 @@
  * `node:fs` fixtures get bundled for the V8 runtime and the push aborts. The
  * deploy image drops the same directories for the same reason
  * (`docker/convex-deploy.Dockerfile`), so the stage pushes what production
- * deploys. Its `_generated/` is the committed one: the CLI runs with codegen
- * off, so a push never rewrites tracked files.
+ * deploys. Its `_generated/` is the committed one: the push runs with codegen
+ * off, so a push never rewrites tracked files. `bun run dev:stack codegen`
+ * runs codegen in the stage and copies the output back
+ * (`copyGeneratedBack`).
  *
  * The stage sits two levels below the repository root, like `apps/api`, so
  * package resolution walks up to the same root `node_modules`.
@@ -21,6 +23,7 @@ import {
 	lstatSync,
 	mkdirSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
 	statSync,
 	utimesSync,
@@ -112,6 +115,48 @@ export function syncStage(apiRoot: string, stageRoot: string): SyncResult {
 		for (const entry of readdirSync(stageRoot)) removed += removeStale(stageRoot, entry, files);
 	}
 	return { copied, removed };
+}
+
+function generatedFiles(root: string, rel: string, inGenerated: boolean, out: string[]): void {
+	const abs = join(root, rel);
+	const stat = statSync(abs, { throwIfNoEntry: false });
+	if (!stat) return;
+	if (stat.isDirectory()) {
+		for (const entry of readdirSync(abs)) {
+			const child = join(rel, entry);
+			if (!isExcluded(child)) {
+				generatedFiles(root, child, inGenerated || entry === '_generated', out);
+			}
+		}
+		return;
+	}
+	if (stat.isFile() && inGenerated) out.push(rel);
+}
+
+/**
+ * Copies what `convex codegen` wrote into the stage's `_generated/`
+ * directories (the app's and each local component's) back into `apiRoot`, so
+ * the checkout holds the output. Only files whose bytes differ are written,
+ * with the stage file's mtime, so the next `syncStage` copies nothing back.
+ * Returns how many files changed.
+ */
+export function copyGeneratedBack(stageRoot: string, apiRoot: string): number {
+	const files: string[] = [];
+	generatedFiles(stageRoot, 'convex', false, files);
+	let changed = 0;
+	for (const rel of files) {
+		const src = join(stageRoot, rel);
+		const dest = join(apiRoot, rel);
+		const content = readFileSync(src);
+		const existing = statSync(dest, { throwIfNoEntry: false });
+		if (existing?.isFile() && readFileSync(dest).equals(content)) continue;
+		mkdirSync(dirname(dest), { recursive: true });
+		copyFileSync(src, dest);
+		const { mtime } = statSync(src);
+		utimesSync(dest, mtime, mtime);
+		changed += 1;
+	}
+	return changed;
 }
 
 /**

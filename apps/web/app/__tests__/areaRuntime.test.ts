@@ -76,6 +76,21 @@ describe('areasForPath', () => {
 		expect(areasForPath(ROUTES, '/dashboard/postbox')).toEqual([]);
 	});
 
+	it('matches only the most specific area when a sub-area covers the path', () => {
+		const routes: AreaRouteEntry[] = [
+			{ path: '/dashboard/send', exact: false, area: 'dashboard-send' },
+			{ path: '/dashboard/send/transactional', exact: false, area: 'dashboard-send-transactional' },
+		];
+		expect(areasForPath(routes, '/dashboard/send/transactional/abc/edit')).toEqual([
+			'dashboard-send-transactional',
+		]);
+		expect(areasForPath(routes, '/dashboard/send/transactional')).toEqual([
+			'dashboard-send-transactional',
+		]);
+		expect(areasForPath(routes, '/dashboard/send/emails/abc/edit')).toEqual(['dashboard-send']);
+		expect(areasForPath(routes, '/dashboard/send/transactionals')).toEqual(['dashboard-send']);
+	});
+
 	it('ignores case and does not match a sibling that merely shares a prefix', () => {
 		expect(areasForPath(ROUTES, '/Dashboard/Admin/Team')).toEqual(['dashboard-admin']);
 		expect(areasForPath(ROUTES, '/dashboard/administration')).toEqual([]);

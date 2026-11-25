@@ -377,6 +377,16 @@ describe('a transactional send names itself on every email event', () => {
 		expect(webhookPayloads(result.effects)).toEqual([]);
 	});
 
+	it('an automation email withdrawn at dispatch because its automation was paused emits no email.failed', () => {
+		const result = reduceFailed(
+			apiSend({ kind: 'automation', transactionalEmailId: undefined }),
+			{ to: 'failed', at: 3000, errorMessage: 'withdrawn', errorCode: 'AUTOMATION_PAUSED' },
+			apiRef
+		);
+		expect(webhookPayloads(result.effects)).toEqual([]);
+		expect(result.patch).toMatchObject({ status: 'failed', errorCode: 'AUTOMATION_PAUSED' });
+	});
+
 	it('an API send skipped at dispatch still emits one email.failed for its caller', () => {
 		const result = reduceFailed(
 			apiSend(),
@@ -497,6 +507,27 @@ describe('reduceBounced', () => {
 		expect(result.effects.find((e) => e.kind === 'blocklist_insert')).toMatchObject({
 			reason: 'bounced',
 			bounceType: 'hard',
+		});
+	});
+
+	it.each([
+		['sender', 'sender'],
+		['recipient', 'recipient'],
+		// The lifecycle treats an unclassified bounce as the recipient's, and
+		// the webhook reports it so: the row stores what both acted on.
+		[undefined, 'recipient'],
+	] as const)('stores a bounce classified %s as caused by the %s', (bounceCause, stored) => {
+		const result = reduceBounced(
+			campaignSend({ status: 'sent' }),
+			{ to: 'bounced', at: 4000, bounceType: 'hard', bounceCause, bounceMessage: '550 5.7.1' },
+			campaignRef,
+			'jane@example.com',
+			'org.example',
+			null
+		);
+		expect(result.patch).toMatchObject({ bounceCause: stored, errorMessage: '550 5.7.1' });
+		expect(result.effects.find((e) => e.kind === 'customer_webhook')).toMatchObject({
+			spec: { input: { cause: stored } },
 		});
 	});
 

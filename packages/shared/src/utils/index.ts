@@ -1,5 +1,12 @@
 // Shared utility functions
-export { getColumnWidths } from './columnWidths';
+export {
+	getColumnWidths,
+	getColumnWidthPercents,
+	isValidColumnWidths,
+	setColumnWidth,
+	MAX_COLUMN_COUNT,
+	MIN_COLUMN_WIDTH_PERCENT,
+} from './columnWidths';
 export { sanitizeCsvCell } from './csv';
 export { gradientToCss, gradientToCssOrUndefined } from './gradient';
 export { generateId } from './id';

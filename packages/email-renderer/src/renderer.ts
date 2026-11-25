@@ -15,6 +15,15 @@ import { escapeJsonValue } from './sanitize';
 import { simulateClient } from './simulators';
 import { validateBlocks } from './validator';
 import { px } from './helpers/padding';
+import {
+	CONDITION_REGION_END,
+	MAX_REPEAT_ITEMS,
+	REPEAT_REGION_END,
+	conditionRegionStart,
+	evaluateBlockCondition,
+	repeatRegionStart,
+	stripSendRegionMarkers,
+} from '@owlat/shared/sendRegions';
 
 const MAX_WARNINGS = 50;
 const addWarning = (ctx: RenderContext, message: string): void => {
@@ -47,6 +56,30 @@ export const DEFAULT_THEME = {
 	darkModeLinkColor: DEFAULT_EMAIL_THEME.darkModeLinkColor,
 };
 
+// A BCP 47 language tag: a 2–8 letter primary subtag and alphanumeric subtags.
+// The value lands in the document's `lang` attribute and often comes from a
+// stored row, so anything else is dropped rather than only escaped.
+const LANGUAGE_TAG = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
+const documentLanguage = (lang: string | undefined): string => {
+	const trimmed = lang?.trim();
+	return trimmed && LANGUAGE_TAG.test(trimmed) ? trimmed : 'en';
+};
+
+// Only an absolute http(s) URL can serve assets to a mail client; anything else
+// leaves the site-relative default in place. A query or fragment is dropped so
+// the appended asset path stays part of the path.
+const assetBase = (url: string | undefined): string => {
+	const trimmed = url?.trim();
+	if (!trimmed) return '';
+	try {
+		const parsed = new URL(trimmed);
+		if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+		return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+	} catch {
+		return '';
+	}
+};
+
 const createContext = (options: RenderOptions = {}): RenderContext => {
 	const theme = { ...DEFAULT_THEME, ...options.theme };
 	const darkMode = options.darkMode ?? false;
@@ -68,7 +101,8 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 		fontUrls: options.fontUrls ?? options.theme?.fontUrls ?? [],
 		customCss: options.customCss ?? '',
 		variableValues: options.variableValues ?? {},
-		lang: options.lang ?? 'en',
+		lang: documentLanguage(options.lang),
+		assetBaseUrl: assetBase(options.assetBaseUrl),
 		responsiveRules: [],
 		globalRules: [],
 		linkTransform: options.linkTransform,
@@ -78,37 +112,8 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 	};
 };
 
-/**
- * Evaluate a block condition against variable values.
- */
-const evaluateCondition = (
-	condition: BlockCondition,
-	variables: Record<string, string>
-): boolean => {
-	const value = variables[condition.variable];
-	switch (condition.operator) {
-		case 'exists':
-			return value !== undefined && value !== '';
-		case 'notExists':
-			return value === undefined || value === '';
-		case 'equals':
-			return value === condition.value;
-		case 'notEquals':
-			return value !== condition.value;
-		case 'contains':
-			return (
-				value !== undefined && condition.value !== undefined && value.includes(condition.value)
-			);
-		default:
-			return true;
-	}
-};
-
 /** Maximum total blocks after repeat expansion to prevent resource exhaustion */
 const MAX_EXPANDED_BLOCKS = 5000;
-
-/** Maximum items per single repeat block to prevent excessive expansion */
-const MAX_REPEAT_ITEMS = 500;
 
 /**
  * Expand blocks with repeat configuration into multiple block instances.
@@ -229,6 +234,29 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 };
 
 /**
+ * A top-level Block rendered for the send to resolve: once, without its repeat,
+ * between the region markers of its repeat and its condition. The condition
+ * wraps the repeat because the preview tests every repeated copy against the
+ * same variables. Marker-shaped comments a Block's own HTML carries are
+ * dropped, so the only markers in the body are these.
+ */
+const renderBlockForSend = (block: EditorBlock, ctx: RenderContext): string => {
+	const c = block.content as CommonBlockProperties;
+	const { condition, repeat } = c;
+	let source = block;
+	if (repeat) {
+		const { repeat: _resolvedAtSend, ...content } = c;
+		source = { ...block, content } as unknown as EditorBlock;
+	}
+	const html = stripSendRegionMarkers(renderBlock(applyThemeDefaults(source, ctx), ctx));
+	if (!html) return '';
+	const repeated = repeat ? `${repeatRegionStart(repeat)}${html}${REPEAT_REGION_END}` : html;
+	return condition
+		? `${conditionRegionStart(condition)}${repeated}${CONDITION_REGION_END}`
+		: repeated;
+};
+
+/**
  * Apply theme defaults to a block's content before rendering.
  *
  * Two passes:
@@ -302,29 +330,30 @@ export const renderEmailHtml = (input: EditorBlock[], options?: RenderOptions): 
 		}
 	}
 
-	// Expand repeat blocks (iterate over array variables)
-	const expandedBlocks = expandRepeats(blocks, ctx);
-
-	const filteredBlocks = expandedBlocks
-		.filter((block) => {
-			// Evaluate conditional content
-			const c = block.content as CommonBlockProperties;
-			const condition = c.condition as BlockCondition | undefined;
-			if (condition) {
-				return evaluateCondition(condition, ctx.variableValues);
-			}
-			return true;
-		})
-		.map((block) => applyThemeDefaults(block, ctx));
+	const sendTimeBlockLogic = options?.sendTimeBlockLogic === true;
 
 	// Responsive CSS (e.g. mobile font sizes) is collected by the Walker
 	// during dispatch via each module's `responsiveCss?()` hook; nothing to
 	// pre-scan here.
 
-	const bodyContent = filteredBlocks
-		.map((block) => renderBlock(block, ctx))
-		.filter(Boolean)
-		.join('');
+	const bodyContent = sendTimeBlockLogic
+		? blocks
+				.map((block) => renderBlockForSend(block, ctx))
+				.filter(Boolean)
+				.join('')
+		: expandRepeats(blocks, ctx)
+				.filter((block) => {
+					// Evaluate conditional content
+					const c = block.content as CommonBlockProperties;
+					const condition = c.condition as BlockCondition | undefined;
+					if (condition) {
+						return evaluateBlockCondition(condition, ctx.variableValues);
+					}
+					return true;
+				})
+				.map((block) => renderBlock(applyThemeDefaults(block, ctx), ctx))
+				.filter(Boolean)
+				.join('');
 
 	// Forward warnings to callback
 	if (options?.onWarning) {
@@ -342,7 +371,7 @@ export const renderEmailHtml = (input: EditorBlock[], options?: RenderOptions): 
 	}
 
 	if (options?.minify) {
-		html = minifyHtml(html);
+		html = minifyHtml(html, sendTimeBlockLogic);
 	}
 
 	// Apply client simulation as the final step
@@ -366,11 +395,17 @@ export const renderBlockFragment = (block: EditorBlock, options?: RenderOptions)
  * HTML minification: collapse whitespace, strip comments (preserve MSO conditionals),
  * clean up style attributes.
  */
-const minifyHtml = (html: string): string => {
+const minifyHtml = (html: string, keepSendRegions = false): string => {
 	return (
 		html
 			// Strip HTML comments EXCEPT MSO conditionals (<!--[if and <![endif]-->)
-			.replace(/<!--(?!\[if)(?!<!\[endif\])[\s\S]*?-->/g, '')
+			// and, in a body the send resolves, its region markers.
+			.replace(
+				keepSendRegions
+					? /<!--(?!\[if)(?!<!\[endif\])(?!owlat:)[\s\S]*?-->/g
+					: /<!--(?!\[if)(?!<!\[endif\])[\s\S]*?-->/g,
+				''
+			)
 			// Collapse whitespace between tags
 			.replace(/>\s+</g, '><')
 			// Collapse multiple spaces

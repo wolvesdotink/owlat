@@ -88,6 +88,7 @@ export function reduceBounced(
 	// blocklisted nor counted toward its soft-bounce escalation: one blocklisting
 	// would otherwise suppress every recipient at the affected providers.
 	const recipientAtFault = args.bounceCause !== 'sender';
+	const cause = recipientAtFault ? ('recipient' as const) : ('sender' as const);
 
 	// ── Per-recipient soft-bounce counter + suppress-after-N escalation ──────
 	// Increment on every soft bounce; escalate to the blocklist once the running
@@ -164,7 +165,7 @@ export function reduceBounced(
 				email: contactEmail,
 				identity: sendIdentityOf(send, ref),
 				bounceType: args.bounceType,
-				cause: recipientAtFault ? 'recipient' : 'sender',
+				cause,
 				...(args.bounceMessage ? { message: args.bounceMessage } : {}),
 				at: args.at,
 			},
@@ -179,6 +180,8 @@ export function reduceBounced(
 		status: 'bounced',
 		bouncedAt: args.at,
 		bounceType: args.bounceType,
+		// Stored beside the type so a status read says what the webhook said.
+		bounceCause: cause,
 		...(args.bounceMessage ? { errorMessage: args.bounceMessage } : {}),
 	};
 

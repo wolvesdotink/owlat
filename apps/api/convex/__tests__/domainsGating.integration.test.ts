@@ -542,6 +542,64 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 });
 
 // ============================================================================
+// requestedVerification.verifyRequested — the check the public API queues
+// ============================================================================
+
+describe('requestedVerification.verifyRequested', () => {
+	it('lands the verdict the dashboard Verify lands, read back as GET /api/v1/domains reads it', async () => {
+		const t = convexTest(schema, verifyModules);
+		const domainId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'domains',
+				createTestDomain({
+					domain: 'requested.com',
+					status: 'pending',
+					providerType: 'mta',
+					dnsRecords: mtaDnsRecords(),
+				})
+			)
+		);
+		dnsMock.resolveTxt.mockImplementation(async (hostname: string) => {
+			if (hostname === 's1._domainkey.requested.com') return [['v=DKIM1; k=rsa; p=ABC']];
+			if (hostname === '_dmarc.requested.com') return [['v=DMARC1; p=none']];
+			throw new Error('queryTxt ENOTFOUND');
+		});
+
+		await t.action(internal.domains.requestedVerification.verifyRequested, { domainId });
+
+		const [setup] = await t.query(internal.publicApi.domains.listForApi, {});
+		expect(setup).toMatchObject({ id: domainId, status: 'verified' });
+		expect(setup!.lastCheckedAt).not.toBeNull();
+		expect(setup!.records.map((record) => record.state)).toEqual(['found', 'found']);
+	});
+
+	it('does nothing for a domain removed or regenerated since the check was queued', async () => {
+		const t = convexTest(schema, verifyModules);
+		const registering = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'regen.com', status: 'registering', dnsRecords: {} })
+			)
+		);
+		const removed = await t.run(async (ctx) => {
+			const id = await ctx.db.insert('domains', createTestDomain({ domain: 'gone.com' }));
+			await ctx.db.delete(id);
+			return id;
+		});
+
+		await t.action(internal.domains.requestedVerification.verifyRequested, {
+			domainId: registering,
+		});
+		await t.action(internal.domains.requestedVerification.verifyRequested, { domainId: removed });
+
+		expect(dnsMock.resolveTxt).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(registering))!.status).toBe('registering');
+		});
+	});
+});
+
+// ============================================================================
 // providers.registerAction — internalAction behavior up to the provider seam
 // ============================================================================
 
