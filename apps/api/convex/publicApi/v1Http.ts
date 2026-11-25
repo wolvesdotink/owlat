@@ -47,6 +47,7 @@ import {
 	updateSavedBlock,
 } from './savedBlocksHttp';
 import { renderEmail } from './renderHttp';
+import { getBrandKit, updateBrandKit } from './brandKitHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -154,6 +155,12 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 
 	http.route({
 		path: '/api/v1/render',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		path: '/api/v1/brand-kit',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -347,6 +354,22 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/render',
 		method: 'POST',
 		handler: renderEmail,
+	});
+
+	// ============ BRAND KIT ENDPOINTS ============
+
+	// GET /api/v1/brand-kit - The brand kit
+	http.route({
+		path: '/api/v1/brand-kit',
+		method: 'GET',
+		handler: getBrandKit,
+	});
+
+	// PUT /api/v1/brand-kit - Change the fields the body names
+	http.route({
+		path: '/api/v1/brand-kit',
+		method: 'PUT',
+		handler: updateBrandKit,
 	});
 
 	// ============ STATUS API ENDPOINTS ============

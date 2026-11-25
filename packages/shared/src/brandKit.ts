@@ -325,40 +325,74 @@ export function isBrandLinkUrl(value: string): boolean {
 }
 
 /**
- * Validate a design before it is saved. The settings form shows the problem;
- * the server repeats the check and refuses the write.
+ * The first problem of a design and the field it is about, written the way an
+ * API body addresses it: `primaryColor`, `swatches.2`,
+ * `footerSocialLinks.0.url`.
  */
+export interface BrandKitIssue {
+	problem: BrandKitProblem;
+	field: string;
+}
+
+const NAMED_COLORS = [
+	'primaryColor',
+	'secondaryColor',
+	'textColor',
+	'backgroundColor',
+	'linkColor',
+] as const;
+
+const BUTTON_RANGES = [
+	['buttonRadius', BRAND_BUTTON_RADIUS_RANGE],
+	['buttonPaddingX', BRAND_BUTTON_PADDING_X_RANGE],
+	['buttonPaddingY', BRAND_BUTTON_PADDING_Y_RANGE],
+] as const;
+
+/**
+ * Validate a design before it is saved, naming the field at fault. The
+ * settings form shows the problem; the server repeats the check and refuses
+ * the write, for the dashboard and the API alike.
+ */
+export function brandKitDesignIssue(
+	design: Omit<BrandKitDesign, 'isConfigured'>
+): BrandKitIssue | null {
+	const badColor = NAMED_COLORS.find((field) => !isBrandHexColor(design[field]));
+	if (badColor) return { problem: 'invalidColor', field: badColor };
+	const badSwatch = design.swatches.findIndex((color) => !isBrandHexColor(color));
+	if (badSwatch !== -1) return { problem: 'invalidColor', field: `swatches.${badSwatch}` };
+	if (design.swatches.length > MAX_BRAND_SWATCHES) {
+		return { problem: 'tooManySwatches', field: 'swatches' };
+	}
+	for (const field of ['headingFontFamily', 'bodyFontFamily'] as const) {
+		if (!brandFontByStack(design[field])) return { problem: 'unknownFont', field };
+	}
+	for (const [field, range] of BUTTON_RANGES) {
+		if (!inRange(design[field], range)) return { problem: 'buttonOutOfRange', field };
+	}
+	if (!inRange(design.baseWidth, BRAND_BASE_WIDTH_RANGE)) {
+		return { problem: 'widthOutOfRange', field: 'baseWidth' };
+	}
+	if (design.footerCompanyName.length > MAX_BRAND_COMPANY_NAME_LENGTH) {
+		return { problem: 'companyNameTooLong', field: 'footerCompanyName' };
+	}
+	if (design.footerAddress.length > MAX_BRAND_ADDRESS_LENGTH) {
+		return { problem: 'addressTooLong', field: 'footerAddress' };
+	}
+	if (design.footerSocialLinks.length > MAX_BRAND_SOCIAL_LINKS) {
+		return { problem: 'tooManySocialLinks', field: 'footerSocialLinks' };
+	}
+	const badLink = design.footerSocialLinks.findIndex((link) => !isBrandLinkUrl(link.url));
+	if (badLink !== -1) {
+		return { problem: 'invalidSocialUrl', field: `footerSocialLinks.${badLink}.url` };
+	}
+	return null;
+}
+
+/** {@link brandKitDesignIssue} without the field, for the settings form. */
 export function brandKitDesignProblem(
 	design: Omit<BrandKitDesign, 'isConfigured'>
 ): BrandKitProblem | null {
-	const colors = [
-		design.primaryColor,
-		design.secondaryColor,
-		design.textColor,
-		design.backgroundColor,
-		design.linkColor,
-		...design.swatches,
-	];
-	if (!colors.every(isBrandHexColor)) return 'invalidColor';
-	if (design.swatches.length > MAX_BRAND_SWATCHES) return 'tooManySwatches';
-	if (!brandFontByStack(design.headingFontFamily) || !brandFontByStack(design.bodyFontFamily)) {
-		return 'unknownFont';
-	}
-	if (
-		!inRange(design.buttonRadius, BRAND_BUTTON_RADIUS_RANGE) ||
-		!inRange(design.buttonPaddingX, BRAND_BUTTON_PADDING_X_RANGE) ||
-		!inRange(design.buttonPaddingY, BRAND_BUTTON_PADDING_Y_RANGE)
-	) {
-		return 'buttonOutOfRange';
-	}
-	if (!inRange(design.baseWidth, BRAND_BASE_WIDTH_RANGE)) return 'widthOutOfRange';
-	if (design.footerCompanyName.length > MAX_BRAND_COMPANY_NAME_LENGTH) return 'companyNameTooLong';
-	if (design.footerAddress.length > MAX_BRAND_ADDRESS_LENGTH) return 'addressTooLong';
-	if (design.footerSocialLinks.length > MAX_BRAND_SOCIAL_LINKS) return 'tooManySocialLinks';
-	if (!design.footerSocialLinks.every((link) => isBrandLinkUrl(link.url))) {
-		return 'invalidSocialUrl';
-	}
-	return null;
+	return brandKitDesignIssue(design)?.problem ?? null;
 }
 
 /**

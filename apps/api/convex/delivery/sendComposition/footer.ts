@@ -15,8 +15,10 @@
  *
  * The link labels, and the view-in-browser link's, follow the language the
  * body was rendered in, through the table below: this renders inside Convex,
- * where the web app's i18n catalogs are not available. A language the table
- * lacks falls back to English.
+ * where the web app's i18n catalogs are not available. The table is keyed by
+ * the primary language subtag, so one entry serves every region (`pt` reads
+ * right in Portugal and Brazil, `de` in Austria). A language the table lacks
+ * falls back to English.
  *
  * The anchors carry `data-no-track`, so link wrapping leaves them alone. An
  * opt-out must keep working when the tracking host does not, must not count
@@ -38,12 +40,15 @@ export interface FooterContent extends FooterUrls {
 	senderAddress?: string;
 }
 
-type FooterLanguage = 'en' | 'de';
+type FooterLanguage = 'en' | 'de' | 'fr' | 'es' | 'it' | 'nl' | 'pt';
 
-const FOOTER_COPY: Record<
-	FooterLanguage,
-	{ managePreferences: string; unsubscribe: string; viewInBrowser: string }
-> = {
+interface FooterCopy {
+	managePreferences: string;
+	unsubscribe: string;
+	viewInBrowser: string;
+}
+
+const FOOTER_COPY: Record<FooterLanguage, FooterCopy> = {
 	en: {
 		managePreferences: 'Manage Preferences',
 		unsubscribe: 'Unsubscribe',
@@ -54,11 +59,42 @@ const FOOTER_COPY: Record<
 		unsubscribe: 'Abmelden',
 		viewInBrowser: 'Im Browser ansehen',
 	},
+	fr: {
+		managePreferences: 'Gérer mes préférences',
+		unsubscribe: 'Se désabonner',
+		viewInBrowser: 'Voir dans le navigateur',
+	},
+	es: {
+		managePreferences: 'Gestionar preferencias',
+		unsubscribe: 'Darse de baja',
+		viewInBrowser: 'Ver en el navegador',
+	},
+	it: {
+		managePreferences: 'Gestisci preferenze',
+		unsubscribe: 'Annulla iscrizione',
+		viewInBrowser: 'Visualizza nel browser',
+	},
+	nl: {
+		managePreferences: 'Voorkeuren beheren',
+		unsubscribe: 'Uitschrijven',
+		viewInBrowser: 'Bekijk in browser',
+	},
+	// Worded to read right in both Portugal and Brazil, which name "manage"
+	// differently (gerir, gerenciar).
+	pt: {
+		managePreferences: 'Alterar preferências',
+		unsubscribe: 'Cancelar inscrição',
+		viewInBrowser: 'Ver no navegador',
+	},
 };
 
-function footerCopy(language: string | undefined) {
+/**
+ * The labels for a body language. Own keys only, so a language tag that names
+ * an `Object.prototype` member (`constructor`) falls back to English too.
+ */
+function footerCopy(language: string | undefined): FooterCopy {
 	const primary = language?.trim().toLowerCase().split(/[-_]/)[0];
-	return primary && primary in FOOTER_COPY
+	return primary && Object.prototype.hasOwnProperty.call(FOOTER_COPY, primary)
 		? FOOTER_COPY[primary as FooterLanguage]
 		: FOOTER_COPY.en;
 }

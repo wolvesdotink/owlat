@@ -24,6 +24,7 @@ import {
 	createTestEmailSend,
 	createTestAutomation,
 	createTestInstanceSettings,
+	createTestSegment,
 	createTestTopic,
 } from './factories';
 import { SENDING_HOLD_RECHECK_MS } from '../workspaces/abuseGate';
@@ -156,6 +157,140 @@ describe('worker — marketing dispatch gate', () => {
 
 		expect(result).toEqual({ kind: 'suppressed', reason: 'topic_unsubscribed' });
 		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	describe('a campaign envelope', () => {
+		async function seedQueuedCampaignSend(
+			t: ReturnType<typeof convexTest>,
+			audience: (ids: {
+				topicId: Id<'topics'>;
+				segmentId: Id<'segments'>;
+			}) =>
+				| { kind: 'topic'; topicId: Id<'topics'> }
+				| { kind: 'segment'; segmentId: Id<'segments'> }
+		) {
+			return await t.run(async (ctx) => {
+				const topicId = await ctx.db.insert('topics', createTestTopic());
+				const segmentId = await ctx.db.insert('segments', createTestSegment());
+				const campaignAudience = audience({ topicId, segmentId });
+				const campaignId = await ctx.db.insert(
+					'campaigns',
+					createTestCampaign({ status: 'sending', audience: campaignAudience })
+				);
+				await ctx.db.insert('campaignSendJobs', {
+					campaignId,
+					phase: 'done',
+					cursor: '',
+					audience: campaignAudience,
+					enqueuedCount: 1,
+					totalCandidates: 1,
+					startedAt: Date.now(),
+					updatedAt: Date.now(),
+				});
+				const contactId = await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: 'reader@example.com', doiStatus: 'confirmed' })
+				);
+				const membershipId = await ctx.db.insert('contactTopics', {
+					contactId,
+					topicId,
+					addedAt: Date.now(),
+				});
+				const emailSendId = await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({
+						campaignId,
+						contactId,
+						contactEmail: 'reader@example.com',
+						status: 'queued',
+					})
+				);
+				return {
+					campaignId,
+					contactId,
+					emailSendId,
+					membershipId,
+					audienceType: campaignAudience.kind,
+				};
+			});
+		}
+
+		function campaignEnvelope(seed: {
+			campaignId: Id<'campaigns'>;
+			contactId: Id<'contacts'>;
+			emailSendId: Id<'emailSends'>;
+			audienceType: 'topic' | 'segment';
+		}) {
+			return {
+				kind: 'campaign' as const,
+				to: 'reader@example.com',
+				from: 'sender@example.com',
+				providerType: 'mta',
+				organizationId: 'org-test',
+				template: { subject: 'Hi', htmlContent: '<p>hi</p>' },
+				contactInfo: { contactId: seed.contactId, email: 'reader@example.com' },
+				audienceType: seed.audienceType,
+				campaignId: seed.campaignId,
+				emailSendId: seed.emailSendId,
+				convexSiteUrl: 'https://convex.example',
+			};
+		}
+
+		it('to a topic the contact left after enqueue is never dispatched', async () => {
+			const t = convexTest(schema, modules);
+			const seed = await seedQueuedCampaignSend(t, ({ topicId }) => ({ kind: 'topic', topicId }));
+			await t.run(async (ctx) => ctx.db.delete(seed.membershipId));
+			const fetchSpy = vi.fn();
+			global.fetch = fetchSpy as unknown as typeof fetch;
+
+			const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+				envelopeInput: campaignEnvelope(seed),
+			});
+
+			expect(result).toEqual({ kind: 'suppressed', reason: 'topic_unsubscribed' });
+			expect(fetchSpy).not.toHaveBeenCalled();
+		});
+
+		it('to a topic is recorded as a non-delivery with code RECIPIENT_LEFT_TOPIC', async () => {
+			const t = convexTest(schema, modules);
+			const seed = await seedQueuedCampaignSend(t, ({ topicId }) => ({ kind: 'topic', topicId }));
+
+			await t.mutation(internal.delivery.sendCompletion.completeSend, {
+				workId: 'test-work-id' as never,
+				result: {
+					kind: 'success',
+					returnValue: { kind: 'suppressed', reason: 'topic_unsubscribed' },
+				},
+				context: { sendRef: { kind: 'campaign' as const, id: seed.emailSendId } },
+			});
+
+			const send = await t.run(async (ctx) => ctx.db.get(seed.emailSendId));
+			expect(send?.status).toBe('failed');
+			expect(send?.errorCode).toBe('RECIPIENT_LEFT_TOPIC');
+		});
+
+		it.each([
+			['to a topic the contact still belongs to', 'topic', false],
+			['to a segment, from a contact who left a topic', 'segment', true],
+		] as const)('%s goes out', async (_label, kind, leaveTopic) => {
+			const t = convexTest(schema, modules);
+			const seed = await seedQueuedCampaignSend(t, ({ topicId, segmentId }) =>
+				kind === 'topic' ? { kind: 'topic', topicId } : { kind: 'segment', segmentId }
+			);
+			if (leaveTopic) await t.run(async (ctx) => ctx.db.delete(seed.membershipId));
+			const fetchSpy = vi
+				.fn()
+				.mockResolvedValueOnce(decisionResponse())
+				.mockResolvedValueOnce(acceptedResponse('mta-receipt-campaign'));
+			global.fetch = fetchSpy as unknown as typeof fetch;
+
+			const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+				envelopeInput: campaignEnvelope(seed),
+			});
+
+			expect(result.kind).toBe('accepted');
+			expect(fetchSpy).toHaveBeenCalled();
+		});
 	});
 
 	describe('the automation that queued the Send', () => {

@@ -180,6 +180,16 @@ const CALLS: Record<
 		path: '/api/v1/render',
 		result: example('renderEmail').response.data,
 	},
+	getBrandKit: {
+		call: (client) => client.brandKit.get(),
+		path: '/api/v1/brand-kit',
+		result: example('getBrandKit').response.data,
+	},
+	updateBrandKit: {
+		call: (client) => client.brandKit.update(example('updateBrandKit').request),
+		path: '/api/v1/brand-kit',
+		result: example('updateBrandKit').response.data,
+	},
 	getStatus: {
 		call: (client) => client.status.get(),
 		path: '/api/v1/status',

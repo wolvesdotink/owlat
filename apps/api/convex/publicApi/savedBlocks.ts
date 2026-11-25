@@ -70,7 +70,8 @@ type WriteOutcome =
 	| { ok: true; block: SavedBlock }
 	| { ok: false; reason: 'rate_limited'; retryAfterSeconds: number };
 
-async function spendWriteToken(
+/** Spend one of the key's template-write tokens; the brand kit write spends from the same bucket. */
+export async function spendWriteToken(
 	ctx: MutationCtx,
 	keyId: Id<'apiKeys'>
 ): Promise<{ ok: true } | { ok: false; reason: 'rate_limited'; retryAfterSeconds: number }> {

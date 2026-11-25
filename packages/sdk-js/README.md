@@ -337,6 +337,24 @@ const { html, issues, sendRefusal } = await owlat.render.email({
 });
 ```
 
+### Brand kit
+
+The colours, fonts, button style and footer every email starts from. Reading
+needs the `brand-kit:read` scope, changing it `brand-kit:write`. `update` sends
+only the fields you pass; the rest keep their stored value, and it returns the
+whole kit. A font is one of the CSS font stacks the brand kit page offers,
+spelled exactly (the OpenAPI document lists them). The logos cannot be changed
+through the API.
+
+```typescript
+const kit = await owlat.brandKit.get();
+await owlat.brandKit.update({
+	headingFontFamily: "'Montserrat', Arial, sans-serif",
+	footerCompanyName: 'Example Shop GmbH',
+	footerAddress: '1 Example Street\n12345 Example City',
+});
+```
+
 ## Error Handling
 
 The SDK throws typed errors that you can catch and handle appropriately:

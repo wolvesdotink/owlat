@@ -15,6 +15,9 @@ import com.owlat.sdk.internal.JsonMapper;
 import com.owlat.sdk.model.CursorPaginatedResponse;
 import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
+import com.owlat.sdk.model.brandkit.BrandKit;
+import com.owlat.sdk.model.brandkit.BrandKitInput;
+import com.owlat.sdk.model.brandkit.BrandKitSocialLink;
 import com.owlat.sdk.model.contact.Contact;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.DeleteContactResponse;
@@ -231,6 +234,9 @@ class OpenApiContractTest {
         calls.put("getLimits", new Call(
                 owlat -> owlat.limits().get(GetLimitsParams.bySlug("ada@example.com", "password-reset")),
                 type(SendLimits.class), false));
+        calls.put("getBrandKit", new Call(owlat -> owlat.brandKit().get(), type(BrandKit.class), false));
+        calls.put("updateBrandKit", new Call(
+                owlat -> owlat.brandKit().update(brandKitInput()), type(BrandKit.class), false));
         calls.put("getStatus", new Call(owlat -> owlat.status().get(), type(DeliveryStatus.class), false));
         calls.put("verifyDomain", new Call(
                 owlat -> owlat.domains().verify("news.example.com"), type(DomainCheckRequest.class), false));
@@ -263,6 +269,27 @@ class OpenApiContractTest {
                 .dataVariableExamples(Map.of("orderNumber", "A-1001"))
                 .defaultLanguage("en")
                 .showUnsubscribe(false)
+                .build();
+    }
+
+    /** A brand kit write with every field the SDK can send. */
+    private static BrandKitInput brandKitInput() {
+        return BrandKitInput.builder()
+                .primaryColor("#0f766e")
+                .secondaryColor("#282d3a")
+                .textColor("#374151")
+                .backgroundColor("#ffffff")
+                .linkColor("#0f766e")
+                .swatches(List.of("#f59e0b"))
+                .headingFontFamily("'Montserrat', Arial, sans-serif")
+                .bodyFontFamily("'Inter', Arial, sans-serif")
+                .buttonRadius(6)
+                .buttonPaddingX(24)
+                .buttonPaddingY(12)
+                .baseWidth(600)
+                .footerCompanyName("Example Shop GmbH")
+                .footerAddress("1 Example Street\n12345 Example City")
+                .footerSocialLinks(List.of(new BrandKitSocialLink("github", "https://github.com/example")))
                 .build();
     }
 

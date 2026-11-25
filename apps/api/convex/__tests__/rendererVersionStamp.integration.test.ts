@@ -63,8 +63,8 @@ const RENDERED_V1 = {
 };
 
 describe('renderer version', () => {
-	it("is 5 since a transactional email's conditions and repeats are left to the send", () => {
-		expect(CURRENT_RENDERER_VERSION).toBe(5);
+	it('is 6 since dark mode keeps the text colours of surfaces with their own background', () => {
+		expect(CURRENT_RENDERER_VERSION).toBe(6);
 	});
 });
 

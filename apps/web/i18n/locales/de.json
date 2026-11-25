@@ -10882,6 +10882,7 @@
 						"createContact": "Einen Kontakt anlegen",
 						"endpoints": {
 							"blockSchema": "Das JSON-Schema des Block-Inhalts, zum Schreiben von Vorlagen und gespeicherten Blöcken",
+							"brandKit": "Das Markenkit lesen oder einzelne seiner Felder ändern",
 							"contact": "Einen Kontakt lesen, aktualisieren oder löschen",
 							"contacts": "Kontakte auflisten oder anlegen",
 							"domains": "Versanddomains und die DNS-Einträge, die jede braucht",
@@ -10991,6 +10992,14 @@
 							"title": "API-Schlüssel widerrufen"
 						},
 						"scopes": {
+							"brandKitRead": {
+								"description": "Das Markenkit lesen: Farben, Schriften, Button-Stil, Fußzeile und Logos.",
+								"label": "Markenkit — lesen"
+							},
+							"brandKitWrite": {
+								"description": "Farben, Schriften, Button-Stil und Fußzeile ändern, mit denen jede E-Mail beginnt. Die Logos bleiben, wie sie sind.",
+								"label": "Markenkit — schreiben"
+							},
 							"contactsRead": {
 								"description": "Kontakte und ihre Details auflisten und lesen.",
 								"label": "Kontakte — lesen"

@@ -130,6 +130,8 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 		linkStyles.push(`text-transform:${escapeCss(content.textTransform)}`);
 
 	const linkStyleStr = linkStyles.filter(Boolean).join(';');
+	// `owlat-button` keeps the label out of the dark-mode link colour, since
+	// the label sits on the button's own fill.
 	const target = escapeAttr(content.target || '_blank');
 
 	const vml = renderVmlButton(content);
@@ -144,7 +146,7 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 				: '';
 	const safeUrl = escapeAttr(sanitizeUrl(content.url));
 	const relAttr = target === '_blank' ? ' rel="noopener noreferrer"' : '';
-	return `${vml}${notMsoStart}<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"${tableWidth}><tr><td style="${tdStyles.join(';')}"><a href="${safeUrl}" target="${target}"${relAttr} style="${linkStyleStr}">${escapeHtml(content.text)}</a></td></tr></table>${notMsoEnd}`;
+	return `${vml}${notMsoStart}<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"${tableWidth}><tr><td style="${tdStyles.join(';')}"><a href="${safeUrl}" target="${target}"${relAttr} class="owlat-button" style="${linkStyleStr}">${escapeHtml(content.text)}</a></td></tr></table>${notMsoEnd}`;
 };
 
 export const buttonModule: BlockModule<'button'> = {

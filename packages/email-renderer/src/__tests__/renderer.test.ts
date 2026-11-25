@@ -808,6 +808,209 @@ describe('dark mode overrides', () => {
 		expect(html).toContain('owlat-dark-text');
 		expect(html).toContain('--dark-text:#f0f0f0');
 	});
+
+	interface CssRule {
+		/** The enclosing at-rule preludes, outermost first. */
+		at: string[];
+		selectors: string[];
+		declarations: string;
+	}
+	/** The style rules of the email's `<style>` element, with their at-rules. */
+	const styleRules = (html: string): CssRule[] => {
+		const css = html.slice(html.indexOf('<style>') + 7, html.indexOf('</style>'));
+		const rules: CssRule[] = [];
+		const at: string[] = [];
+		let prelude = '';
+		for (let i = 0; i < css.length; i++) {
+			const ch = css[i];
+			if (ch === '{') {
+				const head = prelude.trim();
+				prelude = '';
+				if (head.startsWith('@')) {
+					at.push(head);
+					continue;
+				}
+				const end = css.indexOf('}', i);
+				rules.push({
+					at: [...at],
+					selectors: head.split(/,(?![^(]*\))/).map((s) => s.trim()),
+					declarations: css.slice(i + 1, end).trim(),
+				});
+				i = end;
+			} else if (ch === '}') {
+				at.pop();
+				prelude = '';
+			} else {
+				prelude += ch;
+			}
+		}
+		return rules;
+	};
+	const DARK = '@media (prefers-color-scheme:dark)';
+	const NO_WHERE = '@supports not (selector(:where(a)))';
+	/** Selectors of the rules that set `declarations` directly inside `at`. */
+	const selectorsSetting = (html: string, declarations: string, at: string[] = [DARK]) =>
+		styleRules(html)
+			.filter((r) => r.declarations === declarations && r.at.join('|') === at.join('|'))
+			.flatMap((r) => r.selectors);
+	const TEXT_TAGS = ['p', 'span', 'div', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+	const darkText = (id: string, extra: Record<string, unknown> = {}) => ({
+		id,
+		type: 'text' as const,
+		content: {
+			html: `<p>${id}</p>`,
+			blockType: 'paragraph' as const,
+			fontSize: 16,
+			textColor: '#272727',
+			...extra,
+		},
+	});
+	const columns = (extra: Record<string, unknown>): EditorBlock =>
+		({
+			id: 'cols',
+			type: 'columns',
+			content: {
+				columnCount: 2,
+				ratio: 'equal',
+				mobileStacking: true,
+				columns: [[darkText('left')], [darkText('right')]],
+				...extra,
+			},
+		}) as EditorBlock;
+
+	it('marks each surface that paints its own background and has no dark colours', () => {
+		const nested = renderEmailHtml([
+			{
+				id: 'root',
+				type: 'container',
+				content: {
+					maxWidth: 100,
+					items: [
+						{
+							id: 'nested',
+							type: 'container',
+							content: { maxWidth: 100, backgroundColor: '#D0E2E2', items: [darkText('inner')] },
+						},
+						darkText('item', { backgroundColor: '#BFDBFE' }),
+					],
+				},
+			} as EditorBlock,
+		]);
+		expect(nested).toMatch(/class="owlat-own-bg" style="[^"]*background-color:#D0E2E2;/);
+		expect(nested).toMatch(/class="owlat-own-bg" style="[^"]*background-color:#BFDBFE"/);
+
+		const cols = renderEmailHtml([columns({ columnStyles: [{ backgroundColor: '#FDE68A' }, {}] })]);
+		expect(cols.match(/<div class="owlat-col owlat-own-bg" style="/g)).toHaveLength(1);
+		expect(cols.match(/<div class="owlat-col" style="/g)).toHaveLength(1);
+		const reversed = renderEmailHtml([
+			columns({ mobileStackOrder: 'reverse', columnStyles: [{ backgroundColor: '#FDE68A' }, {}] }),
+		]);
+		expect(reversed).toContain('class="owlat-col owlat-col-rev-0 owlat-own-bg"');
+		expect(reversed).toContain('class="owlat-col owlat-col-rev-1"');
+		const clear = renderEmailHtml([
+			columns({ columnStyles: [{ backgroundColor: 'transparent' }] }),
+		]);
+		expect(clear).not.toMatch(/class="[^"]*owlat-own-bg/);
+
+		// A root block with a dark colour is restyled in dark mode instead.
+		const own = renderEmailHtml([darkText('own', { backgroundColor: '#FDE68A' })]);
+		expect(own).toMatch(/background-color:#FDE68A"[^>]* class="owlat-own-bg"/);
+		for (const dark of [{ darkBackgroundColor: '#1e1e1e' }, { darkTextColor: '#f0f0f0' }]) {
+			const html = renderEmailHtml([darkText('dark', { backgroundColor: '#FDE68A', ...dark })]);
+			expect(html).not.toMatch(/class="[^"]*owlat-own-bg/);
+		}
+		expect(renderEmailHtml([darkText('plain')])).not.toMatch(/class="[^"]*owlat-own-bg/);
+	});
+
+	it('forces the dark text colour only outside surfaces and highlights with their own background', () => {
+		const html = renderEmailHtml([darkText('plain')]);
+		const forced = selectorsSetting(html, 'color:#e4e4e7!important');
+		expect(forced.map((s) => s.match(/^[a-z0-9]+/)?.[0])).toEqual(TEXT_TAGS);
+		const highlight = 'span[style*="background"]:not([style*="transparent"])';
+		for (const selector of forced) {
+			// `:where()` keeps the specificity of a bare tag, so an author's
+			// `customCss` dark rule such as `.special p{…!important}` still wins.
+			expect(selector).toMatch(/^[a-z0-9]+:where\(.*\)$/);
+			expect(selector).toContain(':not(.owlat-own-bg):not(.owlat-own-bg *)');
+			expect(selector).toContain(`:not(${highlight}):not(${highlight} *)`);
+		}
+		// Text without a colour of its own on such a surface gets the body text
+		// colour instead of inheriting the forced light colour. A highlight on
+		// such a surface is left out, so it inherits the colour of the text
+		// around it.
+		expect(selectorsSetting(html, 'color:#333333')).toEqual([
+			'.owlat-own-bg',
+			`${highlight}:not(.owlat-own-bg *)`,
+		]);
+	});
+
+	it('marks a hero that paints an image, a gradient or an overlay', () => {
+		const hero = (content: Record<string, unknown>) =>
+			renderEmailHtml([
+				{
+					id: 'hero',
+					type: 'hero',
+					content: { height: 300, items: [], ...content },
+				} as unknown as EditorBlock,
+			]);
+		const image = { backgroundImage: 'https://example.com/hero.png' };
+		expect(hero(image)).toMatch(/<table [^>]*class="owlat-own-bg"/);
+		expect(hero({ overlayColor: '#FDE68A' })).toMatch(/<table [^>]*class="owlat-own-bg"/);
+		expect(hero({})).not.toMatch(/class="[^"]*owlat-own-bg/);
+		expect(hero({ ...image, darkTextColor: '#f0f0f0' })).not.toMatch(/class="[^"]*owlat-own-bg/);
+	});
+
+	it('gives darkTextColor to the elements inside the block', () => {
+		const html = renderEmailHtml([darkText('dark', { darkTextColor: '#FFE98A' })]);
+		const blockText = selectorsSetting(html, 'color:var(--dark-text)!important');
+		expect(blockText).toEqual([
+			'.owlat-dark-text',
+			...TEXT_TAGS.map((tag) =>
+				expect.stringMatching(new RegExp(`^\\.owlat-dark-text ${tag}:where\\(`))
+			),
+		]);
+		const ogsc = selectorsSetting(html, 'color:var(--dark-text)!important', []);
+		expect(ogsc).toEqual([
+			'[data-ogsc] .owlat-dark-text',
+			...TEXT_TAGS.map((tag) => `[data-ogsc] .owlat-dark-text ${tag}`),
+		]);
+
+		const wide = renderEmailHtml([
+			darkText('wide', {
+				fullWidth: true,
+				darkTextColor: '#FFE98A',
+				darkBackgroundColor: '#1e1e1e',
+			}),
+		]);
+		expect(wide).toMatch(
+			/style="[^"]*--dark-bg:#1e1e1e;--dark-text:#FFE98A;"[^>]* class="owlat-dark-bg owlat-dark-text"/
+		);
+	});
+
+	it('leaves button labels out of the dark link colour', () => {
+		const html = renderEmailHtml([buttonBlock]);
+		expect(html).toMatch(/<a [^>]*class="owlat-button" style="[^"]*color:#ffffff/);
+		expect(selectorsSetting(html, 'color:#93c5fd!important')).toEqual([
+			expect.stringMatching(
+				/^a:where\(:not\(\.owlat-button\):not\(\.owlat-own-bg\):not\(\.owlat-own-bg \*\)/
+			),
+		]);
+		expect(selectorsSetting(html, 'color:#93c5fd!important', [])).toEqual([
+			'[data-ogsc] a:not(.owlat-button)',
+		]);
+	});
+
+	it('repeats the dark text rules with bare :not() for engines without :where()', () => {
+		const html = renderEmailHtml([darkText('plain')]);
+		const fallback = styleRules(html).filter((r) => r.at.join('|') === `${DARK}|${NO_WHERE}`);
+		const selectors = fallback.flatMap((r) => r.selectors);
+		expect(selectors).toContain(
+			'p:not(.owlat-own-bg):not(.owlat-own-bg *):not(span[style*="background"]:not([style*="transparent"])):not(span[style*="background"]:not([style*="transparent"]) *)'
+		);
+		expect(selectors).toContainEqual(expect.stringMatching(/^a:not\(\.owlat-button\):not\(/));
+		expect(selectors).toContainEqual(expect.stringMatching(/^\.owlat-dark-text h1:not\(/));
+		for (const selector of selectors) expect(selector).not.toContain(':where(');
+	});
 });
 
 describe('buttonWidth', () => {

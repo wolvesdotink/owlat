@@ -11,6 +11,7 @@ import { LimitsResource } from './resources/limits';
 import { TransactionalEmailsResource } from './resources/transactionalEmails';
 import { SavedBlocksResource } from './resources/savedBlocks';
 import { RenderResource } from './resources/render';
+import { BrandKitResource } from './resources/brandKit';
 
 const DEFAULT_TIMEOUT = 30000;
 
@@ -90,6 +91,11 @@ export class Owlat {
 	readonly render: RenderResource;
 
 	/**
+	 * Read and change the brand kit.
+	 */
+	readonly brandKit: BrandKitResource;
+
+	/**
 	 * Create a new Owlat client.
 	 *
 	 * @param config - API key, your instance's API URL, and optional settings
@@ -114,5 +120,6 @@ export class Owlat {
 		this.transactionalEmails = new TransactionalEmailsResource(http);
 		this.savedBlocks = new SavedBlocksResource(http);
 		this.render = new RenderResource(http);
+		this.brandKit = new BrandKitResource(http);
 	}
 }
