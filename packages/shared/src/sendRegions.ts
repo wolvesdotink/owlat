@@ -106,18 +106,13 @@ export function evaluateBlockCondition(
 export const MAX_REPEAT_ITEMS = 500;
 
 /**
- * The entries a repeat iterates: a list, or (as the preview takes it) text
- * holding a JSON list. Anything else renders the region zero times.
+ * The entries a repeat iterates: the list the request sent. Text is not read
+ * as JSON here, unlike the preview's sample values, which are all text: a list
+ * the intake accepted has flat entries, while a list inside text would reach
+ * the send unchecked. Anything else renders the region zero times.
  */
 function repeatItems(value: unknown): readonly unknown[] {
-	if (Array.isArray(value)) return value;
-	if (typeof value !== 'string' || value === '') return [];
-	try {
-		const parsed: unknown = JSON.parse(value);
-		return Array.isArray(parsed) ? parsed : [];
-	} catch {
-		return [];
-	}
+	return Array.isArray(value) ? value : [];
 }
 
 /** One entry of a repeated region, as the fill sees it. */

@@ -58,12 +58,11 @@ describe('evaluateBlockCondition', () => {
 });
 
 describe('the list a repeat iterates', () => {
-	it('is a list, or text holding a JSON list, and nothing else', () => {
+	it('is the list the request sent, and never text holding one', () => {
 		const body = eachRegion({ variable: 'v', itemAlias: 'i' }, '#;');
 		const resolve = (v: unknown) => resolveSendRegions(body, { v }, tagged);
-		expect(resolve([1, 2])).toBe('0:;1:;');
-		expect(resolve('[{"name":"a"}]')).toBe('0:a;');
-		for (const v of ['{"a":1}', 'not json', undefined, 3]) expect(resolve(v)).toBe('');
+		expect(resolve([1, { name: 'a' }])).toBe('0:;1:a;');
+		for (const v of ['[{"name":"a"}]', '{"a":1}', undefined, 3]) expect(resolve(v)).toBe('');
 	});
 });
 

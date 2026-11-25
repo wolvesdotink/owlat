@@ -472,13 +472,13 @@ describe('personalizeBody — request data the send cannot trust', () => {
 		expect(html).toContain('19%');
 	});
 
-	it('writes an object field of a list sent as JSON text instead of throwing', () => {
+	it('repeats nothing for a list sent as JSON text', () => {
 		const html = personalizeBody(
-			repeated('<p>{{item.name}}</p>'),
+			repeated('<p>Line {{item.name}}</p>'),
 			{ items: '[{"name":{"toString":"x"}}]' },
 			{ escape: 'html' }
 		);
-		expect(html).toContain('{&quot;toString&quot;:&quot;x&quot;}');
+		expect(html).not.toContain('Line');
 	});
 
 	it('leaves a field the entry does not hold empty, even one Object.prototype has', () => {
