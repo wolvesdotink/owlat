@@ -44,10 +44,8 @@ describe('marketingTemplatePresets', () => {
 		}
 	});
 
-	// The validator reports a missing or malformed required content field as
-	// an error, as the published block schema refuses it, so this keeps the
-	// presets' content fields complete. It does not check `id` or unknown
-	// fields, which the schema also checks. An image without a source is a
+	// Catches the content errors the renderer validator reports, such as a
+	// missing required field. It allows the empty image source of a
 	// placeholder the author fills in.
 	it('seeds blocks the renderer validator accepts without errors', () => {
 		for (const preset of marketingTemplatePresets) {
