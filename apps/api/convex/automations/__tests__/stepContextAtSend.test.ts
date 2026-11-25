@@ -32,6 +32,7 @@ import {
 	advanceAndRun,
 	runDueScheduled,
 	runOf,
+	runTotals,
 	seedAutomation,
 	seedRun,
 	seedSettings,
@@ -337,6 +338,81 @@ describe('the automation is paused after the Send is queued', () => {
 
 		expect((await sends(t)).map((s) => [s.subject, s.status])).toEqual([['Welcome', 'failed']]);
 		expect((await runOf(t, queued.runId)).status).toBe('cancelled');
+	});
+
+	it('a run whose only email is withdrawn moves from completed to cancelled', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId, contactId } = await seedRun(t, automationId);
+		await t.mutation(internal.automations.stepOrchestration.beginAutomationRun, {
+			automationRunId: runId,
+		});
+		await runDueScheduled(t);
+		const [send] = await sends(t);
+		expect((await runOf(t, runId)).status).toBe('completed');
+		await pause(t, automationId);
+
+		await dispatch(t, { automationId, stepIds: [], runId, contactId, sendId: send!._id });
+
+		expect(await runOf(t, runId)).toMatchObject({
+			status: 'cancelled',
+			emailSkip: { reason: 'automation_paused' },
+		});
+		expect(await runTotals(t, automationId)).toMatchObject({
+			statsEntered: 1,
+			statsCompleted: 0,
+			statsCancelled: 1,
+		});
+	});
+
+	it('the worker withdraws the email before the walker finalizes the step: the step stays withdrawn', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { automationId, stepIds } = await seedAutomation(t, [
+			{ email: 'Welcome' },
+			{ email: 'Follow-up' },
+		]);
+		const { runId, contactId } = await seedRun(t, automationId);
+		const started = await t.mutation(internal.automations.stepOrchestration.beginAutomationRun, {
+			automationRunId: runId,
+		});
+		if (started.kind !== 'scheduled') throw new Error('not started');
+		const claim = await t.mutation(internal.automations.stepOrchestration.claimStepRun, {
+			stepRunId: started.stepRunId,
+			attempt: 0,
+		});
+		expect(claim.kind).toBe('claimed');
+		const intake = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation',
+			email: 'reader@example.com',
+			contactId,
+			automationId,
+			subject: 'Welcome',
+			html: '<p>Hello</p>',
+			from: 'Owlat <noreply@example.com>',
+			automationStepRunId: started.stepRunId,
+		});
+		if (!intake.ok) throw new Error('intake refused');
+		await pause(t, automationId);
+
+		await dispatch(t, { automationId, stepIds, runId, contactId, sendId: intake.sendId });
+		const finalized = await t.mutation(internal.automations.stepOrchestration.finalizeStepRun, {
+			stepRunId: started.stepRunId,
+			attempt: 0,
+			outcome: { kind: 'completed', emailSendId: intake.sendId },
+		});
+
+		expect(finalized).toEqual({ kind: 'stale' });
+		const stepRuns = await stepRunsOf(t, runId);
+		expect(stepRuns.map((r) => r.status)).toEqual(['skipped']);
+		expect(stepRuns[0]?.leaseExpiresAt).toBeUndefined();
+		expect(await runOf(t, runId)).toMatchObject({
+			status: 'cancelled',
+			emailSkip: { reason: 'automation_paused' },
+		});
+		const step = await t.run(async (ctx) => ctx.db.get(stepIds[0]!));
+		expect(step).toMatchObject({ statExecuting: 0, statSkipped: 1 });
 	});
 
 	it('an automation that stayed active sends the queued email, and the run goes on', async () => {
