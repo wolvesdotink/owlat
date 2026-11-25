@@ -3,7 +3,7 @@
  * documents every instance serves, then sections of links to the API pages,
  * the guides that matter for email content, and the machine-readable
  * documents. `nuxt-ai-ready` (part of `@nuxtjs/seo`) writes the file at
- * `nuxt generate` time with these sections ahead of its own page index, so
+ * `nuxt generate` time with these sections before its own page index, so
  * this module only chooses and orders the links.
  *
  * Built from the English pages' front matter, so a page that is added,

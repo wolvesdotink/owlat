@@ -44,8 +44,9 @@ describe('marketingTemplatePresets', () => {
 		}
 	});
 
-	// The published block schema requires what the validator refuses without,
-	// so a preset that passes the validator is valid content under the schema.
+	// The published block schema requires exactly the fields whose absence
+	// the validator reports as an error, so a preset that passes the validator
+	// has every field the schema requires.
 	// An image without a source is a placeholder the author fills in.
 	it('seeds blocks the renderer validator accepts without errors', () => {
 		for (const preset of marketingTemplatePresets) {

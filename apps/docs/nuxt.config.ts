@@ -114,8 +114,8 @@ export default defineNuxtConfig({
 		],
 	},
 
-	// nuxt-ai-ready (from @nuxtjs/seo) writes llms.txt; these sections come
-	// first, ahead of its index of every page.
+	// nuxt-ai-ready (from @nuxtjs/seo) writes llms.txt; these notes and
+	// sections come before its index of every page.
 	aiReady: {
 		llmsTxt: llmsTxtSections(fileURLToPath(new URL('./content/en', import.meta.url))),
 	},
