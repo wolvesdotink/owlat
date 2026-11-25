@@ -122,3 +122,26 @@ export const SEND_LIST_FILTERS: readonly QueryParameter[] = [
 		schema: { type: 'string', format: 'date-time' },
 	},
 ];
+
+/**
+ * `GET /api/v1/limits` names one template and one address with these, the way
+ * the send body names them, to read their per-recipient count.
+ */
+export const LIMITS_RECIPIENT_QUERY: readonly QueryParameter[] = [
+	{
+		name: 'email',
+		description:
+			'With `slug` or `transactionalId`: the address whose count to read, matched after trimming and lowercasing. Needs the `transactional:send` scope.',
+		schema: { type: 'string', format: 'email' },
+	},
+	{
+		name: 'slug',
+		description: 'With `email`: the slug of the template whose count to read.',
+		schema: { type: 'string' },
+	},
+	{
+		name: 'transactionalId',
+		description: 'With `email`: the ID of the template whose count to read. Wins over `slug`.',
+		schema: { type: 'string' },
+	},
+];

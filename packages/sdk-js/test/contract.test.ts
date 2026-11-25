@@ -104,7 +104,7 @@ const CALLS: Record<
 		result: example('listDomains').response.data,
 	},
 	getLimits: {
-		call: (client) => client.limits.get(),
+		call: (client) => client.limits.get({ email: 'ada@example.com', slug: 'password-reset' }),
 		path: '/api/v1/limits',
 		result: example('getLimits').response.data,
 	},

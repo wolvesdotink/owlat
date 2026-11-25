@@ -22,6 +22,7 @@ import com.owlat.sdk.model.contact.UpdateContactParams;
 import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.event.SendEventResponse;
+import com.owlat.sdk.model.limits.GetLimitsParams;
 import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.topic.AddToTopicParams;
@@ -154,7 +155,9 @@ class OpenApiContractTest {
         calls.put("removeContactFromTopic", new Call(
                 owlat -> owlat.topics().removeContact(new RemoveFromTopicParams(TOPIC_ID, "ada@example.com")),
                 type(RemoveFromTopicResponse.class), false));
-        calls.put("getLimits", new Call(owlat -> owlat.limits().get(), type(SendLimits.class), false));
+        calls.put("getLimits", new Call(
+                owlat -> owlat.limits().get(GetLimitsParams.bySlug("ada@example.com", "password-reset")),
+                type(SendLimits.class), false));
         calls.put("getStatus", new Call(owlat -> owlat.status().get(), type(DeliveryStatus.class), false));
         calls.put("listDomains", new Call(
                 owlat -> owlat.domains().list(),

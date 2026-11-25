@@ -37,7 +37,11 @@ import { getStatus } from '../publicApi/statusHttp';
 import { listDomains } from '../publicApi/domainsHttp';
 import { getLimits } from '../publicApi/limitsHttp';
 import { rateLimiter } from '../lib/rateLimiter';
-import { PER_API_KEY_DAILY_BUCKET, PER_API_KEY_DAILY_CONFIG } from '../transactional/sendCaps';
+import {
+	chargeTransactionalSendCaps,
+	PER_API_KEY_DAILY_BUCKET,
+	PER_API_KEY_DAILY_CONFIG,
+} from '../transactional/sendCaps';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
 import type { DeliveryHealthLevel, DomainStatus } from '../delivery/health';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
@@ -2082,6 +2086,254 @@ describe('GET /api/v1/limits (getLimits → any key)', () => {
 			remaining: null,
 			resetsAt: null,
 		});
+	});
+});
+
+describe('GET /api/v1/limits?email=…&slug=… (one template and one address)', () => {
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const MINUTE_MS = 60_000;
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedTemplate(
+		t: ReturnType<typeof convexTest>,
+		fields: Record<string, unknown> = {}
+	): Promise<Id<'transactionalEmails'>> {
+		return await t.run(
+			async (ctx) =>
+				await ctx.db.insert(
+					'transactionalEmails',
+					createTestTransactionalEmail({ slug: 'password-reset', ...fields }) as never
+				)
+		);
+	}
+
+	/** Count `sends` of the template to `email`, as accepted sends do; false once refused. */
+	async function chargePair(
+		t: ReturnType<typeof convexTest>,
+		templateId: Id<'transactionalEmails'>,
+		email: string,
+		sends: number
+	): Promise<boolean[]> {
+		return await t.run(async (ctx) => {
+			const accepted: boolean[] = [];
+			for (let i = 0; i < sends; i++) {
+				const refusal = await chargeTransactionalSendCaps(
+					ctx,
+					{ _id: templateId },
+					{ email },
+					null
+				);
+				accepted.push(refusal === null);
+			}
+			return accepted;
+		});
+	}
+
+	async function readPair(
+		t: ReturnType<typeof convexTest>,
+		key: string,
+		query: Record<string, string>
+	) {
+		return await t.fetch(`/api/v1/limits?${new URLSearchParams(query).toString()}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+	}
+
+	it('counts what one template sent to one address, what is left and when the count is back to zero', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		await chargePair(t, templateId, 'ada@example.com', 2);
+		const key = await seedKey(t, ['transactional:send']);
+
+		const res = await readPair(t, key, { email: ' Ada@Example.com ', slug: 'password-reset' });
+		await expectContractSuccess('getLimits', res);
+		const body = await res.json();
+		expect(body.data.recipientSends).toEqual({
+			isEnabled: true,
+			limit: 5,
+			windowSeconds: 3600,
+			usage: {
+				email: 'ada@example.com',
+				templateId,
+				slug: 'password-reset',
+				isExempt: false,
+				used: 2,
+				remaining: 3,
+				// The allowance refills at 5 per hour: two sends drain in 24 minutes.
+				resetsAt: new Date(NOW + 24 * MINUTE_MS).toISOString(),
+			},
+		});
+		expect(body.data.dailySends).toMatchObject({ isEnabled: true, limit: 50_000 });
+
+		const byId = await readPair(t, key, { email: 'ada@example.com', transactionalId: templateId });
+		expect((await byId.json()).data.recipientSends.usage).toEqual(body.data.recipientSends.usage);
+	});
+
+	it('counts each template and address apart', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		const otherTemplateId = await seedTemplate(t, { slug: 'sign-in-link' });
+		await chargePair(t, templateId, 'ada@example.com', 4);
+		const key = await seedKey(t, ['transactional:send']);
+
+		const otherAddress = await readPair(t, key, {
+			email: 'grace@example.com',
+			slug: 'password-reset',
+		});
+		expect((await otherAddress.json()).data.recipientSends.usage).toMatchObject({
+			used: 0,
+			remaining: 5,
+			resetsAt: null,
+		});
+		const otherTemplate = await readPair(t, key, {
+			email: 'ada@example.com',
+			transactionalId: otherTemplateId,
+		});
+		expect((await otherTemplate.json()).data.recipientSends.usage).toMatchObject({
+			slug: 'sign-in-link',
+			used: 0,
+			remaining: 5,
+		});
+	});
+
+	it('reading the count neither creates nor extends it', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const query = { email: 'ada@example.com', slug: 'password-reset' };
+
+		// A pair never sent to: reading it charges nothing, so five sends still fit.
+		for (let i = 0; i < 3; i++) expect((await readPair(t, key, query)).status).toBe(200);
+		expect(await chargePair(t, templateId, 'ada@example.com', 6)).toEqual([
+			true,
+			true,
+			true,
+			true,
+			true,
+			false,
+		]);
+
+		// Spent: reading it again does not push back when one more send fits.
+		const spent = (await (await readPair(t, key, query)).json()).data.recipientSends.usage;
+		expect(spent).toMatchObject({ used: 5, remaining: 0 });
+		expect(spent.resetsAt).toBe(new Date(NOW + 60 * MINUTE_MS).toISOString());
+		vi.setSystemTime(NOW + 12 * MINUTE_MS);
+		await readPair(t, key, query);
+		await readPair(t, key, query);
+		expect((await (await readPair(t, key, query)).json()).data.recipientSends.usage).toMatchObject({
+			used: 4,
+			remaining: 1,
+			resetsAt: new Date(NOW + 60 * MINUTE_MS).toISOString(),
+		});
+		expect(await chargePair(t, templateId, 'ada@example.com', 2)).toEqual([true, false]);
+	});
+
+	it('gives no count for an exempt template or while the cap is off', async () => {
+		const t = setupTest();
+		const exemptId = await seedTemplate(t, { isRecipientCapExempt: true });
+		await seedTemplate(t, { slug: 'sign-in-link' });
+		const key = await seedKey(t, ['transactional:send']);
+
+		const exempt = await readPair(t, key, { email: 'ada@example.com', transactionalId: exemptId });
+		await expectContractSuccess('getLimits', exempt);
+		expect((await exempt.json()).data.recipientSends.usage).toEqual({
+			email: 'ada@example.com',
+			templateId: exemptId,
+			slug: 'password-reset',
+			isExempt: true,
+			used: null,
+			remaining: null,
+			resetsAt: null,
+		});
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: NOW,
+				transactionalSendCaps: {
+					perRecipient: { isEnabled: false, count: 5, windowMs: 60 * MINUTE_MS },
+					perApiKeyDaily: { isEnabled: true, count: 50_000 },
+					updatedAt: NOW,
+					updatedBy: 'admin-user',
+				},
+			});
+		});
+		const off = await readPair(t, key, { email: 'ada@example.com', slug: 'sign-in-link' });
+		expect((await off.json()).data.recipientSends).toMatchObject({
+			isEnabled: false,
+			usage: { isExempt: false, used: null, remaining: null, resetsAt: null },
+		});
+	});
+
+	it.each([
+		['an address without a template', { email: 'ada@example.com' }, 'slug'],
+		['a slug without an address', { slug: 'password-reset' }, 'email'],
+		['a template ID without an address', { transactionalId: 'abc' }, 'email'],
+		['an empty address', { email: '', slug: 'password-reset' }, 'email'],
+		['a malformed address', { email: 'not-an-address', slug: 'password-reset' }, 'email'],
+	])('400 invalid_input naming the parameter for %s', async (_label, query, field) => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await readPair(t, key, query);
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toMatchObject({ category: 'invalid_input', data: { field } });
+	});
+
+	it.each([
+		['an unknown slug', { slug: 'no-such-template' }],
+		['a malformed template ID', { transactionalId: 'not-an-id' }],
+	])('404 template_not_found for %s', async (_label, template) => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await readPair(t, key, { email: 'ada@example.com', ...template });
+		expect(res.status).toBe(404);
+		expectDocumentedReason('getLimits', res, await res.json(), 'template_not_found');
+	});
+
+	it('403 for a key that cannot send, which learns nothing about the address', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		await chargePair(t, templateId, 'ada@example.com', 1);
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'transactional:send')
+		);
+		const res = await readPair(t, key, { email: 'ada@example.com', slug: 'password-reset' });
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'transactional:send' });
+		expectDocumentedReason('getLimits', res, body, 'missing_scope');
+		// The same key still reads the caps without a pair.
+		expect(
+			(await t.fetch('/api/v1/limits', { method: 'GET', headers: authHeaders(key) })).status
+		).toBe(200);
+	});
+
+	it('403 forbidden while the transactional feature is off', async () => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: NOW,
+				featureFlags: { transactional: false },
+			});
+		});
+		const res = await readPair(t, key, { email: 'ada@example.com', slug: 'password-reset' });
+		expect(res.status).toBe(403);
+		expectDocumentedReason('getLimits', res, await res.json(), 'feature_disabled');
 	});
 });
 

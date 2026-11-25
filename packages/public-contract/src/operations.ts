@@ -47,6 +47,7 @@ import {
 import {
 	ANY_KEY,
 	CONTACT_REF,
+	LIMITS_RECIPIENT_QUERY,
 	PAGE_CURSOR,
 	PAGE_LIMIT,
 	SEND_ID,
@@ -404,10 +405,10 @@ export const PUBLIC_OPERATIONS = [
 		path: '/api/v1/limits',
 		tag: 'Transactional',
 		summary:
-			"Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own.",
+			"Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own. With `email` and a template, also what is left of the per-recipient limit for that pair, which needs the same scope as sending.",
 		scope: ANY_KEY,
 		pathParameters: [],
-		queryParameters: [],
+		queryParameters: LIMITS_RECIPIENT_QUERY,
 		idempotent: false,
 		request: null,
 		success: {
@@ -417,8 +418,9 @@ export const PUBLIC_OPERATIONS = [
 			data: sendLimitsSchema,
 			paginated: false,
 		},
-		errors: [],
-		reasons: [],
+		// The 403 and 404 belong to the per-recipient count alone.
+		errors: [403, 404],
+		reasons: ['missing_scope', 'feature_disabled', 'template_not_found'],
 	},
 ] as const satisfies readonly PublicOperation[];
 

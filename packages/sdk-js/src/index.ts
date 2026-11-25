@@ -35,7 +35,9 @@ export type {
 	TransactionalSendStatusValue,
 	// Limits
 	DailySendLimit,
+	GetLimitsParams,
 	RecipientSendLimit,
+	RecipientSendUsage,
 	SendLimits,
 	// Events
 	SendEventParams,
