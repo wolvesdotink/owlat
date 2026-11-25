@@ -48,6 +48,7 @@
  */
 
 import type { PluginPackageName } from '@owlat/plugin-host';
+import type { ScaffoldLayout } from './scaffold';
 import {
 	SEND_PROVIDER_ENV_CONSTANTS,
 	sendProviderEnvVars,
@@ -95,7 +96,8 @@ export const SEND_PROVIDER_MODULE_EXPORTS: Readonly<Record<string, string>> = Ob
 /** Every file the send-provider template adds on top of the shared skeleton. */
 export function sendProviderFiles(
 	names: SendProviderNames,
-	packageName: PluginPackageName
+	packageName: PluginPackageName,
+	layout: ScaffoldLayout = 'workspace'
 ): ReadonlyMap<string, string> {
 	const files = new Map<string, string>();
 	files.set('src/envNames.ts', envNamesSource(names));
@@ -108,7 +110,7 @@ export function sendProviderFiles(
 	files.set('src/__tests__/transport.test.ts', transportTestSource(names));
 	files.set('src/__tests__/webhook.test.ts', webhookTestSource(names));
 	files.set('src/__tests__/domainIdentity.test.ts', domainIdentityTestSource(names));
-	files.set('README.md', readmeSource(names, packageName));
+	files.set('README.md', readmeSource(names, packageName, layout));
 	return files;
 }
 

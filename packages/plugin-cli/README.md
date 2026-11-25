@@ -22,6 +22,8 @@ bun run owlat-plugins dev
 ```
 
 - **create** — scaffold a new plugin package (files only; never installs or runs code).
+  Inside the checkout it is a workspace member; a `--dir` outside it gets a
+  self-contained package that installs `@owlat/plugin-kit` from npm.
 - **add** / **remove** — edit `plugins.config.ts` and preview the capability diff
   the change would produce. `--dry-run` shows the diff and the proposed file
   without writing.

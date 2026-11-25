@@ -109,14 +109,42 @@ const providerDistSignatureBeforePack = statSync(providerDistEntry).mtimeMs;
 // The pack below runs with --ignore-scripts, so assert the publish-time hooks it
 // stands in for still do what this smoke simulates: stage the legal files, build
 // the dist, and clean the staged copies again.
-for (const [script, expected] of [
-	['prepack', ['run build', 'packageLegalFiles.ts stage']],
-	['postpack', ['packageLegalFiles.ts clean']],
-] as const) {
-	const command = packageMetadata.scripts?.[script] ?? '';
-	for (const fragment of expected) {
-		if (!command.includes(fragment)) {
-			throw new Error(`Publish hook "${script}" no longer runs \`${fragment}\``);
+for (const metadata of [packageMetadata, providerPackageMetadata]) {
+	for (const [script, expected] of [
+		['prepack', ['run build', 'packageLegalFiles.ts stage']],
+		['postpack', ['packageLegalFiles.ts clean']],
+	] as const) {
+		const command = metadata.scripts?.[script] ?? '';
+		for (const fragment of expected) {
+			if (!command.includes(fragment)) {
+				throw new Error(`${metadata.name} publish hook "${script}" no longer runs \`${fragment}\``);
+			}
+		}
+	}
+}
+
+/** The files a published archive must hold, and the source it must not. */
+function assertArchiveContents(archive: string): void {
+	const archiveFiles = run('tar', ['-tzf', archive], packageRoot).trim().split('\n');
+	const requiredFiles = [
+		'package/package.json',
+		'package/README.md',
+		'package/dist/index.js',
+		'package/dist/index.js.map',
+		'package/dist/index.d.ts',
+		...PACKAGE_LEGAL_FILES.map((file) => `package/${file}`),
+	];
+	for (const file of requiredFiles) {
+		if (!archiveFiles.includes(file)) throw new Error(`${archive} is missing ${file}`);
+	}
+	if (archiveFiles.some((file) => file.includes('__tests__') || file.startsWith('package/src/'))) {
+		throw new Error(`${archive} contains source tests or unbuilt source files`);
+	}
+	for (const file of PACKAGE_LEGAL_FILES) {
+		const packedContents = runBytes('tar', ['-xOzf', archive, `package/${file}`], packageRoot);
+		const canonicalContents = readFileSync(join(repositoryRoot, file));
+		if (!packedContents.equals(canonicalContents)) {
+			throw new Error(`Packed ${file} in ${archive} differs from the repository canonical file`);
 		}
 	}
 }
@@ -125,6 +153,7 @@ try {
 	// npm cannot resolve the workspace-only provider package from the public
 	// registry before its first release. Pack and install that exact artifact so
 	// this smoke remains a faithful test of plugin-kit's published dependency.
+	stagePackageLegalFiles(providerPackageRoot);
 	run(
 		'bun',
 		['pm', 'pack', '--ignore-scripts', '--destination', temporaryRoot],
@@ -144,28 +173,8 @@ try {
 		);
 	}
 
-	const archiveFiles = run('tar', ['-tzf', archivePath], packageRoot).trim().split('\n');
-	const requiredFiles = [
-		'package/package.json',
-		'package/README.md',
-		'package/dist/index.js',
-		'package/dist/index.js.map',
-		'package/dist/index.d.ts',
-		...PACKAGE_LEGAL_FILES.map((file) => `package/${file}`),
-	];
-	for (const file of requiredFiles) {
-		if (!archiveFiles.includes(file)) throw new Error(`Package archive is missing ${file}`);
-	}
-	if (archiveFiles.some((file) => file.includes('__tests__') || file.startsWith('package/src/'))) {
-		throw new Error('Package archive contains source tests or unbuilt source files');
-	}
-	for (const file of PACKAGE_LEGAL_FILES) {
-		const packedContents = runBytes('tar', ['-xOzf', archivePath, `package/${file}`], packageRoot);
-		const canonicalContents = readFileSync(join(repositoryRoot, file));
-		if (!packedContents.equals(canonicalContents)) {
-			throw new Error(`Packed ${file} differs from the repository canonical file`);
-		}
-	}
+	assertArchiveContents(providerArchivePath);
+	assertArchiveContents(archivePath);
 
 	mkdirSync(consumerRoot);
 	writeFileSync(
@@ -276,5 +285,6 @@ void gate;
 	}
 } finally {
 	cleanPackageLegalFiles();
+	cleanPackageLegalFiles(providerPackageRoot);
 	rmSync(temporaryRoot, { recursive: true, force: true });
 }
