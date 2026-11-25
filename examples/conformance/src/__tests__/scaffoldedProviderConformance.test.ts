@@ -1,5 +1,5 @@
 /**
- * THE SCAFFOLD'S CONFORMANCE GATE — `owlat plugins create --template
+ * THE SCAFFOLD'S CONFORMANCE GATE — `owlat-plugins create --template
  * send-provider` output, driven UNMODIFIED through the shipped core modules (the
  * seams plan's P3.4, its acceptance criterion A7).
  *
@@ -488,7 +488,7 @@ describe('none of it required an edit', () => {
 	/**
 	 * THE COMMAND THE GUIDE PRINTS IS THE COMMAND THIS GATE PROVES.
 	 *
-	 * The authoring page opens with an `owlat plugins create` invocation, and a
+	 * The authoring page opens with a `bun run owlat-plugins create` invocation, and a
 	 * reader will run it verbatim. Binding it here means the identity this suite
 	 * drives through routing, dispatch, feedback and identity is the identity that
 	 * invocation produces — so a guide edited to show a different id or package
@@ -499,7 +499,9 @@ describe('none of it required an edit', () => {
 		const guide = await readRepositoryFile(
 			'apps/docs/content/en/3.developer/49.plugin-send-providers.md'
 		);
-		const command = /owlat plugins create ([\w-]+) --name (\S+) --template (\S+)/.exec(guide);
+		const command = /bun run owlat-plugins create ([\w-]+) --name (\S+) --template (\S+)/.exec(
+			guide
+		);
 		expect(command, 'the guide no longer prints a create invocation').not.toBeNull();
 		expect(command![1]).toBe(SCAFFOLDED_PLUGIN_ID);
 		expect(command![2]).toBe(SCAFFOLDED_PACKAGE_NAME);

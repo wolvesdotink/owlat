@@ -85,3 +85,9 @@ export {
 } from './notify';
 
 export { slackApprovalsPlugin, SLACK_APPROVALS_PLUGIN_ID } from './manifest';
+/**
+ * The manifest is also the package's default export: the generated composition
+ * imports every bundled plugin with a default import, so a package that only
+ * exported it by name would compose into `undefined`.
+ */
+export { slackApprovalsPlugin as default } from './manifest';

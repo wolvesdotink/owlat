@@ -98,7 +98,10 @@ async function summarize(
 	try {
 		plugins = await loadBundledPlugins(workspaceRoot, packages, options);
 	} catch (cause) {
-		if (cause instanceof PluginCodegenError || cause instanceof PluginCompositionError) {
+		if (cause instanceof PluginCodegenError) {
+			throw new PluginCliError(cause.message, cause.details, { cause });
+		}
+		if (cause instanceof PluginCompositionError) {
 			throw new PluginCliError(cause.message, [], { cause });
 		}
 		throw cause;

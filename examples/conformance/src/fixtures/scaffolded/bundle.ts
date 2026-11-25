@@ -3,7 +3,7 @@
  *
  * The hand-written fixture ESP proves a plugin ESP reaches everywhere a provider has to
  * reach. This claim is narrower and, for the "provider N+1 is a package"
- * policy, more load-bearing: that the bundle `owlat plugins create --template
+ * policy, more load-bearing: that the bundle `owlat-plugins create --template
  * send-provider` EMITS is already such a provider, with no author edit in
  * between. A template that scaffolds a package which does not compose is worse
  * than no template, because its failures surface as manifest-validation issues an

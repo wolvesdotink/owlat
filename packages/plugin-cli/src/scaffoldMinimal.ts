@@ -12,6 +12,7 @@
 import type { PluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import { toCamelCase } from './names';
+import { bundlingReadmeSection } from './scaffoldReadme';
 
 /** Every file the minimal template adds on top of the shared skeleton. */
 export function minimalFiles(
@@ -96,8 +97,5 @@ bun run --cwd <path-to-this-package> lint
 bun run --cwd <path-to-this-package> test
 \`\`\`
 
-To bundle this plugin into a deployment, publish it and add its package name to
-the workspace \`plugins.config.ts\` with \`owlat plugins add ${packageName}\`,
-then regenerate the composition with \`owlat plugins codegen\`.
-`;
+${bundlingReadmeSection(packageName)}`;
 }

@@ -1,5 +1,5 @@
 /**
- * A single-consumer, coalescing change signal used by `owlat plugins dev`.
+ * A single-consumer, coalescing change signal used by `owlat-plugins dev`.
  *
  * `notify()` calls that arrive while no run is waiting collapse into one pending
  * signal, so a burst of filesystem events during a codegen run triggers exactly

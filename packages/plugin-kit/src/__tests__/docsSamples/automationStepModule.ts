@@ -29,4 +29,6 @@ export const automationStep: PluginAutomationStepModule<NotifyConfig> = {
 		return { kind: 'completed' };
 	},
 };
+
+export default automationStep;
 // #endregion automation-step-module

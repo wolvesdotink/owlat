@@ -19,4 +19,6 @@ export const gate: PluginAutonomyGateModule = {
 		return { outcome: 'no-objection' };
 	},
 };
+
+export default gate;
 // #endregion gate-module

@@ -45,4 +45,6 @@ async function askProvider(
 		},
 	};
 }
+
+export default domainIdentity;
 // #endregion send-transport-domain-identity-module

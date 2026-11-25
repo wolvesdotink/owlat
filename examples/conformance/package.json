@@ -16,6 +16,7 @@
 	"devDependencies": {
 		"@owlat/api": "workspace:*",
 		"@owlat/code-worker": "workspace:*",
+		"@owlat/docs": "workspace:*",
 		"@owlat/example-deliverability-lab": "workspace:*",
 		"@owlat/example-escalation-guard": "workspace:*",
 		"@owlat/example-slack-approvals": "workspace:*",

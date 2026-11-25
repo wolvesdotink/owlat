@@ -1,7 +1,7 @@
 import { mkdtemp, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadBundledPlugins } from '../packageLoader';
 import {
 	cleanupPackageLoaderWorkspaces,
@@ -11,6 +11,7 @@ import {
 } from './packageLoaderFixtures';
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	await cleanupPackageLoaderWorkspaces();
 });
 
@@ -179,6 +180,64 @@ describe('installed plugin loading', () => {
 		await expect(loadBundledPlugins(root, ['named-plugin'])).rejects.toMatchObject({
 			code: 'invalid_manifest',
 		});
+	});
+
+	it('names the import failure and every manifest issue in the error details', async () => {
+		vi.stubEnv('PLUGIN_TEST_SECRET', 'value-that-must-not-print');
+		const root = await createWorkspace(
+			{ 'invalid-plugin': '1.0.0', 'named-plugin': '1.0.0', 'throwing-plugin': '1.0.0' },
+			{
+				'invalid-plugin': `export default { id: 'Invalid', version: '1.0.0', capabilities: [], secret: process.env.PLUGIN_TEST_SECRET };`,
+				'named-plugin': `export const manifest = { id: 'named', version: '1.0.0', capabilities: [] };`,
+				'throwing-plugin': `throw new TypeError('settings is not defined\\n    at the second line');`,
+			}
+		);
+
+		const invalid = await loadBundledPlugins(root, ['invalid-plugin']).catch((error) => error);
+		expect(invalid.details).toEqual([
+			'$.secret is not supported',
+			'$.id must be a lowercase kebab-case id of at most 64 characters',
+		]);
+		expect(JSON.stringify(invalid.details)).not.toContain('value-that-must-not-print');
+
+		const named = await loadBundledPlugins(root, ['named-plugin']).catch((error) => error);
+		expect(named).toMatchObject({ code: 'invalid_manifest' });
+		expect(named.details).toEqual([
+			'The root module has no default export. Its named exports are: manifest',
+		]);
+
+		const throwing = await loadBundledPlugins(root, ['throwing-plugin']).catch((error) => error);
+		expect(throwing).toMatchObject({ code: 'package_load_failed' });
+		expect(throwing.details).toEqual(['TypeError: settings is not defined']);
+	});
+
+	it('lists every issue when definePlugin rejects the manifest while the package is imported', async () => {
+		const issues = Array.from({ length: 12 }, (_, index) => ({
+			code: 'missing',
+			path: `$.contributes.crons[${index}].timeoutMs`,
+			message: 'must be an integer between 1000 and 300000',
+		}));
+		const root = await createWorkspace(
+			{ 'defined-plugin': '1.0.0' },
+			{
+				'defined-plugin': `class PluginManifestError extends Error {
+	constructor(issues) {
+		super('Invalid plugin manifest: ' + issues.map((issue) => issue.path + ' ' + issue.message).join('; '));
+		this.name = 'PluginManifestError';
+		this.issues = issues;
+	}
+}
+throw new PluginManifestError(${JSON.stringify(issues)});`,
+			}
+		);
+
+		const error = await loadBundledPlugins(root, ['defined-plugin']).catch((cause) => cause);
+
+		expect(error).toMatchObject({
+			code: 'invalid_manifest',
+			message: 'Bundled plugin defined-plugin does not export a valid default manifest',
+		});
+		expect(error.details).toEqual(issues.map((issue) => `${issue.path} ${issue.message}`));
 	});
 
 	it('rejects duplicate manifest ids across packages', async () => {

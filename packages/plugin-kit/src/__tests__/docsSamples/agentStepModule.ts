@@ -15,4 +15,6 @@ export const agentStep: PluginAgentStepModule = {
 		return { kind: 'continue' };
 	},
 };
+
+export default agentStep;
 // #endregion agent-step-module

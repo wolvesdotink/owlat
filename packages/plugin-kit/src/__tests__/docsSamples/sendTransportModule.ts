@@ -44,4 +44,6 @@ export const transport: PluginSendTransportModule<RelayExtras> = {
 		return { success: true, id: response.headers.get('x-message-id') ?? '' };
 	},
 };
+
+export default transport;
 // #endregion send-transport-module

@@ -22,6 +22,12 @@
 
 export { ESCALATION_GUARD_PLUGIN_ID } from './constants';
 export { escalationGuardPlugin, ESCALATION_GUARD_DAILY_LLM_BUDGET_USD } from './manifest';
+/**
+ * The manifest is also the package's default export: the generated composition
+ * imports every bundled plugin with a default import, so a package that only
+ * exported it by name would compose into `undefined`.
+ */
+export { escalationGuardPlugin as default } from './manifest';
 
 export {
 	detectEscalation,

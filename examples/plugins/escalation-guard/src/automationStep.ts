@@ -60,3 +60,6 @@ export const requireOwnerStep: PluginAutomationStepModule<RequireOwnerConfig> = 
 		};
 	},
 };
+
+/** The generated module registry imports this contribution by default import. */
+export default requireOwnerStep;
