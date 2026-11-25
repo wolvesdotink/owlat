@@ -125,16 +125,17 @@ export interface ResolvedListQuery {
  * Read a list request's `limit`, `cursor` and `search` query parameters. An
  * empty `limit` or `search` counts as absent, a `limit` above
  * {@link MAX_PAGE_SIZE} is clamped, and a `limit` that does not start with a
- * positive integer is refused.
+ * positive integer is refused, naming `limit` in `field`.
  */
 export function readListQuery(
 	params: URLSearchParams
-): { ok: true; value: ResolvedListQuery } | { ok: false; message: string } {
+): { ok: true; value: ResolvedListQuery } | { ok: false; message: string; field: 'limit' } {
 	const limit = Math.min(
 		Number.parseInt(params.get('limit') || String(DEFAULT_PAGE_SIZE), 10),
 		MAX_PAGE_SIZE
 	);
-	if (Number.isNaN(limit) || limit < 1) return { ok: false, message: 'Invalid limit' };
+	if (Number.isNaN(limit) || limit < 1)
+		return { ok: false, message: 'Invalid limit', field: 'limit' };
 	const search = params.get('search') || undefined;
 	return {
 		ok: true,

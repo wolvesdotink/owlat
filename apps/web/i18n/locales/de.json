@@ -606,9 +606,9 @@
 		},
 		"audience": {
 			"suppressionSunsetControls": {
-				"autoSuppressed": "Automatisch gesperrte Kontakte",
-				"autoSuppressedEmpty": "Es wurden keine Kontakte automatisch gesperrt.",
-				"description": "Verschiebe stille Kontakte in die Reaktivierung und sperre sie nach einem längeren Zeitraum.",
+				"autoSuppressed": "Automatisch unterdrückte Kontakte",
+				"autoSuppressedEmpty": "Es wurden keine Kontakte automatisch unterdrückt.",
+				"description": "Verschiebe stille Kontakte in die Reaktivierung und unterdrücke sie nach einem längeren Zeitraum.",
 				"exempt": "Ausnehmen",
 				"exemptedToast": "Kontakt ausgenommen",
 				"exemptionRemovedToast": "Ausnahme entfernt",
@@ -623,13 +623,13 @@
 				"restoredToast": "Kontakt wiederhergestellt und ausgenommen",
 				"savePolicyOperation": "Bereinigungsrichtlinie speichern",
 				"setExemptionOperation": "Bereinigungsausnahme ändern",
-				"suppressAfterDays": "Sperrung nach Tagen",
+				"suppressAfterDays": "Unterdrückung nach Tagen",
 				"title": "Automatische Listenbereinigung",
 				"enabledLabel": "Inaktive Kontakte automatisch bereinigen",
 				"unsaved": "Nicht gespeicherte Änderungen",
 				"showMore": "Mehr anzeigen",
 				"trackError": "Diese Liste konnte nicht geladen werden. Lade die Seite neu, um es noch einmal zu versuchen.",
-				"restoreNotNeededToast": "Dieser Kontakt ist nicht mehr automatisch gesperrt"
+				"restoreNotNeededToast": "Dieser Kontakt ist nicht mehr automatisch unterdrückt"
 			},
 			"suppressionsImportModal": {
 				"added": "Hinzugefügt",
@@ -641,7 +641,7 @@
 				"errorsHeading": "Fehler ({count})",
 				"formatTips": {
 					"headerRow": "Eine führende Kopfzeile „email“ wird ignoriert",
-					"manual": "Importierte Adressen werden als manuelle Sperreinträge hinzugefügt",
+					"manual": "Importierte Adressen werden als manuelle Unterdrückungen hinzugefügt",
 					"perLine": "Eine E-Mail-Adresse pro Zeile oder in der ersten Spalte einer CSV-Datei",
 					"skipped": "Ungültige und doppelte Adressen werden automatisch übersprungen"
 				},
@@ -1778,7 +1778,7 @@
 					"estimatedRecipients": "Geschätzte Empfänger",
 					"loadFailed": "Themen und Segmente konnten nicht geladen werden.",
 					"noSelection": "Wähle Empfänger aus, um zu sehen, wie viele Kontakte diese Kampagne erhalten.",
-					"nonEligible": "{nonEligible} von {total} Kontakten in diesem Thema sind nicht zulässig (keine E-Mail-Adresse, abgemeldet/gesperrt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen.",
+					"nonEligible": "{nonEligible} von {total} Kontakten in diesem Thema sind nicht zulässig (keine E-Mail-Adresse, abgemeldet/unterdrückt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen.",
 					"placeholder": "Empfänger auswählen",
 					"segmentOption": "Kontakte in {name} ({count})",
 					"segmentOptionNoCount": "Kontakte in {name}",
@@ -2399,7 +2399,7 @@
 			},
 			"integrationImportModal": {
 				"complete": {
-					"alreadySuppressed": "Bereits gesperrt",
+					"alreadySuppressed": "Bereits unterdrückt",
 					"errorsTitle": "Fehler",
 					"failed": "Fehlgeschlagen",
 					"failedTitle": "Import fehlgeschlagen",
@@ -2407,7 +2407,7 @@
 					"keptUnsubscribed": "{count} Kontakt bleibt abgemeldet. Ein Import meldet niemanden wieder an, der sich abgemeldet hat. | {count} Kontakte bleiben abgemeldet. Ein Import meldet niemanden wieder an, der sich abgemeldet hat.",
 					"notApplicable": "Nicht zutreffend",
 					"skipped": "Übersprungen",
-					"suppressed": "Gesperrt",
+					"suppressed": "Unterdrückt",
 					"title": "Import abgeschlossen!",
 					"unsubscribed": "Abgemeldet",
 					"updated": "Aktualisiert"
@@ -2418,7 +2418,7 @@
 					"audienceListId": "Audience-List-ID",
 					"audienceListIdHint": "Deine List-ID findest du in Mailchimp: Audience {chevron} Settings {chevron} Audience name and defaults",
 					"audienceListIdPlaceholder": "abc123def4",
-					"carrySuppressions": "Auch Sperren übernehmen",
+					"carrySuppressions": "Auch Unterdrückungen übernehmen",
 					"carrySuppressionsHint": "Abgemeldete Mitglieder werden als Opt-outs erfasst und bereinigte (hart abgewiesene) Adressen deiner Unterdrückungsliste hinzugefügt, sodass diese Audience nie erneut von Owlat angeschrieben wird. Übernommene Unterdrückungen laufen nicht ab.",
 					"fieldMapping": "Feldzuordnung",
 					"handleDuplicates": "Umgang mit Duplikaten",
@@ -2495,12 +2495,12 @@
 					"complete": "Import abgeschlossen",
 					"configure": "{provider} konfigurieren",
 					"importingContacts": "Kontakte werden importiert...",
-					"importingSuppressions": "Sperreinträge werden importiert...",
+					"importingSuppressions": "Unterdrückungen werden importiert...",
 					"select": "Integration auswählen"
 				},
 				"title": "Aus Integration importieren",
 				"toasts": {
-					"carriedOver": "{count} Sperre aus {provider} übernommen | {count} Sperren aus {provider} übernommen",
+					"carriedOver": "{count} Unterdrückung aus {provider} übernommen | {count} Unterdrückungen aus {provider} übernommen",
 					"processed": "{count} Kontakt aus {provider} erfolgreich verarbeitet | {count} Kontakte aus {provider} erfolgreich verarbeitet"
 				}
 			},
@@ -2553,7 +2553,7 @@
 				}
 			},
 			"sunsetClockBanner": {
-				"body": "Die Uhr dieser Installation weicht von den Zeitstempeln ab, die sie zuvor geschrieben hat, daher wird niemand wegen Inaktivität automatisch gesperrt. Es hat sich nichts geändert und es wird sich nichts ändern, bis dies behoben ist. Prüfe die Serveruhr (NTP) — und wenn sie korrekt ist (eine Installation, die einfach lange pausiert war, sieht von hier aus genauso aus), bestätige sie unten, um den stündlichen Durchlauf fortzusetzen.",
+				"body": "Die Uhr dieser Installation weicht von den Zeitstempeln ab, die sie zuvor geschrieben hat, daher wird niemand wegen Inaktivität automatisch unterdrückt. Es hat sich nichts geändert und es wird sich nichts ändern, bis dies behoben ist. Prüfe die Serveruhr (NTP) — und wenn sie korrekt ist (eine Installation, die einfach lange pausiert war, sieht von hier aus genauso aus), bestätige sie unten, um den stündlichen Durchlauf fortzusetzen.",
 				"confirm": "Uhrzeit bestätigen",
 				"confirmOperation": "Uhrzeit bestätigen",
 				"confirmedToast": "Uhrzeit bestätigt — der Sunset-Durchlauf wird beim nächsten stündlichen Takt fortgesetzt",
@@ -2562,11 +2562,11 @@
 			},
 			"suppressionNotice": {
 				"detail": "{headline} — {reason}.",
-				"remove": "Sperrung aufheben",
+				"remove": "Unterdrückung entfernen",
 				"removing": "Wird aufgehoben …",
-				"title": "Gesperrt",
+				"title": "Unterdrückt",
 				"why": "Warum?",
-				"lapsedTitle": "Sperrung abgelaufen",
+				"lapsedTitle": "Unterdrückung abgelaufen",
 				"lapsedDetail": "Das Postfach hat am {date} eine Zeit lang Mail abgelehnt, das hat den Versand bis {expiry} gestoppt. Das ist abgelaufen, Mail wird wieder zugestellt."
 			},
 			"timelineStatsCard": {
@@ -2882,6 +2882,7 @@
 					"clicked": "Geklickt",
 					"complained": "Beschwerde",
 					"delivered": "Zugestellt",
+					"failed": "Fehlgeschlagen",
 					"opened": "Geöffnet",
 					"queued": "In Warteschlange",
 					"sent": "Gesendet"
@@ -2989,7 +2990,7 @@
 				"title": "Absender-Compliance",
 				"unsubscribe": {
 					"collecting": "Daten werden gesammelt",
-					"honorWindow": "Yahoo und Google erwarten, dass Abmeldeanfragen innerhalb von 48 Stunden umgesetzt werden. Owlat trägt die Sperre synchron ein, bevor dieser Messwert erfasst wird.",
+					"honorWindow": "Yahoo und Google erwarten, dass Abmeldeanfragen innerhalb von 48 Stunden umgesetzt werden. Owlat trägt die Unterdrückung synchron ein, bevor dieser Messwert erfasst wird.",
 					"hours": "≤ {hours} Std.",
 					"milliseconds": "≤ {milliseconds} ms",
 					"minutes": "≤ {minutes} Min.",
@@ -8962,7 +8963,7 @@
 					},
 					"bounceFeedback": {
 						"title": "Bounces und Beschwerden erreichen Owlat nicht",
-						"detail": "{variables} ist nicht gesetzt, deshalb wird jede Bounce- und Beschwerdemeldung abgelehnt und nichts gesperrt. Kampagnen werden abgelehnt, bis der Wert gesetzt ist; transaktionale Mails gehen weiter raus.",
+						"detail": "{variables} ist nicht gesetzt, deshalb wird jede Bounce- und Beschwerdemeldung abgelehnt und nichts unterdrückt. Kampagnen werden abgelehnt, bis der Wert gesetzt ist; transaktionale Mails gehen weiter raus.",
 						"action": "Versanddienst öffnen"
 					},
 					"microsoftSnds": {
@@ -9115,7 +9116,7 @@
 						"complained": "{count} Beschwerden",
 						"open": "{count} weiterhin ohne Zuordnung",
 						"summary": "Bounces und Beschwerden ohne passende Sendung (30 Tage): {total} · {breakdown}",
-						"suppressed": "{count} per Adresse gesperrt"
+						"suppressed": "{count} per Adresse unterdrückt"
 					}
 				},
 				"migrate": {
@@ -10822,11 +10823,17 @@
 						"endpoints": {
 							"contact": "Einen Kontakt lesen, aktualisieren oder löschen",
 							"contacts": "Kontakte auflisten oder anlegen",
+							"domains": "Versanddomains und die DNS-Einträge, die jede braucht",
 							"events": "Eigene Ereignisse erfassen",
 							"health": "Statusprüfung",
+							"limits": "Die Sendelimits dieses Schlüssels und was davon übrig ist",
 							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
-							"topics": "Themen und Abonnements verwalten",
-							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body)"
+							"status": "Ob diese Instanz senden kann, und wenn nicht, warum",
+							"topicContactAdd": "Einen Kontakt zu einem Thema hinzufügen",
+							"topicContactRemove": "Einen Kontakt aus einem Thema entfernen",
+							"topics": "Themen auflisten",
+							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body) oder Sendungen auflisten",
+							"transactionalSend": "Zustellstatus einer Sendung"
 						},
 						"fullReference": "Vollständige API-Referenz",
 						"intro": "Authentifiziere dich mit einem eingeschränkten API-Schlüssel aus {settingsLink}.",
@@ -11492,7 +11499,7 @@
 						"inbound": "Eingehende Nachricht"
 					},
 					"removeSuppressionConfirm": {
-						"title": "Sperrung aufheben?",
+						"title": "Unterdrückung entfernen?",
 						"complainedBody": "Diese Person hat eine deiner E-Mails als Spam markiert. Erneute E-Mails können deiner Absenderreputation schaden.",
 						"bouncedBody": "E-Mails an diese Adresse sind zurückgekommen, weil das Postfach nicht existiert. Erneutes Senden kann deiner Absenderreputation schaden."
 					}
@@ -14408,6 +14415,8 @@
 				"title": "Noch kein Postfach zum Arbeiten",
 				"body": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank: was dich braucht, was sich getan hat und was angekommen ist. Verbinde ein Postfach, um loszulegen.",
 				"cta": "Postfach verbinden",
+				"ctaAsk": "Postfach bei einem Admin anfragen",
+				"ctaMember": "Konto verbinden",
 				"mailOff": {
 					"title": "Mail ist in diesem Workspace ausgeschaltet",
 					"bodyAdmin": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank. Schalte unter Funktionen persönliche Mail oder externe Postfächer ein, um eines hinzuzufügen.",
@@ -14896,6 +14905,10 @@
 			"externalCta": "Konto verbinden",
 			"externalHeading": "Verbinde deine E-Mails",
 			"loading": "Postfach wird geladen",
+			"mailOffAdminBody": "Schalte unter Funktionen persönliche Mail oder externe Postfächer ein, um ein Postfach einzurichten.",
+			"mailOffCta": "Funktionen öffnen",
+			"mailOffHeading": "Mail ist in diesem Workspace ausgeschaltet",
+			"mailOffMemberBody": "Solange Mail ausgeschaltet ist, kann niemand ein Postfach einrichten. Ein Admin kann Mail einschalten.",
 			"requestOperation": "Postfach anfragen",
 			"reservedBody": "{address} ist für dich reserviert. Es erscheint hier automatisch, sobald es bereit ist.",
 			"reservedHeading": "Dein Postfach wird eingerichtet"
@@ -16913,8 +16926,8 @@
 					"actionFeedback": "Webhook-Secret setzen",
 					"configured": "Ein Versandtransport ist konfiguriert, Mail hat also einen Weg nach draußen.",
 					"feedbackMissing": {
-						"marketing": "Mails gehen raus, aber Bounces und Beschwerden kommen nicht zurück: {variables} ist nicht gesetzt. Kampagnen bleiben gesperrt, bis der Wert gesetzt ist, damit Adressen, die bouncen oder sich beschweren, gesperrt werden.",
-						"transactional": "Mails gehen raus, aber Bounces und Beschwerden kommen nicht zurück: {variables} ist nicht gesetzt, Adressen, die bouncen oder sich beschweren, werden also nie gesperrt."
+						"marketing": "Mails gehen raus, aber Bounces und Beschwerden kommen nicht zurück: {variables} ist nicht gesetzt. Kampagnen bleiben blockiert, bis der Wert gesetzt ist, damit Adressen, die bouncen oder sich beschweren, unterdrückt werden.",
+						"transactional": "Mails gehen raus, aber Bounces und Beschwerden kommen nicht zurück: {variables} ist nicht gesetzt, Adressen, die bouncen oder sich beschweren, werden also nie unterdrückt."
 					},
 					"missing": "Es ist noch kein Transport konfiguriert, es kann also nichts versendet werden.",
 					"missingFor": {
@@ -17277,12 +17290,12 @@
 				"watch": "Wende zuerst die Voreinstellung an — es gibt noch keine Ramp zu beobachten."
 			},
 			"carried": {
-				"alreadyBlocked": "hier bereits gesperrt",
+				"alreadyBlocked": "hier bereits unterdrückt",
 				"alreadyUnsubscribed": "hier bereits abgemeldet",
 				"bouncedHard": "harte Bounces",
 				"bouncedSoft": "weiche Bounces",
 				"complained": "Spam-Beschwerden",
-				"manual": "manuell gesperrt",
+				"manual": "manuell unterdrückt",
 				"noContact": "ohne passenden Kontakt",
 				"skipped": "übersprungen",
 				"unsubscribed": "Abmeldungen"
@@ -17299,7 +17312,7 @@
 				},
 				"history": {
 					"summary": "Importiere die Zielgruppe und danach die Abmeldungen und harten Bounces, die Mandrill und Mailchimp angesammelt haben — jemanden anzuschreiben, der sich abgemeldet hat, lässt eine Migration schon am ersten Tag scheitern.",
-					"title": "Kontakte und Sperreinträge übernehmen"
+					"title": "Kontakte und Unterdrückungen übernehmen"
 				},
 				"preset": {
 					"summary": "Alle drei Nachrichtenarten wechseln auf die gemessene Aufteilung: heute 100 % Mandrill, und von dort erhöht die Ramp-Steuerung den Anteil deiner eigenen MTA Zelle für Zelle.",
@@ -18129,7 +18142,7 @@
 			"hideProviderText": "Fehlerdetails ausblenden",
 			"labels": {
 				"addressUnsupported": "Adresse nicht unterstützt",
-				"blocklisted": "Auf der Sperrliste",
+				"blocklisted": "Auf der Unterdrückungsliste",
 				"contactDeleted": "Kontakt gelöscht",
 				"content": "Inhalt abgelehnt",
 				"credentials": "Konto beim Anbieter abgelehnt",
@@ -18151,7 +18164,7 @@
 			},
 			"reasons": {
 				"addressUnsupported": "Der Mailserver, über den gesendet wurde, kann keine Adressen mit Zeichen außerhalb von einfachem ASCII verarbeiten, etwa ü, weder beim Absender noch beim Empfänger.",
-				"blocklisted": "Übersprungen, weil die Adresse auf der Sperrliste steht. Das macht Owlat von selbst, du musst nichts tun.",
+				"blocklisted": "Übersprungen, weil die Adresse auf der Unterdrückungsliste steht. Das macht Owlat von selbst, du musst nichts tun.",
 				"contactDeleted": "Übersprungen, weil der Kontakt gelöscht wurde, bevor die Nachricht rausging.",
 				"content": "Der Anbieter hat den Inhalt der Nachricht abgelehnt, zum Beispiel als Spam. Ändere den Inhalt, bevor du sie noch einmal sendest.",
 				"credentials": "Der Zustellanbieter hat die Zugangsdaten oder das Konto von Owlat abgelehnt, deshalb ging nichts über ihn raus. Prüfe die Einstellungen des Versandwegs.",
@@ -18789,8 +18802,8 @@
 				"noMail": "Erhält keine E-Mails"
 			},
 			"manual": {
-				"label": "Manuell gesperrt",
-				"phrase": "wurde am {date} manuell gesperrt"
+				"label": "Manuell unterdrückt",
+				"phrase": "wurde am {date} manuell unterdrückt"
 			},
 			"unengaged": {
 				"label": "Inaktiv — hat monatelang jede Nachricht ignoriert",
@@ -20249,7 +20262,7 @@
 			"mailServerPort25Blocked": "Der eingebaute Mailserver erreicht von keiner Kampagnen-IP andere Mailserver über Port 25. Viele Hoster sperren Port 25, bis du die Freigabe beantragst.",
 			"mailServerUnreachable": "Der eingebaute Mailserver antwortet nicht auf seine Statusprüfung, Kampagnen-Mails würden also nur in seiner Warteschlange liegen. Prüfe den Mailserver und sende dann erneut.",
 			"noAudience": "Wähle aus, wer diese Kampagne bekommt, bevor du sie sendest.",
-			"noBounceFeedback": "Bounces und Beschwerden erreichen Owlat nicht, weil {variables} nicht gesetzt ist. Adressen, die bouncen oder sich beschweren, würden so nie gesperrt. Setze den Wert auf der Seite des Versanddienstes und sende dann erneut.",
+			"noBounceFeedback": "Bounces und Beschwerden erreichen Owlat nicht, weil {variables} nicht gesetzt ist. Adressen, die bouncen oder sich beschweren, würden so nie unterdrückt. Setze den Wert auf der Seite des Versanddienstes und sende dann erneut.",
 			"noDeliveryProvider": "Der Versand ist noch nicht eingerichtet: Für Kampagnen-Mails gibt es keinen Versanddienst. Ein verbundenes Postfach versendet keine Kampagnen.",
 			"noFromEmail": "Wähle aus, von wem diese Kampagne kommt, bevor du sie sendest.",
 			"noTemplate": "Wähle die E-Mail aus, die diese Kampagne sendet, bevor du sie sendest.",

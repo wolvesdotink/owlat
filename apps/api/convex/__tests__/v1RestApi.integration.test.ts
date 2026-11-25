@@ -900,9 +900,56 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 				}),
 			});
 			expect(res.status).toBe(400);
-			expect((await res.json()).error.category).toBe('invalid_input');
+			expect((await res.json()).error).toMatchObject({
+				category: 'invalid_input',
+				data: { field: 'eventProperties' },
+			});
 		}
 	);
+
+	it('400 invalid_input naming eventProperties for more than 1024 properties, which Convex cannot store (not 500)', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		const eventProperties = Object.fromEntries(
+			Array.from({ length: 1025 }, (_, i) => [`p${i}`, i])
+		);
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({
+				email: 'many@example.com',
+				eventName: 'signed_up',
+				createContactIfNotExists: true,
+				eventProperties,
+			}),
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toEqual({
+			category: 'invalid_input',
+			message: 'eventProperties can hold at most 1024 entries',
+			data: { field: 'eventProperties' },
+		});
+		expect(await t.run((ctx) => ctx.db.query('contacts').collect())).toHaveLength(0);
+	});
+
+	it('201 for exactly 1024 eventProperties', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		const eventProperties = Object.fromEntries(
+			Array.from({ length: 1024 }, (_, i) => [`p${i}`, i])
+		);
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({
+				email: 'many@example.com',
+				eventName: 'signed_up',
+				createContactIfNotExists: true,
+				eventProperties,
+			}),
+		});
+		expect(res.status).toBe(201);
+	});
 
 	it('400 invalid_input for a deeply nested eventProperties value (not 500)', async () => {
 		const t = setupTest();
@@ -1029,6 +1076,32 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		const body = await res.json();
 		expect(body.error).toEqual({ category: 'invalid_input', message, data: { field } });
 	});
+
+	it.each([
+		['a non-ASCII character', { café: 'x' }],
+		['a leading $', { $source: 'x' }],
+		['more than 1024 characters', { ['k'.repeat(1025)]: 'x' }],
+		[
+			'more than 1024 entries',
+			Object.fromEntries(Array.from({ length: 1025 }, (_, i) => [`v${i}`, i])),
+		],
+	])(
+		'400 invalid_input naming dataVariables for a key with %s, which Convex cannot store (not 500)',
+		async (_label, dataVariables) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['transactional:send']);
+			const res = await t.fetch('/api/v1/transactional', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: JSON.stringify({ email: 'to@example.com', slug: 'welcome', dataVariables }),
+			});
+			expect(res.status).toBe(400);
+			expect((await res.json()).error).toMatchObject({
+				category: 'invalid_input',
+				data: { field: 'dataVariables' },
+			});
+		}
+	);
 
 	it('400 invalid_input for a nested dataVariables value held under a __proto__ key', async () => {
 		const t = setupTest();
@@ -1580,7 +1653,17 @@ describe('GET /api/v1/transactional (listTransactionalSends → transactional:se
 		['a malformed address', { email: 'not-an-address' }, 'email'],
 		['an address and a status at once', { email: 'ada@example.com', status: 'failed' }, 'status'],
 		['a cursor this route did not issue', { cursor: 'not-a-cursor' }, 'cursor'],
-		['a non-positive limit', { limit: '0' }, undefined],
+		['a non-positive limit', { limit: '0' }, 'limit'],
+		[
+			'a since on a day the month does not have',
+			{ since: '2026-02-30T00:00:00.000Z', until: '2026-03-05T00:00:00.000Z' },
+			'since',
+		],
+		[
+			'an until on a day the month does not have',
+			{ since: '2026-04-20', until: '2026-04-31' },
+			'until',
+		],
 		// An empty filter is not "no filter": it must not answer every recipient.
 		['an empty address', { email: '' }, 'email'],
 		['an empty status', { status: '' }, 'status'],
@@ -1592,7 +1675,63 @@ describe('GET /api/v1/transactional (listTransactionalSends → transactional:se
 		const body = await res.json();
 		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
 		expect(body.error.category).toBe('invalid_input');
-		if (field) expect(body.error.data).toEqual({ field });
+		expect(body.error.data).toEqual({ field });
+	});
+
+	it('accepts the last day of a month and a time with an offset', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, {
+			since: '2026-02-28T00:00:00+01:00',
+			until: '2026-03-01T00:30:00+01:00',
+		});
+		expect(res.status).toBe(200);
+	});
+
+	it('400 "Invalid cursor" for a cursor whose inner page position the paginator rejects (not 500)', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0);
+		const key = await seedKey(t, ['transactional:send']);
+		const since = T0 - DAY_MS;
+		const until = T0 + DAY_MS;
+		const forged = Buffer.from(
+			JSON.stringify({
+				filterKey: JSON.stringify([null, null, since, until]),
+				since,
+				until,
+				cursor: 'not-a-page-position',
+			})
+		).toString('base64url');
+		const res = await listSends(t, key, { ...WINDOW, cursor: forged });
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toEqual({
+			category: 'invalid_input',
+			message: 'Invalid cursor',
+			data: { field: 'cursor' },
+		});
+	});
+
+	it('ends a page early, with a cursor to the rest, once its sends pass the read budget', async () => {
+		const t = setupTest();
+		// Each send close to 1 MiB of stored data variables: a full page of them
+		// would pass what one query may read.
+		const bulk = 'x'.repeat(900_000);
+		const ids: string[] = [];
+		for (let i = 0; i < 12; i++) {
+			ids.unshift(await seedSendAt(t, T0 + i, { dataVariables: { bulk } }));
+		}
+		const key = await seedKey(t, ['transactional:send']);
+		const first = await (await listSends(t, key, { ...WINDOW, limit: '100' })).json();
+		expect(first.data.length).toBeGreaterThan(0);
+		expect(first.data.length).toBeLessThan(ids.length);
+		expect(first.pagination.isDone).toBe(false);
+		const rest = await (
+			await listSends(t, key, { ...WINDOW, limit: '100', cursor: first.pagination.cursor })
+		).json();
+		expect([...first.data, ...rest.data].map((send: { sendId: string }) => send.sendId)).toEqual(
+			ids
+		);
+		expect(rest.pagination.isDone).toBe(true);
 	});
 
 	it.each([
@@ -2231,6 +2370,114 @@ describe('GET /api/v1/topics (listTopics → topics:read)', () => {
 			body: JSON.stringify({ email: 'member@example.com' }),
 		});
 		await expectContractSuccess('addContactToTopic', res);
+	});
+});
+
+// ─── A 400 about one input names it ─────────────────────────────────────────
+
+describe('a 400 about the path, the query or a header names that input in data.field', () => {
+	async function seedFixtures(t: ReturnType<typeof setupTest>) {
+		const key = await seedKey(t, ALL_SCOPES);
+		const topicId = await t.run((ctx) =>
+			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }))
+		);
+		return { key, topicId };
+	}
+	type Fixtures = Awaited<ReturnType<typeof seedFixtures>>;
+
+	const requests: Array<[string, string, (f: Fixtures) => [string, RequestInit]]> = [
+		[
+			'a contact path segment that does not decode',
+			'id',
+			(f) => ['/api/v1/contacts/%E0%A4%A', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a contact path segment that is neither an id nor an address',
+			'id',
+			(f) => ['/api/v1/contacts/not-an-id', { method: 'DELETE', headers: authHeaders(f.key) }],
+		],
+		[
+			'a send id that does not decode',
+			'sendId',
+			(f) => ['/api/v1/transactional/%E0%A4%A', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a malformed topic id',
+			'topicId',
+			(f) => [
+				'/api/v1/topics/short/contacts',
+				{ method: 'POST', headers: authHeaders(f.key), body: '{"email":"a@example.com"}' },
+			],
+		],
+		[
+			'a topic contact segment that does not decode',
+			'emailOrId',
+			(f) => [
+				`/api/v1/topics/${f.topicId}/contacts/%E0%A4%A`,
+				{ method: 'DELETE', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a topic contact segment that is neither an id nor an address',
+			'emailOrId',
+			(f) => [
+				`/api/v1/topics/${f.topicId}/contacts/not-an-id`,
+				{ method: 'DELETE', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a non-positive contacts limit',
+			'limit',
+			(f) => ['/api/v1/contacts?limit=0', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a non-positive topics limit',
+			'limit',
+			(f) => ['/api/v1/topics?limit=0', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a contacts cursor the paginator rejects',
+			'cursor',
+			(f) => [
+				'/api/v1/contacts?cursor=not-a-cursor',
+				{ method: 'GET', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a contacts search cursor the paginator rejects',
+			'cursor',
+			(f) => [
+				'/api/v1/contacts?search=ada&cursor=not-a-cursor',
+				{ method: 'GET', headers: authHeaders(f.key) },
+			],
+		],
+		[
+			'a topics cursor the paginator rejects',
+			'cursor',
+			(f) => ['/api/v1/topics?cursor=not-a-cursor', { method: 'GET', headers: authHeaders(f.key) }],
+		],
+		[
+			'a bad Idempotency-Key on an event',
+			'Idempotency-Key',
+			(f) => [
+				'/api/v1/events',
+				{
+					method: 'POST',
+					headers: { ...authHeaders(f.key), 'Idempotency-Key': 'two words' },
+					body: '{"email":"a@example.com","eventName":"signed_up"}',
+				},
+			],
+		],
+	];
+
+	it.each(requests)('%s names %s', async (_label, field, request) => {
+		const t = setupTest();
+		const fixtures = await seedFixtures(t);
+		const res = await t.fetch(...request(fixtures));
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toMatchObject({ category: 'invalid_input', data: { field } });
 	});
 });
 

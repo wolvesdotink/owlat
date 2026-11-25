@@ -105,7 +105,10 @@ export const automationTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_automation', ['automationId'])
-		.index('by_automation_and_index', ['automationId', 'stepIndex']),
+		.index('by_automation_and_index', ['automationId', 'stepIndex'])
+		// The email steps that send a template, for the scan of a write to it
+		// (emailTemplates/liveContentScan.ts). Other step kinds index as absent.
+		.index('by_email_template', ['config.emailTemplateId']),
 
 	// Automation Runs - tracks contacts going through automations
 	automationRuns: defineTable({

@@ -47,6 +47,30 @@ export const DEFAULT_THEME = {
 	darkModeLinkColor: DEFAULT_EMAIL_THEME.darkModeLinkColor,
 };
 
+// A BCP 47 language tag: a 2–8 letter primary subtag and alphanumeric subtags.
+// The value lands in the document's `lang` attribute and often comes from a
+// stored row, so anything else is dropped rather than only escaped.
+const LANGUAGE_TAG = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
+const documentLanguage = (lang: string | undefined): string => {
+	const trimmed = lang?.trim();
+	return trimmed && LANGUAGE_TAG.test(trimmed) ? trimmed : 'en';
+};
+
+// Only an absolute http(s) URL can serve assets to a mail client; anything else
+// leaves the site-relative default in place. A query or fragment is dropped so
+// the appended asset path stays part of the path.
+const assetBase = (url: string | undefined): string => {
+	const trimmed = url?.trim();
+	if (!trimmed) return '';
+	try {
+		const parsed = new URL(trimmed);
+		if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+		return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+	} catch {
+		return '';
+	}
+};
+
 const createContext = (options: RenderOptions = {}): RenderContext => {
 	const theme = { ...DEFAULT_THEME, ...options.theme };
 	const darkMode = options.darkMode ?? false;
@@ -68,7 +92,8 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 		fontUrls: options.fontUrls ?? options.theme?.fontUrls ?? [],
 		customCss: options.customCss ?? '',
 		variableValues: options.variableValues ?? {},
-		lang: options.lang ?? 'en',
+		lang: documentLanguage(options.lang),
+		assetBaseUrl: assetBase(options.assetBaseUrl),
 		responsiveRules: [],
 		globalRules: [],
 		linkTransform: options.linkTransform,

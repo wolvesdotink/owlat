@@ -105,7 +105,8 @@ describe('UI message catalogs', () => {
 	/**
 	 * One German word per destination, in the navigation, the breadcrumb and the
 	 * page. Suppressions are „Unterdrückungen“, because „Sperrlisten“ already
-	 * names the DNS blocklists on the delivery pages. Automations are
+	 * names the DNS blocklists on the delivery pages and „gesperrt“ a suspended
+	 * workspace, so a suppressed address is „unterdrückt“. Automations are
 	 * „Automationen“, the word the builder and the list use throughout.
 	 */
 	it('names each destination with one German word', () => {
@@ -133,7 +134,7 @@ describe('UI message catalogs', () => {
 			.filter(
 				([key, message]) =>
 					/Automatisierung/.test(message) ||
-					(/suppression/i.test(catalogs.en.get(key) ?? '') && /Sperrliste/.test(message))
+					(/suppress/i.test(catalogs.en.get(key) ?? '') && /[Ss]perr/.test(message))
 			)
 			.map(([key]) => key);
 		expect(strays).toEqual([]);

@@ -29,12 +29,10 @@ describe('renderer defaults come from @owlat/shared/emailDefaults', () => {
 		expect(DEFAULT_BASE_WIDTH).toBe(DEFAULT_EMAIL_BASE_WIDTH);
 	});
 
-	it('pads a block with no padding or margin by the shared block defaults', () => {
+	it('pads a block with no padding by the shared block defaults', () => {
 		const p = DEFAULT_BLOCK_PADDING;
-		const m = DEFAULT_BLOCK_MARGIN;
 		expect(getSectionPadding({} as never)).toBe(
-			`${p.paddingTop + m.marginTop}px ${p.paddingRight + m.marginRight}px ` +
-				`${p.paddingBottom + m.marginBottom}px ${p.paddingLeft + m.marginLeft}px`
+			`${p.paddingTop}px ${p.paddingRight}px ${p.paddingBottom}px ${p.paddingLeft}px`
 		);
 	});
 

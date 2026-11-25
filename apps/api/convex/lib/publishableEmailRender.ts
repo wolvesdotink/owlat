@@ -18,6 +18,7 @@ import {
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
 import { decodeStoredTranslations, type HtmlTranslation } from './emailJson';
+import { getOptional } from './env';
 
 /** Templates personalize per contact; transactional emails interpolate data. */
 export type PublishableEmailVariableType = 'personalization' | 'data';
@@ -73,9 +74,15 @@ export function renderPublishableEmail(
 	theme: EmailTheme | undefined
 ): RenderedPublishableEmail {
 	const blocks = parseContentBlocks(row.content);
+	// The stored HTML is what a send delivers, so the renderer's own assets (the
+	// social block's default icons) load from the web app's public origin. A
+	// changed SITE_URL reaches a row only when it is rendered again.
+	const assetBaseUrl = getOptional('SITE_URL');
 	const html = renderEmailHtml(blocks as Parameters<typeof renderEmailHtml>[0], {
 		variableType,
 		theme,
+		lang: row.defaultLanguage,
+		assetBaseUrl,
 	});
 	// The text/plain body tracks the blocks exactly as the html does — EXCEPT
 	// when the author wrote their own, which a render must not clobber.
@@ -102,7 +109,7 @@ export function renderPublishableEmail(
 				translationsObj[lang] = {
 					htmlContent: renderEmailHtml(
 						translatedBlocks as unknown as Parameters<typeof renderEmailHtml>[0],
-						{ variableType, theme }
+						{ variableType, theme, lang, assetBaseUrl }
 					),
 					subject: langTranslation.subject ?? row.subject,
 				};

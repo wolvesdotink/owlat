@@ -2882,6 +2882,7 @@
 					"clicked": "Clicked",
 					"complained": "Complained",
 					"delivered": "Delivered",
+					"failed": "Failed",
 					"opened": "Opened",
 					"queued": "Queued",
 					"sent": "Sent"
@@ -10822,11 +10823,17 @@
 						"endpoints": {
 							"contact": "Read, update, or delete a contact",
 							"contacts": "List or create contacts",
+							"domains": "Sending domains and the DNS records each needs",
 							"events": "Track custom events",
 							"health": "Health probe",
+							"limits": "This key's send limits and what is left",
 							"openapi": "This instance's OpenAPI document, for API clients and AI agents",
-							"topics": "Manage topics and subscriptions",
-							"transactional": "Send a transactional email (slug in body)"
+							"status": "Whether this instance can send, and why not",
+							"topicContactAdd": "Add a contact to a topic",
+							"topicContactRemove": "Remove a contact from a topic",
+							"topics": "List topics",
+							"transactional": "Send a transactional email (slug in body), or list sends",
+							"transactionalSend": "Delivery status of one send"
 						},
 						"fullReference": "Full API reference",
 						"intro": "Authenticate with a scoped API key from {settingsLink}.",
@@ -14408,6 +14415,8 @@
 				"title": "No inbox to work from yet",
 				"body": "Each inbox you read gets its own workbench here, with what needs you, what moved and what arrived. Connect a mailbox to get started.",
 				"cta": "Connect a mailbox",
+				"ctaAsk": "Ask an admin for a mailbox",
+				"ctaMember": "Connect an account",
 				"mailOff": {
 					"title": "Mail is turned off in this workspace",
 					"bodyAdmin": "Each inbox you read gets its own workbench here. Turn on personal mail or external mailboxes in Features to add one.",
@@ -14896,6 +14905,10 @@
 			"externalCta": "Connect an account",
 			"externalHeading": "Connect your mail",
 			"loading": "Loading mailbox",
+			"mailOffAdminBody": "Turn on personal mail or external mailboxes in Features to set up a mailbox.",
+			"mailOffCta": "Open Features",
+			"mailOffHeading": "Mail is turned off in this workspace",
+			"mailOffMemberBody": "Nobody can set up a mailbox while mail is off. An admin can turn it on.",
 			"requestOperation": "Request a mailbox",
 			"reservedBody": "{address} is reserved for you. It'll appear here automatically as soon as it's ready.",
 			"reservedHeading": "Your mailbox is being set up"

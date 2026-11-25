@@ -73,8 +73,9 @@ export function formatContactResponse(contact: Contact): ContactResponse {
 export async function resolveContactRef(
 	ctx: Pick<ActionCtx, 'runQuery'>,
 	ref: { email?: string; id?: string },
-	options?: { notFoundMessage?: string }
+	options?: { notFoundMessage?: string; field?: string }
 ): Promise<Doc<'contacts'> | Response> {
+	const field = options?.field;
 	const email = ref.email?.trim();
 	const id = ref.id?.trim();
 
@@ -83,20 +84,20 @@ export async function resolveContactRef(
 		// The shared Convex-ID shape check: an under-length or foreign-alphabet
 		// value must be a 400 here, never reach `v.id('contacts')` as a 500.
 		if (!isValidConvexId(id)) {
-			return errorResponse('invalid_input', 'Invalid contact ID or email format');
+			return invalidInputResponse('Invalid contact ID or email format', field);
 		}
 		contact = await ctx.runQuery(internal.contacts.contacts.getInternal, {
 			contactId: id as Id<'contacts'>,
 		});
 	} else if (email) {
 		if (!isValidEmail(email)) {
-			return errorResponse('invalid_input', 'Invalid contact ID or email format');
+			return invalidInputResponse('Invalid contact ID or email format', field);
 		}
 		contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
 			email: email.toLowerCase(),
 		});
 	} else {
-		return errorResponse('invalid_input', 'Contact ID or email is required');
+		return invalidInputResponse('Contact ID or email is required', field);
 	}
 
 	// Treat soft-deleted (GDPR-erased) contacts as non-existent. The contacts
@@ -125,20 +126,21 @@ function resolveContactFromIdOrEmail(
 	idOrEmail: string
 ): Promise<Doc<'contacts'> | Response> {
 	return isValidEmail(idOrEmail)
-		? resolveContactRef(ctx, { email: idOrEmail })
-		: resolveContactRef(ctx, { id: idOrEmail });
+		? resolveContactRef(ctx, { email: idOrEmail }, { field: 'id' })
+		: resolveContactRef(ctx, { id: idOrEmail }, { field: 'id' });
 }
 
 /**
- * The contact `{id}` / `{emailOrId}` path segment, or the 400 to return: a
- * missing segment and a malformed percent-encoding each keep their own copy.
- * Shared by the contacts `/{id}` routes and the topics removal route.
+ * The contact `{id}` / `{emailOrId}` path segment, or the 400 to return,
+ * naming the segment as `field`: a missing segment and a malformed
+ * percent-encoding each keep their own copy. Shared by the contacts `/{id}`
+ * routes and the topics removal route.
  */
-export function contactRefFromPath(segment: PathSegment): string | Response {
+export function contactRefFromPath(segment: PathSegment, field: string): string | Response {
 	if (segment.ok) return segment.value;
 	return segment.reason === 'missing'
-		? errorResponse('invalid_input', 'Contact ID or email is required')
-		: errorResponse('invalid_input', 'Invalid contact ID or email format');
+		? invalidInputResponse('Contact ID or email is required', field)
+		: invalidInputResponse('Invalid contact ID or email format', field);
 }
 
 /**
@@ -230,7 +232,7 @@ export const getContact = createAuthenticatedHandler(
 		const denied = requireScope(auth, 'contacts:read', request.headers.get('Origin'));
 		if (denied) return denied;
 		// The `{id}` segment (an ID or a URL-encoded email).
-		const idOrEmail = contactRefFromPath(lastPathSegment(request));
+		const idOrEmail = contactRefFromPath(lastPathSegment(request), 'id');
 		if (idOrEmail instanceof Response) return idOrEmail;
 
 		// resolveContactRef already treats soft-deleted contacts as not found.
@@ -251,7 +253,7 @@ export const updateContact = createAuthenticatedHandler(
 		const denied = requireScope(auth, 'contacts:write', request.headers.get('Origin'));
 		if (denied) return denied;
 		// The `{id}` segment (an ID or a URL-encoded email).
-		const idOrEmail = contactRefFromPath(lastPathSegment(request));
+		const idOrEmail = contactRefFromPath(lastPathSegment(request), 'id');
 		if (idOrEmail instanceof Response) return idOrEmail;
 
 		let raw: unknown;
@@ -314,7 +316,7 @@ export const deleteContact = createAuthenticatedHandler(
 		const denied = requireScope(auth, 'contacts:write', request.headers.get('Origin'));
 		if (denied) return denied;
 		// The `{id}` segment (an ID or a URL-encoded email).
-		const idOrEmail = contactRefFromPath(lastPathSegment(request));
+		const idOrEmail = contactRefFromPath(lastPathSegment(request), 'id');
 		if (idOrEmail instanceof Response) return idOrEmail;
 
 		// Find the contact
@@ -354,14 +356,19 @@ export const listContacts = createAuthenticatedHandler(
 		const denied = requireScope(auth, 'contacts:read', request.headers.get('Origin'));
 		if (denied) return denied;
 		const query = readListQuery(new URL(request.url).searchParams);
-		if (!query.ok) return errorResponse('invalid_input', query.message);
+		if (!query.ok) return invalidInputResponse(query.message, query.field);
 		const { limit, cursor, search } = query.value;
 
-		// Query contacts
-		const result = await ctx.runQuery(internal.contacts.contacts.listByTeam, {
-			search,
-			paginationOpts: { numItems: limit, cursor },
-		});
+		let result;
+		try {
+			result = await ctx.runQuery(internal.contacts.contacts.listByTeam, {
+				search,
+				paginationOpts: { numItems: limit, cursor },
+			});
+		} catch (error) {
+			// A cursor the paginator refuses is the caller's 400.
+			return errorResponseFromThrow(error, 'Failed to list contacts');
+		}
 
 		return jsonResponse({
 			data: result.contacts.map(formatContactResponse),

@@ -185,7 +185,8 @@ async function renderAndDeliver(
 	const { baseUrl } = pass;
 	// In the recipient's own language, from `userProfiles.locale` — absent means
 	// English, exactly what every account had before the picker existed.
-	const copy = dailyBriefEmailCopy(systemEmailLocale(entry.locale));
+	const locale = systemEmailLocale(entry.locale);
+	const copy = dailyBriefEmailCopy(locale);
 	const subject = briefEmailSubject(copy, entry.items.length, Boolean(entry.senders), !!digest);
 	const blocks = briefEmailBlocks({
 		items: entry.items,
@@ -197,7 +198,7 @@ async function renderAndDeliver(
 	});
 	if (digest) blocks.push(...digestBlocks({ digest: digest.email, copy, baseUrl }));
 	if (entry.senders) blocks.push(...sendersBlocks({ senders: entry.senders, copy, baseUrl }));
-	const bodyHtml = renderEmailHtml(blocks);
+	const bodyHtml = renderEmailHtml(blocks, { lang: locale });
 	const bodyText = renderPlainText(blocks);
 	const domain = entry.address.split('@')[1] ?? 'localhost';
 	const rfc822MessageId = buildMessageId(domain);
