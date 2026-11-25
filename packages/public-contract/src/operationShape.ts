@@ -24,6 +24,8 @@ export type PublicApiScope =
 	| 'status:read'
 	| 'templates:read'
 	| 'templates:write'
+	| 'brand-kit:read'
+	| 'brand-kit:write'
 	| 'domains:verify';
 
 /** The `scope` of an operation every authenticated key may call, whatever its scopes. */
@@ -50,6 +52,7 @@ export interface PublicOperation {
 		| 'Events'
 		| 'Transactional'
 		| 'Templates'
+		| 'Brand kit'
 		| 'Topics'
 		| 'Status'
 		| 'Domains'

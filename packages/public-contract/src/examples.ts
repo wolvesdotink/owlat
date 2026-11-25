@@ -8,6 +8,7 @@
  * shows up as a failure rather than as an untested omission.
  */
 
+import { BRAND_KIT_EXAMPLES } from './brandKitExamples';
 import { DOMAIN_AND_LIMIT_EXAMPLES } from './domainAndLimitExamples';
 import { RENDER_EXAMPLES } from './renderExamples';
 import type { PublicOperationId } from './operations';
@@ -423,4 +424,5 @@ export const OPERATION_EXAMPLES = {
 	},
 	...DOMAIN_AND_LIMIT_EXAMPLES,
 	...RENDER_EXAMPLES,
+	...BRAND_KIT_EXAMPLES,
 } satisfies Record<PublicOperationId, OperationExample>;

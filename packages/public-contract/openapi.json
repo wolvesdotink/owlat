@@ -30,6 +30,9 @@
 			"name": "Templates"
 		},
 		{
+			"name": "Brand kit"
+		},
+		{
 			"name": "Topics"
 		},
 		{
@@ -6299,6 +6302,495 @@
 				}
 			}
 		},
+		"/api/v1/brand-kit": {
+			"get": {
+				"operationId": "getBrandKit",
+				"tags": ["Brand kit"],
+				"summary": "Get the brand kit: the colours, fonts, button style, footer and logos every email starts from, as the brand kit page shows them.",
+				"security": [
+					{
+						"apiKey": ["brand-kit:read"]
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The brand kit.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/BrandKit"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"isConfigured": true,
+										"primaryColor": "#0f766e",
+										"secondaryColor": "#282d3a",
+										"textColor": "#374151",
+										"backgroundColor": "#ffffff",
+										"linkColor": "#0f766e",
+										"swatches": ["#f59e0b"],
+										"headingFontFamily": "'Montserrat', Arial, sans-serif",
+										"bodyFontFamily": "'Inter', Arial, sans-serif",
+										"buttonRadius": 6,
+										"buttonPaddingX": 24,
+										"buttonPaddingY": 12,
+										"baseWidth": 600,
+										"footerCompanyName": "Example Shop GmbH",
+										"footerAddress": "1 Example Street\n12345 Example City",
+										"footerSocialLinks": [
+											{
+												"platform": "github",
+												"url": "https://github.com/example"
+											}
+										],
+										"logo": {
+											"url": "https://files.owlat.example/logo.png",
+											"width": 160
+										},
+										"logoDark": null
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"operationId": "updateBrandKit",
+				"tags": ["Brand kit"],
+				"summary": "Change the brand kit. Send only the fields to change: a field left out keeps its stored value, and the answer is the whole kit after the write. The values are checked as on the brand kit page, and a refusal names the field in error.data.field. An unknown field is refused, and so are the logos, which only the brand kit page can set. Any write marks the kit as configured. As a save on the brand kit page, a write does not restyle blocks of existing emails.",
+				"security": [
+					{
+						"apiKey": ["brand-kit:write"]
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/BrandKitUpdateRequest"
+							},
+							"example": {
+								"primaryColor": "#0f766e",
+								"secondaryColor": "#282d3a",
+								"textColor": "#374151",
+								"backgroundColor": "#ffffff",
+								"linkColor": "#0f766e",
+								"swatches": ["#f59e0b"],
+								"headingFontFamily": "'Montserrat', Arial, sans-serif",
+								"bodyFontFamily": "'Inter', Arial, sans-serif",
+								"buttonRadius": 6,
+								"buttonPaddingX": 24,
+								"buttonPaddingY": 12,
+								"baseWidth": 600,
+								"footerCompanyName": "Example Shop GmbH",
+								"footerAddress": "1 Example Street\n12345 Example City",
+								"footerSocialLinks": [
+									{
+										"platform": "github",
+										"url": "https://github.com/example"
+									}
+								]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "The brand kit as stored.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/BrandKit"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"isConfigured": true,
+										"primaryColor": "#0f766e",
+										"secondaryColor": "#282d3a",
+										"textColor": "#374151",
+										"backgroundColor": "#ffffff",
+										"linkColor": "#0f766e",
+										"swatches": ["#f59e0b"],
+										"headingFontFamily": "'Montserrat', Arial, sans-serif",
+										"bodyFontFamily": "'Inter', Arial, sans-serif",
+										"buttonRadius": 6,
+										"buttonPaddingX": 24,
+										"buttonPaddingY": 12,
+										"baseWidth": 600,
+										"footerCompanyName": "Example Shop GmbH",
+										"footerAddress": "1 Example Street\n12345 Example City",
+										"footerSocialLinks": [
+											{
+												"platform": "github",
+												"url": "https://github.com/example"
+											}
+										],
+										"logo": {
+											"url": "https://files.owlat.example/logo.png",
+											"width": 160
+										},
+										"logoDark": null
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The workspace or the resource is not in a state that can carry out the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["workspace_deletion_in_progress"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": [
+																		"too_many_failed_attempts",
+																		"template_write_rate_limited"
+																	],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/v1/topics": {
 			"get": {
 				"operationId": "listTopics",
@@ -8129,6 +8621,378 @@
 					}
 				},
 				"required": ["error"],
+				"additionalProperties": false
+			},
+			"BrandKit": {
+				"type": "object",
+				"properties": {
+					"isConfigured": {
+						"type": "boolean",
+						"description": "False until the kit is saved once, in the dashboard or through the API. Until then every field holds its default and emails take only the primary colour, body font, background and width from it."
+					},
+					"primaryColor": {
+						"type": "string",
+						"description": "Buttons and accents. A hex colour: #rgb or #rrggbb."
+					},
+					"secondaryColor": {
+						"type": "string",
+						"description": "Dividers. A hex colour: #rgb or #rrggbb."
+					},
+					"textColor": {
+						"type": "string",
+						"description": "Body text. A hex colour: #rgb or #rrggbb."
+					},
+					"backgroundColor": {
+						"type": "string",
+						"description": "The email background. A hex colour: #rgb or #rrggbb."
+					},
+					"linkColor": {
+						"type": "string",
+						"description": "Links. A hex colour: #rgb or #rrggbb."
+					},
+					"swatches": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "More hex colours the colour pickers of the editors offer, stored in lower case.",
+						"maxItems": 6
+					},
+					"headingFontFamily": {
+						"type": "string",
+						"description": "The font of headings. One of the CSS font stacks the brand kit offers, spelled exactly as listed. The web fonts among them ('Inter', Arial, sans-serif; 'Roboto', Arial, sans-serif; 'Open Sans', Arial, sans-serif; 'Lato', Arial, sans-serif; 'Montserrat', Arial, sans-serif; 'Poppins', Arial, sans-serif; 'Merriweather', Georgia, serif; 'Playfair Display', Georgia, serif; 'Lora', Georgia, serif) load from Google Fonts in clients that fetch remote fonts, such as Apple Mail, and fall back to the font named after them elsewhere, such as Gmail and Outlook.",
+						"enum": [
+							"Arial, sans-serif",
+							"'Helvetica Neue', Helvetica, sans-serif",
+							"Georgia, serif",
+							"'Times New Roman', serif",
+							"Verdana, sans-serif",
+							"'Trebuchet MS', sans-serif",
+							"'Courier New', monospace",
+							"system-ui, sans-serif",
+							"'Inter', Arial, sans-serif",
+							"'Roboto', Arial, sans-serif",
+							"'Open Sans', Arial, sans-serif",
+							"'Lato', Arial, sans-serif",
+							"'Montserrat', Arial, sans-serif",
+							"'Poppins', Arial, sans-serif",
+							"'Merriweather', Georgia, serif",
+							"'Playfair Display', Georgia, serif",
+							"'Lora', Georgia, serif"
+						]
+					},
+					"bodyFontFamily": {
+						"type": "string",
+						"description": "The font of body text. One of the CSS font stacks the brand kit offers, spelled exactly as listed. The web fonts among them ('Inter', Arial, sans-serif; 'Roboto', Arial, sans-serif; 'Open Sans', Arial, sans-serif; 'Lato', Arial, sans-serif; 'Montserrat', Arial, sans-serif; 'Poppins', Arial, sans-serif; 'Merriweather', Georgia, serif; 'Playfair Display', Georgia, serif; 'Lora', Georgia, serif) load from Google Fonts in clients that fetch remote fonts, such as Apple Mail, and fall back to the font named after them elsewhere, such as Gmail and Outlook.",
+						"enum": [
+							"Arial, sans-serif",
+							"'Helvetica Neue', Helvetica, sans-serif",
+							"Georgia, serif",
+							"'Times New Roman', serif",
+							"Verdana, sans-serif",
+							"'Trebuchet MS', sans-serif",
+							"'Courier New', monospace",
+							"system-ui, sans-serif",
+							"'Inter', Arial, sans-serif",
+							"'Roboto', Arial, sans-serif",
+							"'Open Sans', Arial, sans-serif",
+							"'Lato', Arial, sans-serif",
+							"'Montserrat', Arial, sans-serif",
+							"'Poppins', Arial, sans-serif",
+							"'Merriweather', Georgia, serif",
+							"'Playfair Display', Georgia, serif",
+							"'Lora', Georgia, serif"
+						]
+					},
+					"buttonRadius": {
+						"type": "number",
+						"description": "Button corner radius. In pixels.",
+						"minimum": 0,
+						"maximum": 40
+					},
+					"buttonPaddingX": {
+						"type": "number",
+						"description": "Button padding left and right. In pixels.",
+						"minimum": 4,
+						"maximum": 64
+					},
+					"buttonPaddingY": {
+						"type": "number",
+						"description": "Button padding top and bottom. In pixels.",
+						"minimum": 4,
+						"maximum": 32
+					},
+					"baseWidth": {
+						"type": "number",
+						"description": "Email content width. In pixels.",
+						"minimum": 400,
+						"maximum": 800
+					},
+					"footerCompanyName": {
+						"type": "string",
+						"description": "The company name above the postal address in the footer.",
+						"maxLength": 120
+					},
+					"footerAddress": {
+						"type": "string",
+						"description": "The postal address in the footer of every marketing email, one line per line. Commercial mail must carry one.",
+						"maxLength": 300
+					},
+					"footerSocialLinks": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"platform": {
+									"type": "string",
+									"enum": [
+										"twitter",
+										"facebook",
+										"instagram",
+										"linkedin",
+										"youtube",
+										"tiktok",
+										"github",
+										"whatsapp",
+										"telegram",
+										"threads",
+										"pinterest",
+										"discord",
+										"mastodon",
+										"bluesky",
+										"vimeo",
+										"medium",
+										"snapchat"
+									]
+								},
+								"url": {
+									"type": "string",
+									"description": "An absolute http(s) URL.",
+									"maxLength": 500
+								}
+							},
+							"required": ["platform", "url"],
+							"additionalProperties": false
+						},
+						"maxItems": 8
+					},
+					"logo": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"url": {
+										"type": "string"
+									},
+									"width": {
+										"description": "Width in pixels, or null.",
+										"type": ["number", "null"]
+									}
+								},
+								"required": ["url", "width"],
+								"additionalProperties": false
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The email logo, or null. Set on the brand kit page; the API cannot change it."
+					},
+					"logoDark": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"url": {
+										"type": "string"
+									},
+									"width": {
+										"description": "Width in pixels, or null.",
+										"type": ["number", "null"]
+									}
+								},
+								"required": ["url", "width"],
+								"additionalProperties": false
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The logo for dark mode, or null. Set on the brand kit page; the API cannot change it."
+					}
+				},
+				"required": [
+					"isConfigured",
+					"primaryColor",
+					"secondaryColor",
+					"textColor",
+					"backgroundColor",
+					"linkColor",
+					"swatches",
+					"headingFontFamily",
+					"bodyFontFamily",
+					"buttonRadius",
+					"buttonPaddingX",
+					"buttonPaddingY",
+					"baseWidth",
+					"footerCompanyName",
+					"footerAddress",
+					"footerSocialLinks",
+					"logo",
+					"logoDark"
+				],
+				"additionalProperties": false
+			},
+			"BrandKitUpdateRequest": {
+				"type": "object",
+				"properties": {
+					"primaryColor": {
+						"type": "string",
+						"description": "Buttons and accents. A hex colour: #rgb or #rrggbb."
+					},
+					"secondaryColor": {
+						"type": "string",
+						"description": "Dividers. A hex colour: #rgb or #rrggbb."
+					},
+					"textColor": {
+						"type": "string",
+						"description": "Body text. A hex colour: #rgb or #rrggbb."
+					},
+					"backgroundColor": {
+						"type": "string",
+						"description": "The email background. A hex colour: #rgb or #rrggbb."
+					},
+					"linkColor": {
+						"type": "string",
+						"description": "Links. A hex colour: #rgb or #rrggbb."
+					},
+					"swatches": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "More hex colours the colour pickers of the editors offer, stored in lower case.",
+						"maxItems": 6
+					},
+					"headingFontFamily": {
+						"type": "string",
+						"description": "The font of headings. One of the CSS font stacks the brand kit offers, spelled exactly as listed. The web fonts among them ('Inter', Arial, sans-serif; 'Roboto', Arial, sans-serif; 'Open Sans', Arial, sans-serif; 'Lato', Arial, sans-serif; 'Montserrat', Arial, sans-serif; 'Poppins', Arial, sans-serif; 'Merriweather', Georgia, serif; 'Playfair Display', Georgia, serif; 'Lora', Georgia, serif) load from Google Fonts in clients that fetch remote fonts, such as Apple Mail, and fall back to the font named after them elsewhere, such as Gmail and Outlook.",
+						"enum": [
+							"Arial, sans-serif",
+							"'Helvetica Neue', Helvetica, sans-serif",
+							"Georgia, serif",
+							"'Times New Roman', serif",
+							"Verdana, sans-serif",
+							"'Trebuchet MS', sans-serif",
+							"'Courier New', monospace",
+							"system-ui, sans-serif",
+							"'Inter', Arial, sans-serif",
+							"'Roboto', Arial, sans-serif",
+							"'Open Sans', Arial, sans-serif",
+							"'Lato', Arial, sans-serif",
+							"'Montserrat', Arial, sans-serif",
+							"'Poppins', Arial, sans-serif",
+							"'Merriweather', Georgia, serif",
+							"'Playfair Display', Georgia, serif",
+							"'Lora', Georgia, serif"
+						]
+					},
+					"bodyFontFamily": {
+						"type": "string",
+						"description": "The font of body text. One of the CSS font stacks the brand kit offers, spelled exactly as listed. The web fonts among them ('Inter', Arial, sans-serif; 'Roboto', Arial, sans-serif; 'Open Sans', Arial, sans-serif; 'Lato', Arial, sans-serif; 'Montserrat', Arial, sans-serif; 'Poppins', Arial, sans-serif; 'Merriweather', Georgia, serif; 'Playfair Display', Georgia, serif; 'Lora', Georgia, serif) load from Google Fonts in clients that fetch remote fonts, such as Apple Mail, and fall back to the font named after them elsewhere, such as Gmail and Outlook.",
+						"enum": [
+							"Arial, sans-serif",
+							"'Helvetica Neue', Helvetica, sans-serif",
+							"Georgia, serif",
+							"'Times New Roman', serif",
+							"Verdana, sans-serif",
+							"'Trebuchet MS', sans-serif",
+							"'Courier New', monospace",
+							"system-ui, sans-serif",
+							"'Inter', Arial, sans-serif",
+							"'Roboto', Arial, sans-serif",
+							"'Open Sans', Arial, sans-serif",
+							"'Lato', Arial, sans-serif",
+							"'Montserrat', Arial, sans-serif",
+							"'Poppins', Arial, sans-serif",
+							"'Merriweather', Georgia, serif",
+							"'Playfair Display', Georgia, serif",
+							"'Lora', Georgia, serif"
+						]
+					},
+					"buttonRadius": {
+						"type": "number",
+						"description": "Button corner radius. In pixels.",
+						"minimum": 0,
+						"maximum": 40
+					},
+					"buttonPaddingX": {
+						"type": "number",
+						"description": "Button padding left and right. In pixels.",
+						"minimum": 4,
+						"maximum": 64
+					},
+					"buttonPaddingY": {
+						"type": "number",
+						"description": "Button padding top and bottom. In pixels.",
+						"minimum": 4,
+						"maximum": 32
+					},
+					"baseWidth": {
+						"type": "number",
+						"description": "Email content width. In pixels.",
+						"minimum": 400,
+						"maximum": 800
+					},
+					"footerCompanyName": {
+						"type": "string",
+						"description": "The company name above the postal address in the footer.",
+						"maxLength": 120
+					},
+					"footerAddress": {
+						"type": "string",
+						"description": "The postal address in the footer of every marketing email, one line per line. Commercial mail must carry one.",
+						"maxLength": 300
+					},
+					"footerSocialLinks": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"platform": {
+									"type": "string",
+									"enum": [
+										"twitter",
+										"facebook",
+										"instagram",
+										"linkedin",
+										"youtube",
+										"tiktok",
+										"github",
+										"whatsapp",
+										"telegram",
+										"threads",
+										"pinterest",
+										"discord",
+										"mastodon",
+										"bluesky",
+										"vimeo",
+										"medium",
+										"snapchat"
+									]
+								},
+								"url": {
+									"type": "string",
+									"description": "An absolute http(s) URL.",
+									"maxLength": 500
+								}
+							},
+							"required": ["platform", "url"],
+							"additionalProperties": false
+						},
+						"maxItems": 8
+					}
+				},
 				"additionalProperties": false
 			},
 			"Contact": {

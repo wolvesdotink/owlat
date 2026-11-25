@@ -41,6 +41,7 @@ import { getLimits } from '../publicApi/limitsHttp';
 import * as transactionalEmailsApi from '../publicApi/transactionalEmailsHttp';
 import * as savedBlocksApi from '../publicApi/savedBlocksHttp';
 import { renderEmail } from '../publicApi/renderHttp';
+import * as brandKitApi from '../publicApi/brandKitHttp';
 import { dryRunTransactional } from '../transactional/dryRunHttp';
 import { rateLimiter } from '../lib/rateLimiter';
 import {
@@ -130,6 +131,8 @@ const ALL_SCOPES = [
 	'status:read',
 	'templates:read',
 	'templates:write',
+	'brand-kit:read',
+	'brand-kit:write',
 	'domains:verify',
 ];
 
@@ -3774,6 +3777,8 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	updateSavedBlock: savedBlocksApi.updateSavedBlock,
 	renderEmail,
 	dryRunTransactional,
+	getBrandKit: brandKitApi.getBrandKit,
+	updateBrandKit: brandKitApi.updateBrandKit,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */
