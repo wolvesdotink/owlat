@@ -122,8 +122,9 @@ export function renderPublishableEmail(
 							theme,
 							lang,
 							assetBaseUrl,
-							// Like the subject, a language without its own preview text keeps the default's.
-							preheaderText: langTranslation.previewText ?? row.previewText,
+							// A language without its own preview text keeps the default's; the
+							// settings page stores an empty field as '', so that counts as none.
+							preheaderText: langTranslation.previewText || row.previewText,
 						}
 					),
 					subject: langTranslation.subject ?? row.subject,

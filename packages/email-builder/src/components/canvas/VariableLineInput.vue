@@ -110,6 +110,8 @@ async function pickVariable(variable: Variable) {
 		padBefore: pickerFromButton,
 	});
 	closePicker();
+	// `maxlength` only stops typing; a token that does not fit is not inserted.
+	if (props.maxLength !== undefined && next.value.length > props.maxLength) return;
 	emit('update:value', next.value);
 	await nextTick();
 	input.value?.focus();

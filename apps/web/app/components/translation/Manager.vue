@@ -145,12 +145,14 @@ const translatableRows = computed((): TranslatableRow[] => {
 		label: t('components.translation.manager.subjectLine'),
 	});
 
-	// Preview text, when the email has one
-	if (email.value.previewText) {
+	// Preview text, when the email or one of its languages has one: a language's
+	// own preview text is sent even while the default is empty.
+	const overlays = Object.values(translationBase.value?.translations ?? {});
+	if (email.value.previewText || overlays.some((overlay) => overlay.previewText)) {
 		rows.push({
 			id: '_previewText',
 			fieldType: 'previewText',
-			sourceText: email.value.previewText,
+			sourceText: email.value.previewText ?? '',
 			label: t('components.translation.manager.previewText'),
 		});
 	}

@@ -1315,17 +1315,26 @@ describe('transactionalEmails.updateTranslation', () => {
 
 		const email = await t.run(async (ctx) => ctx.db.get(emailId));
 		expect(JSON.parse(email!.translations!).de.previewText).toBe('Deine Bestellung {{orderId}}');
-		const preheaderFor = (language: string) => {
+		const sendFor = (language: string) => {
 			const content = selectSendContent(email!, language, undefined);
-			return preheaderOf(
-				composeForSend({
-					kind: 'transactional',
-					template: { subject: content.subject, htmlContent: content.html },
-					dataVariables: { orderId: 'A-7' },
-				}).html
-			);
+			return composeForSend({
+				kind: 'transactional',
+				template: {
+					subject: content.subject,
+					htmlContent: content.html,
+					...(content.plainText !== undefined && { plainTextContent: content.plainText }),
+				},
+				dataVariables: { orderId: 'A-7' },
+			});
 		};
+		const preheaderFor = (language: string) => preheaderOf(sendFor(language).html);
 		expect(preheaderFor('de')).toBe('Deine Bestellung A-7');
+		// A translation has no stored text part, so the send derives one from its
+		// HTML; the hidden preheader and its padding stay out of it.
+		const germanText = sendFor('de').text;
+		expect(germanText).toContain('Thanks for your order');
+		expect(germanText).not.toContain('Bestellung');
+		expect(germanText).not.toMatch(/[\u034f\u200c\u2007\ufeff]/);
 		expect(preheaderFor('fr')).toBe('Your order A-7');
 		expect(preheaderFor('en')).toBe('Your order A-7');
 

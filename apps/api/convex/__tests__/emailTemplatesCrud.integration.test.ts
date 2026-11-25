@@ -328,7 +328,6 @@ describe('emailTemplates.update — preview text', () => {
 			defaultLanguage: 'en',
 			translations: JSON.stringify({
 				de: { subject: 'Hallo', previewText: 'Hallo {{firstName}}', blocks: {} },
-				fr: { subject: 'Bonjour', blocks: {} },
 			}),
 		});
 
@@ -761,6 +760,25 @@ describe('emailTemplates.i18n — translations CRUD', () => {
 // ============================================================================
 
 describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body not wiped', () => {
+	it('promoting a language without its own preview text renders no preheader for it', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			status: 'draft',
+			subject: 'English subject',
+			previewText: 'English preview',
+			content: CONTENT_EN,
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({ de: { subject: 'Deutscher Betreff', blocks: {} } }),
+		});
+
+		await t.mutation(api.emailTemplates.i18n.setDefaultLanguage, { templateId, language: 'de' });
+
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		expect(row?.previewText).toBeUndefined();
+		expect(row?.htmlContent).not.toContain('English preview');
+	});
+
 	it('promotes the German overlay to default, preserves English as a round-trippable overlay', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, {

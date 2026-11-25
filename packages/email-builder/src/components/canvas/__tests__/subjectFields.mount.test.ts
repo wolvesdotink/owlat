@@ -136,6 +136,13 @@ describe('SubjectFields', () => {
 			expect(w.emitted('update:subject')).toBeUndefined();
 		});
 
+		it('does not insert a variable that would pass the 150-character limit', async () => {
+			const w = mountFields('Hi', { previewText: 'x'.repeat(145) });
+			await w.get('[data-testid="preview-text-insert-variable"]').trigger('click');
+			await w.findAll('[role="option"]')[1]!.trigger('mousedown');
+			expect(w.emitted('update:previewText')).toBeUndefined();
+		});
+
 		it('flags an unknown token in the preview text and offers to define it', async () => {
 			const w = mountFields('Hi', { previewText: 'Track {{trackingCode}}' });
 			expect(previewInput(w).attributes('aria-describedby')).toBeTruthy();

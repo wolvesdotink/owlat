@@ -395,7 +395,9 @@ export async function withRenderedTranslations<P extends TranslationRenderInputs
 		{
 			content: patch.content ?? row.content,
 			subject: patch.subject ?? row.subject,
-			previewText: patch.previewText ?? row.previewText,
+			// A language swap patches `previewText: undefined` to clear the column,
+			// so the key's presence, not its value, says the patch sets it.
+			previewText: 'previewText' in patch ? patch.previewText : row.previewText,
 			translations: patch.translations ?? row.translations,
 			supportedLanguages: patch.supportedLanguages ?? row.supportedLanguages,
 			defaultLanguage: patch.defaultLanguage ?? row.defaultLanguage,

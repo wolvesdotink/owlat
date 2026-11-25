@@ -193,9 +193,32 @@ describe.each(SURFACES)('$emailType translation table', (surface) => {
 		expect(JSON.parse(args['blocks'] as string)).toEqual({ b1: { html: 'Guten Tag' } });
 		expect(args['htmlContent']).toEqual(expect.stringContaining('Guten Tag'));
 		expect(args['htmlContent']).not.toEqual(expect.stringContaining('Hallo Welt'));
-		if (surface.emailType === 'transactional') expect(args).not.toHaveProperty('previewText');
 		// No second write patches the HTML in separately.
 		expect(runs.get(surface.editorUpdate)).toBeUndefined();
+	});
+
+	it("saves a language's preview text", async () => {
+		rows[surface.emailType].value = {
+			...row(4),
+			previewText: 'Your order',
+			translations: JSON.stringify({
+				de: { subject: 'Hallo', previewText: 'Deine', blocks: { b1: { html: 'Hallo Welt' } } },
+			}),
+		};
+		const w = mountManager(surface.emailType);
+		await flush();
+		run(surface.update).mockResolvedValue({ ok: true, result: { contentRevision: 5 } });
+
+		await w.get('button[aria-label="Edit Preview text (Deutsch)"]').trigger('click');
+		await nextTick();
+		await w.get('textarea').setValue('Deine Bestellung');
+		await w.get('textarea').trigger('keydown', { key: 'Enter', ctrlKey: true });
+		await flush();
+
+		expect(run(surface.update).mock.calls[0]![0]).toMatchObject({
+			language: 'de',
+			previewText: 'Deine Bestellung',
+		});
 	});
 
 	it('keeps the typed text after a failed write, also across an unrelated emission', async () => {

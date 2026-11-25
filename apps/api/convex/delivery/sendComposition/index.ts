@@ -12,6 +12,7 @@
 
 import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import { htmlToPlainText } from '@owlat/shared/html';
+import { stripPreheaderHtml } from '@owlat/email-renderer/preheader';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
 import { composeAutomation } from './automation';
@@ -90,7 +91,7 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	const stored = input.template.plainTextContent?.trim();
 	const body = stored
 		? personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
-		: htmlToPlainText(composed.html, { preserveBreaks: true });
+		: htmlToPlainText(stripPreheaderHtml(composed.html), { preserveBreaks: true });
 	const config = composed.transformConfig;
 	const lines = addressLines(config?.senderAddress);
 	const text =
