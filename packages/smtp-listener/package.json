@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/smtp-listener",
-	"version": "0.6.25",
+	"version": "0.6.26",
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",

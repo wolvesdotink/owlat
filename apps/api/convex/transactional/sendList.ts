@@ -49,31 +49,41 @@ export async function readSendListPage(db: QueryCtx['db'], args: SendListPageArg
 	const sends = db.query('transactionalSends');
 	const { email, status, since, until } = args;
 	const query =
-		email !== null
-			? sends.withIndex('by_kind_deleted_email', (q) =>
+		email !== null && status !== null
+			? sends.withIndex('by_kind_deleted_email_status', (q) =>
 					q
 						.eq('kind', 'transactional')
 						.eq('deletedAt', undefined)
 						.eq('email', email)
+						.eq('status', status)
 						.gte('_creationTime', since)
 						.lt('_creationTime', until)
 				)
-			: status !== null
-				? sends.withIndex('by_kind_deleted_status', (q) =>
+			: email !== null
+				? sends.withIndex('by_kind_deleted_email', (q) =>
 						q
 							.eq('kind', 'transactional')
 							.eq('deletedAt', undefined)
-							.eq('status', status)
+							.eq('email', email)
 							.gte('_creationTime', since)
 							.lt('_creationTime', until)
 					)
-				: sends.withIndex('by_kind_deleted', (q) =>
-						q
-							.eq('kind', 'transactional')
-							.eq('deletedAt', undefined)
-							.gte('_creationTime', since)
-							.lt('_creationTime', until)
-					);
+				: status !== null
+					? sends.withIndex('by_kind_deleted_status', (q) =>
+							q
+								.eq('kind', 'transactional')
+								.eq('deletedAt', undefined)
+								.eq('status', status)
+								.gte('_creationTime', since)
+								.lt('_creationTime', until)
+						)
+					: sends.withIndex('by_kind_deleted', (q) =>
+							q
+								.eq('kind', 'transactional')
+								.eq('deletedAt', undefined)
+								.gte('_creationTime', since)
+								.lt('_creationTime', until)
+						);
 	return await paginateClientCursor(query.order('desc'), {
 		numItems: args.limit,
 		cursor: args.cursor,

@@ -80,6 +80,22 @@ export function publishedHtml(
 	row: Pick<PublishableEmailRow, 'htmlRenderState'> & RenderablePublishableEmail,
 	render: { variableType: PublishableEmailVariableType; theme: EmailTheme | undefined }
 ): { htmlContent: string; htmlTranslations?: string; rendererVersion: number } {
+	return publishedRender(row, render).html;
+}
+
+/**
+ * `publishedHtml` and the text/plain body rendered with it, absent when the
+ * author wrote their own. A transactional email stores both: its text carries
+ * the same condition and repeat regions as its HTML, and a text body rendered
+ * by an older server would not.
+ */
+export function publishedRender(
+	row: Pick<PublishableEmailRow, 'htmlRenderState'> & RenderablePublishableEmail,
+	render: { variableType: PublishableEmailVariableType; theme: EmailTheme | undefined }
+): {
+	html: { htmlContent: string; htmlTranslations?: string; rendererVersion: number };
+	plainTextContent: string | undefined;
+} {
 	if (row.htmlRenderState?.stale) {
 		throwInvalidState(
 			'A saved block this email uses changed and its HTML is still being updated, so it was not published. Try again in a moment.',
@@ -91,9 +107,12 @@ export function publishedHtml(
 	}
 	const rendered = renderForWrite(row, render.variableType, render.theme);
 	return {
-		htmlContent: rendered.html,
-		htmlTranslations: rendered.htmlTranslations,
-		rendererVersion: CURRENT_RENDERER_VERSION,
+		html: {
+			htmlContent: rendered.html,
+			htmlTranslations: rendered.htmlTranslations,
+			rendererVersion: CURRENT_RENDERER_VERSION,
+		},
+		plainTextContent: rendered.plainTextContent,
 	};
 }
 
@@ -153,6 +172,9 @@ export function duplicateEmailFields<T extends PublishableEmailRow>(
 		copy['htmlContent'] = rendered.html;
 		copy['htmlTranslations'] = rendered.htmlTranslations;
 		copy['rendererVersion'] = CURRENT_RENDERER_VERSION;
+		if (rendered.plainTextContent !== undefined) {
+			copy['plainTextContent'] = rendered.plainTextContent;
+		}
 	} catch {
 		// Blocks the renderer cannot handle: the copy starts unrendered, like a
 		// row created outside the editor, and its publish is refused until it
@@ -171,6 +193,7 @@ export function duplicateEmailFields<T extends PublishableEmailRow>(
 export interface EditableEmailArgs {
 	name?: string;
 	subject?: string;
+	previewText?: string;
 	content?: string;
 	htmlContent?: string;
 	// text/plain alternative shipped with the html. `plainTextContent` is the
@@ -191,6 +214,7 @@ export interface EditableEmailArgs {
 export interface EditableEmailPatch {
 	name?: string;
 	subject?: string;
+	previewText?: string;
 	content?: string;
 	htmlContent?: string;
 	plainTextContent?: string;
@@ -211,11 +235,13 @@ export interface EditableEmailPatch {
  * The update arguments that change what the rendered HTML and text/plain body
  * are built from, or that carry client-rendered output the server replaces
  * with its own render. `subject` is one: each translation's HTML entry falls
- * back to the default subject.
+ * back to the default subject. `previewText` is rendered into the HTML as its
+ * hidden preheader.
  */
 const RENDER_INPUTS = [
 	'content',
 	'subject',
+	'previewText',
 	'htmlContent',
 	'htmlTranslations',
 	'plainTextContent',
@@ -227,6 +253,26 @@ const RENDER_INPUTS = [
 
 /** The columns a table folds into `searchableText`, in order. */
 type SearchableField = 'name' | 'subject' | 'slug';
+
+/**
+ * The content columns an edit stores, as it stores them: the subject and
+ * preview text trimmed, text-block HTML in the blocks and the translation
+ * overlays sanitized (lib/emailContentSanitize.ts). Only the fields given are
+ * returned. The API's render (`publicApi/render.ts`) reads its input through
+ * this too, so it renders what a save of the same content would store.
+ */
+export function storedContentFields(
+	args: Pick<EditableEmailArgs, 'subject' | 'previewText' | 'content' | 'translations'>
+): Pick<EditableEmailPatch, 'subject' | 'previewText' | 'content' | 'translations'> {
+	return {
+		...(args.subject !== undefined && { subject: args.subject.trim() }),
+		...(args.previewText !== undefined && { previewText: args.previewText.trim() }),
+		...(args.content !== undefined && { content: sanitizeStoredBlocksJson(args.content) }),
+		...(args.translations !== undefined && {
+			translations: sanitizeTranslationsJson(args.translations),
+		}),
+	};
+}
 
 /**
  * Build the patch for the editable fields both tables share, and keep the
@@ -271,9 +317,7 @@ export async function buildEditablePatch(
 	}
 
 	if (args.name !== undefined) patch.name = args.name.trim();
-	if (args.subject !== undefined) patch.subject = args.subject.trim();
-	// Text-block HTML is sanitized on every write (lib/emailContentSanitize.ts).
-	if (args.content !== undefined) patch.content = sanitizeStoredBlocksJson(args.content);
+	Object.assign(patch, storedContentFields(args));
 
 	if (args.plainTextOverride !== undefined) {
 		// Patching a field to `undefined` REMOVES it, which is what "the author
@@ -283,9 +327,7 @@ export async function buildEditablePatch(
 	}
 
 	if (args.supportedLanguages !== undefined) patch.supportedLanguages = args.supportedLanguages;
-	if (args.translations !== undefined) {
-		patch.translations = sanitizeTranslationsJson(args.translations);
-	} else if (patch.content !== undefined) {
+	if (args.translations === undefined && patch.content !== undefined) {
 		// The editor renews repeated Block ids on load: each renewed copy keeps
 		// the translation it shared with the original.
 		const carried = carryRenewedBlockOverlays(row.content, patch.content, row.translations);
@@ -306,6 +348,7 @@ export async function buildEditablePatch(
 			{
 				content: patch.content ?? row.content,
 				subject: patch.subject ?? row.subject,
+				previewText: patch.previewText ?? row.previewText,
 				translations: patch.translations ?? row.translations,
 				supportedLanguages: patch.supportedLanguages ?? row.supportedLanguages,
 				defaultLanguage: patch.defaultLanguage ?? row.defaultLanguage,
@@ -353,7 +396,12 @@ export async function buildEditablePatch(
 type TranslationRenderInputs = Partial<
 	Pick<
 		RenderablePublishableEmail,
-		'content' | 'subject' | 'translations' | 'supportedLanguages' | 'defaultLanguage'
+		| 'content'
+		| 'subject'
+		| 'previewText'
+		| 'translations'
+		| 'supportedLanguages'
+		| 'defaultLanguage'
 	>
 >;
 
@@ -384,6 +432,9 @@ export async function withRenderedTranslations<P extends TranslationRenderInputs
 		{
 			content: patch.content ?? row.content,
 			subject: patch.subject ?? row.subject,
+			// A language swap patches `previewText: undefined` to clear the column,
+			// so the key's presence, not its value, says the patch sets it.
+			previewText: 'previewText' in patch ? patch.previewText : row.previewText,
 			translations: patch.translations ?? row.translations,
 			supportedLanguages: patch.supportedLanguages ?? row.supportedLanguages,
 			defaultLanguage: patch.defaultLanguage ?? row.defaultLanguage,

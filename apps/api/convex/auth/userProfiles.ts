@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { appLocaleValidator } from '../lib/convexValidators';
 import type { Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedIdentityMutation } from '../lib/authedFunctions';
 import {
@@ -139,5 +139,28 @@ export const setLocale = authedIdentityMutation({
 		if (profile.locale === args.locale) return profile._id;
 		await ctx.db.patch(profile._id, { locale: args.locale, updatedAt: Date.now() });
 		return profile._id;
+	},
+});
+
+/** The most accounts one `localesOf` call reads; an alert's audience is capped below it. */
+const LOCALES_OF_LIMIT = 100;
+
+/**
+ * The interface language each account chose, for system mail a scheduled
+ * action composes per recipient. An account with no profile, or one that
+ * never touched the language picker, is left out, which reads as English.
+ */
+export const localesOf = internalQuery({
+	args: { authUserIds: v.array(v.string()) },
+	handler: async (ctx, args): Promise<Array<{ authUserId: string; locale: string }>> => {
+		const found: Array<{ authUserId: string; locale: string }> = [];
+		for (const authUserId of new Set(args.authUserIds.slice(0, LOCALES_OF_LIMIT))) {
+			const profile = await ctx.db
+				.query('userProfiles')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+				.first();
+			if (profile?.locale) found.push({ authUserId, locale: profile.locale });
+		}
+		return found;
 	},
 });

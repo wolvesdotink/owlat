@@ -108,10 +108,23 @@ describe('sending domains', () => {
 });
 
 describe('the limits', () => {
-	it('take any key: no scope, and no 403 for a scope the key lacks', () => {
+	it('take any key, and answer 403 or 404 only for the count of one template and address', () => {
 		const limits = (committed['paths'] as Record<string, any>)['/api/v1/limits'].get;
 		expect(limits.security).toEqual([{ apiKey: [] }]);
-		expect(Object.keys(limits.responses)).toEqual(['200', '400', '401', '429', '500']);
+		expect(Object.keys(limits.responses)).toEqual([
+			'200',
+			'400',
+			'401',
+			'403',
+			'404',
+			'429',
+			'500',
+		]);
+		expect(limits.parameters.map((parameter: { name: string }) => parameter.name)).toEqual([
+			'email',
+			'slug',
+			'transactionalId',
+		]);
 	});
 });
 
@@ -180,9 +193,11 @@ describe('error reasons', () => {
 	});
 
 	it('lists the deletion refusal on every operation that writes, and on no read', () => {
+		// A render and a dry run are POSTs that store nothing.
+		const reads = new Set<string>(['renderEmail', 'dryRunTransactional']);
 		for (const operation of PUBLIC_OPERATIONS) {
 			const listed = reasonsListed(operation.operationId, 422);
-			if (operation.method === 'GET') {
+			if (operation.method === 'GET' || reads.has(operation.operationId)) {
 				expect(listed, operation.operationId).not.toContain('workspace_deletion_in_progress');
 			} else {
 				expect(listed, operation.operationId).toContain('workspace_deletion_in_progress');
@@ -216,7 +231,10 @@ describe('error reasons', () => {
 				const listed = reasonsListed(operation.operationId, ERROR_REASON_STATUS[reason]);
 				if (operation.scope === null) expect(listed, operation.operationId).toEqual([]);
 				else if (operation.scope === ANY_KEY && reason === 'missing_scope') {
-					expect(listed, operation.operationId).not.toContain(reason);
+					// Only a part of an any-key operation that needs a scope can lack one.
+					const ownReasons: readonly string[] = operation.reasons;
+					if (ownReasons.includes(reason)) expect(listed, operation.operationId).toContain(reason);
+					else expect(listed, operation.operationId).not.toContain(reason);
 				} else expect(listed, `${operation.operationId} ${reason}`).toContain(reason);
 			}
 		}
@@ -279,6 +297,17 @@ describe('examples', () => {
 			);
 			expect(result.error?.issues, operation.operationId).toBeUndefined();
 		}
+	});
+
+	it('a dry run answers on its own path and status, and a send body has no dryRun field', () => {
+		const dryRun = publicOperation('dryRunTransactional');
+		const send = publicOperation('sendTransactional');
+		expect(dryRun.path).not.toBe(send.path);
+		expect(dryRun.success.status).not.toBe(send.success.status);
+		expect(
+			successBodySchema(dryRun).safeParse(OPERATION_EXAMPLES.sendTransactional.response).success
+		).toBe(false);
+		expect(Object.keys(sendTransactionalRequestSchema.shape)).not.toContain('dryRun');
 	});
 
 	it('a response with an undocumented field is not a valid body', () => {

@@ -1,18 +1,11 @@
 /**
- * One sort table and one status badge for both template lists. Marketing sorts
- * its loaded page with `sortTemplateRows`; transactional hands the same
- * option's `sortBy`/`sortOrder` to its query, so the menu means the same thing
- * on both pages.
+ * One sort table and one status badge for both template lists. Both hand the
+ * option's `sortBy`/`sortOrder` to their query, so the menu means the same
+ * thing on both pages.
  */
 import { describe, expect, it } from 'vitest';
 import en from '~~/i18n/locales/en.json';
-import { TEMPLATE_SORT_OPTIONS, sortTemplateRows, templateStatusBadge } from '../templateListSort';
-
-const rows = [
-	{ name: 'beta', createdAt: 2, updatedAt: 30 },
-	{ name: 'Alpha', createdAt: 3, updatedAt: 10 },
-	{ name: 'gamma', createdAt: 1, updatedAt: 20 },
-];
+import { TEMPLATE_SORT_OPTIONS, templateStatusBadge } from '../templateListSort';
 
 function resolves(key: string): boolean {
 	let node: unknown = en;
@@ -32,26 +25,6 @@ describe('TEMPLATE_SORT_OPTIONS', () => {
 			expect(option.value).toBe(`${option.sortBy}-${option.sortOrder}`);
 			expect(resolves(option.label), option.label).toBe(true);
 		}
-	});
-});
-
-describe('sortTemplateRows', () => {
-	const names = (sortBy: 'updatedAt' | 'createdAt' | 'name', sortOrder: 'asc' | 'desc') =>
-		sortTemplateRows(rows, { sortBy, sortOrder }).map((r) => r.name);
-
-	it('sorts by each field in both directions', () => {
-		expect(names('updatedAt', 'desc')).toEqual(['beta', 'gamma', 'Alpha']);
-		expect(names('updatedAt', 'asc')).toEqual(['Alpha', 'gamma', 'beta']);
-		expect(names('createdAt', 'desc')).toEqual(['Alpha', 'beta', 'gamma']);
-		expect(names('createdAt', 'asc')).toEqual(['gamma', 'beta', 'Alpha']);
-		expect(names('name', 'asc')).toEqual(['Alpha', 'beta', 'gamma']);
-		expect(names('name', 'desc')).toEqual(['gamma', 'beta', 'Alpha']);
-	});
-
-	it('leaves the input untouched', () => {
-		const before = rows.map((r) => r.name);
-		sortTemplateRows(rows, { sortBy: 'name', sortOrder: 'asc' });
-		expect(rows.map((r) => r.name)).toEqual(before);
 	});
 });
 

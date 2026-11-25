@@ -21,7 +21,13 @@
  * per send kind whether this gate applies (see `SUPPRESSION_SCOPE_BY_KIND` in
  * `delivery/nonCampaignIntake.ts` and `delivery/marketingDispatchGate.ts`).
  *
- * A third rule applies to segment audiences only: a Contact a transactional send
+ * A topic adds a third fact for mail sent on its behalf: the Contact must still
+ * be a member the topic audience would mail (`topicIneligibility`). A campaign
+ * to the topic selects exactly those members, and an automation that belongs
+ * to a topic (`automationTopicId`) gates each email on the same rule, so both
+ * agree about who may be mailed.
+ *
+ * A further rule applies to segment audiences only: a Contact a transactional send
  * created needs a topic membership or a confirmed opt-in first
  * (`needsMembershipForSegment`).
  *
@@ -38,7 +44,11 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 /** Why a Contact may no longer receive marketing mail. */
 export const marketingIneligibilityValidator = v.union(
 	v.literal('contact_deleted'),
-	v.literal('contact_unsubscribed')
+	v.literal('contact_unsubscribed'),
+	// Not a mailable member of the topic the mail is sent for: the membership
+	// was removed, the topic was deleted (which deletes its memberships), or the
+	// membership still waits for double opt-in.
+	v.literal('topic_unsubscribed')
 );
 
 /** @see marketingIneligibilityValidator */
@@ -51,18 +61,10 @@ export type MarketingIneligibility = Infer<typeof marketingIneligibilityValidato
  */
 export function contactMarketingIneligibility(
 	contact: Pick<Doc<'contacts'>, 'deletedAt' | 'unsubscribedAt'> | null
-): MarketingIneligibility | null {
+): Exclude<MarketingIneligibility, 'topic_unsubscribed'> | null {
 	if (contact === null || contact.deletedAt !== undefined) return 'contact_deleted';
 	if (contact.unsubscribedAt !== undefined) return 'contact_unsubscribed';
 	return null;
-}
-
-/** {@link contactMarketingIneligibility} for a Contact id — one point read. */
-export async function loadContactMarketingIneligibility(
-	ctx: QueryCtx | MutationCtx,
-	contactId: Id<'contacts'>
-): Promise<MarketingIneligibility | null> {
-	return contactMarketingIneligibility(await ctx.db.get(contactId));
 }
 
 /**
@@ -119,4 +121,67 @@ export async function holdsTopicMembership(
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 		.first();
 	return membership !== null;
+}
+
+/**
+ * Whether the Contact is no longer a member the topic audience would mail:
+ * `'topic_unsubscribed'`, or `null` when it still is. The topic audience
+ * (`campaigns/audienceCandidates.ts`) mails a membership row that is not
+ * awaiting double opt-in; this is that rule for one Contact. A deleted topic
+ * has no memberships left (`topics/topics.ts` `remove`), so it reads as left,
+ * as a campaign to it reaches nobody. Two point reads, three when a membership
+ * exists.
+ */
+export async function topicIneligibility(
+	ctx: QueryCtx | MutationCtx,
+	contact: Pick<Doc<'contacts'>, '_id' | 'doiStatus'>,
+	topicId: Id<'topics'>
+): Promise<'topic_unsubscribed' | null> {
+	const membership = await ctx.db
+		.query('contactTopics')
+		.withIndex('by_contact_and_topic', (q) => q.eq('contactId', contact._id).eq('topicId', topicId))
+		.first();
+	if (membership === null) return 'topic_unsubscribed';
+	const topic = await ctx.db.get(topicId);
+	if (topic === null) return 'topic_unsubscribed';
+	return isAwaitingDoubleOptIn(
+		contact,
+		topic.requireDoubleOptIn === true,
+		membership.pendingDoiConfirmation
+	)
+		? 'topic_unsubscribed'
+		: null;
+}
+
+/**
+ * The topic an automation's emails are sent for, or `null` when they belong to
+ * none. `automations.topicId` decides when it is set (`null` is an explicit "no
+ * topic"). Unset, a "Subscribed to topic" automation belongs to its trigger's
+ * topic, so a contact who leaves the topic that started the series stops
+ * getting it; any other trigger has no topic. Derived here, at read time, so
+ * automations written before the field existed need no backfill.
+ */
+export function automationTopicId(
+	ctx: QueryCtx | MutationCtx,
+	automation: Pick<Doc<'automations'>, 'topicId' | 'triggerType' | 'triggerConfig'>
+): Id<'topics'> | null {
+	if (automation.topicId !== undefined) return automation.topicId;
+	if (automation.triggerType !== 'topic_subscribed') return null;
+	const configured = (automation.triggerConfig as { topicId?: unknown } | undefined)?.topicId;
+	return typeof configured === 'string' ? ctx.db.normalizeId('topics', configured) : null;
+}
+
+/**
+ * {@link topicIneligibility} for the topic `automation` belongs to, or `null`
+ * when it belongs to none.
+ */
+export async function automationTopicIneligibility(
+	ctx: QueryCtx | MutationCtx,
+	automation: Pick<Doc<'automations'>, 'topicId' | 'triggerType' | 'triggerConfig'>,
+	contact: Pick<Doc<'contacts'>, '_id' | 'doiStatus'>
+): Promise<{ reason: 'topic_unsubscribed'; topicId: Id<'topics'> } | null> {
+	const topicId = automationTopicId(ctx, automation);
+	if (topicId === null) return null;
+	const reason = await topicIneligibility(ctx, contact, topicId);
+	return reason === null ? null : { reason, topicId };
 }

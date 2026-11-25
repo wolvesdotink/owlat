@@ -9,12 +9,17 @@ import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.DomainCheckRequest;
 import com.owlat.sdk.model.domain.SendingDomainRecord;
 import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
+import com.owlat.sdk.model.limits.GetLimitsParams;
+import com.owlat.sdk.model.limits.RecipientSendUsage;
 import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.status.SendingHoldLift;
+import com.owlat.sdk.model.template.TransactionalEmail;
+import com.owlat.sdk.model.template.TransactionalEmailWriteOptions;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.topic.Topic;
@@ -55,6 +60,7 @@ class ResourceHttpTest {
     private volatile String query;
     private volatile String body;
     private volatile String authorization;
+    private volatile String ifMatch;
     // Response the handler returns (data shape varies: object vs array).
     private volatile String responseBody = "{\"data\":{}}";
 
@@ -76,6 +82,7 @@ class ResourceHttpTest {
         rawPath = exchange.getRequestURI().getRawPath();
         query = exchange.getRequestURI().getRawQuery();
         authorization = exchange.getRequestHeaders().getFirst("Authorization");
+        ifMatch = exchange.getRequestHeaders().getFirst("If-Match");
         body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
 
         byte[] out = responseBody.getBytes(StandardCharsets.UTF_8);
@@ -143,6 +150,50 @@ class ResourceHttpTest {
         assertTrue(query.contains("limit=10"), query);
         assertTrue(query.contains("cursor=c1"), query);
         assertTrue(query.contains("search=ann"), query);
+    }
+
+    // ── transactional emails ────────────────────────────────────────────────
+
+    private static final String EMAIL_JSON = "{\"id\":\"k57t\",\"slug\":\"order confirmation\",\"name\":\"Order\","
+            + "\"status\":\"published\",\"subject\":\"Hi\",\"defaultLanguage\":\"en\",\"languages\":[\"en\"],"
+            + "\"revision\":4,\"publishedAt\":null,\"createdAt\":\"2026-01-01T00:00:00.000Z\","
+            + "\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"blocks\":[{\"id\":\"b1\",\"type\":\"text\","
+            + "\"content\":{\"html\":\"<p>Hi</p>\",\"fontSize\":14}}],\"translations\":{},"
+            + "\"dataVariablesSchema\":{\"orderNumber\":\"string\",\"items\":\"array\"},"
+            + "\"dataVariableExamples\":{\"orderNumber\":\"A-1001\","
+            + "\"items\":[{\"name\":\"Tent\",\"note\":null}]},\"showUnsubscribe\":false}";
+
+    @Test
+    void transactionalEmailUpsertSendsTheRevisionAsIfMatchAndWhilePublishedInTheQuery() throws IOException {
+        responseBody = "{\"data\":" + EMAIL_JSON + "}";
+        TransactionalEmail email = client().transactionalEmails().get("order confirmation");
+        assertEquals("/api/v1/transactional-emails/order%20confirmation", rawPath);
+
+        responseBody = "{\"data\":{\"email\":" + EMAIL_JSON + ",\"issues\":[]}}";
+        client().transactionalEmails().upsert(email.getSlug(), email.toInput(),
+                TransactionalEmailWriteOptions.ifRevision(email.getRevision()).whilePublished());
+        assertEquals("PUT", method);
+        assertEquals("/api/v1/transactional-emails/order%20confirmation", rawPath);
+        assertEquals("whilePublished=true", query);
+        assertEquals("\"4\"", ifMatch);
+
+        // The read is the export: the body carries the editable fields as read.
+        JsonNode sent = JsonMapper.instance().readTree(body);
+        assertEquals(14, sent.at("/blocks/0/content/fontSize").asInt());
+        assertEquals("string", sent.at("/dataVariablesSchema/orderNumber").asText());
+        assertEquals("A-1001", sent.at("/dataVariableExamples/orderNumber").asText());
+        // A null field of a list entry survives: a condition compares the list as JSON.
+        assertTrue(sent.at("/dataVariableExamples/items/0/note").isNull());
+        assertTrue(sent.path("revision").isMissingNode());
+    }
+
+    @Test
+    void transactionalEmailUpsertWithoutOptionsSendsNoIfMatchAndNoQuery() {
+        responseBody = "{\"data\":{\"email\":" + EMAIL_JSON + ",\"issues\":[]}}";
+        client().transactionalEmails().upsert("order", com.owlat.sdk.model.template.TransactionalEmailInput
+                .builder("Order").build());
+        assertNull(ifMatch);
+        assertNull(query);
     }
 
     // ── topics ──────────────────────────────────────────────────────────────
@@ -253,6 +304,26 @@ class ResourceHttpTest {
         assertFalse(limits.getDailySends().isEnabled());
         assertNull(limits.getDailySends().getRemaining());
         assertEquals(3600, limits.getRecipientSends().getWindowSeconds());
+        assertNull(limits.getRecipientSends().getUsage());
+    }
+
+    @Test
+    void limitsGetWithATemplateAndAnAddressReadsTheirCount() {
+        responseBody = "{\"data\":{\"dailySends\":{\"isEnabled\":false,\"limit\":50000,\"used\":null,"
+                + "\"remaining\":null,\"resetsAt\":null},"
+                + "\"recipientSends\":{\"isEnabled\":true,\"limit\":5,\"windowSeconds\":3600,"
+                + "\"usage\":{\"email\":\"ada@example.com\",\"templateId\":\"t1\",\"slug\":\"password-reset\","
+                + "\"isExempt\":false,\"used\":5,\"remaining\":0,\"resetsAt\":\"2026-11-23T16:30:00.000Z\"}}}}";
+        SendLimits limits = client().limits().get(GetLimitsParams.bySlug("ada+1@example.com", "password-reset"));
+        assertEquals("GET", method);
+        assertEquals("/api/v1/limits", rawPath);
+        assertEquals("email=ada%2B1%40example.com&slug=password-reset", query);
+        RecipientSendUsage usage = limits.getRecipientSends().getUsage();
+        assertEquals(0, usage.getRemaining());
+        assertEquals("2026-11-23T16:30:00.000Z", usage.getResetsAt());
+
+        client().limits().get(GetLimitsParams.byTransactionalId("ada@example.com", "t1"));
+        assertEquals("email=ada%40example.com&transactionalId=t1", query);
     }
 
     // ── domains ─────────────────────────────────────────────────────────────
@@ -274,6 +345,19 @@ class ResourceHttpTest {
         assertEquals(10, record.getPriority());
         assertEquals("wrong", record.getState());
         assertEquals("10 mx.example.net", record.getFoundValue());
+    }
+
+    @Test
+    void domainsVerifyPostsToTheDomainsCheckRoute() {
+        responseBody = "{\"data\":{\"id\":\"d1\",\"domain\":\"news.example.com\",\"status\":\"failed\","
+                + "\"lastCheckedAt\":null,\"requestedAt\":\"2026-11-23T15:30:00.000Z\"}}";
+        DomainCheckRequest request = client().domains().verify("news.example.com");
+        assertEquals("POST", method);
+        assertEquals("/api/v1/domains/news.example.com/verify", rawPath);
+        assertEquals("", body);
+        assertEquals("failed", request.getStatus());
+        assertNull(request.getLastCheckedAt());
+        assertEquals("2026-11-23T15:30:00.000Z", request.getRequestedAt());
     }
 
     // ── status ──────────────────────────────────────────────────────────────

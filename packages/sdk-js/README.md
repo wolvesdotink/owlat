@@ -52,7 +52,22 @@ const owlat = new Owlat({
 });
 ```
 
-> **No `baseUrl`:** the client sends requests and your API key to `https://api.owlat.app`, which is not your instance, and logs a warning. `new Owlat('lm_live_...')` does the same and is deprecated. `baseUrl` will become required.
+`baseUrl` is required. The constructor throws a `TypeError` that says where to find it when `baseUrl` is missing, blank, or not an absolute `http` or `https` URL. A path prefix is kept (`https://example.com/owlat`), a trailing slash is dropped, and a query string or fragment is refused.
+
+### Upgrading from a key-only client
+
+`new Owlat('lm_live_...')` and a config without `baseUrl` sent requests and your API key to `https://api.owlat.app`, which is not your instance. Both are gone: pass a config with your instance's API URL.
+
+```typescript
+// Before
+const owlat = new Owlat('lm_live_xxxxxxxx');
+
+// After
+const owlat = new Owlat({
+	apiKey: 'lm_live_xxxxxxxx',
+	baseUrl: 'https://rest.api.example.com', // Your API base URL, from Settings → API → API quickstart
+});
+```
 
 ## API Reference
 
@@ -172,6 +187,26 @@ await owlat.transactional.send(
 );
 ```
 
+#### Dry run
+
+`transactional.dryRun` takes the same parameters as `send` and sends nothing.
+It calls `POST /api/v1/transactional/dry-run` and answers with the subject, HTML
+and text a send would deliver, whether the send would be queued (`wouldQueue`),
+and the error it would be refused with (`refusal`). Nothing is stored or counted
+against a limit. With the `templates:read` scope as well, it composes a draft
+too. A server older than the dry run has no such route: it answers `404`, sends
+nothing, and the SDK throws a `NotFoundError` saying the instance does not
+support dry runs.
+
+```typescript
+const preview = await owlat.transactional.dryRun({
+	email: 'user@example.com',
+	slug: 'order-confirmation',
+	dataVariables: { orderNumber: 'A-1001' },
+});
+if (!preview.wouldQueue) console.warn(preview.refusal?.message);
+```
+
 ### Events
 
 Send events to trigger automations.
@@ -263,6 +298,43 @@ for (const domain of await owlat.domains.list()) {
 	const outstanding = domain.records.filter((record) => record.state !== 'found');
 	console.log(domain.domain, domain.status, outstanding);
 }
+```
+
+After publishing records, ask for a fresh check and poll the list until it has
+run. This needs the `domains:verify` scope; one check per domain per minute.
+
+```typescript
+const { requestedAt } = await owlat.domains.verify('news.example.com');
+```
+
+### Templates
+
+Transactional emails and saved blocks: read, write and publish. Reads need the
+`templates:read` scope, writes `templates:write`. A read is the export, and
+`upsert` takes it back unchanged.
+
+```typescript
+const email = await owlat.transactionalEmails.get('order-confirmation');
+const { issues } = await owlat.transactionalEmails.upsert(
+	'order-confirmation',
+	{ ...email, subject: 'Your order is confirmed' },
+	{ ifRevision: email.revision, whilePublished: true }
+);
+await owlat.transactionalEmails.publish('order-confirmation');
+const { data: savedBlocks } = await owlat.savedBlocks.list();
+```
+
+`render.email` renders blocks the way this instance stores them, without
+storing anything: the HTML, the text body, the issues a write would report and
+a health score. With `dataVariables` it composes the email as a send would.
+Needs `templates:read`.
+
+```typescript
+const { html, issues, sendRefusal } = await owlat.render.email({
+	subject: 'Your order {{orderNumber}}',
+	blocks: email.blocks,
+	dataVariables: { orderNumber: 'A-1001' },
+});
 ```
 
 ## Error Handling

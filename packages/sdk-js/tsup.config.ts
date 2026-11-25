@@ -17,6 +17,7 @@ export default defineConfig({
 			/^\.\/errorReasons$/,
 			/^\.\/sendLimits$/,
 			/^\.\/sendList$/,
+			/^\.\/templateTypes$/,
 			/^\.\/topicList$/,
 			/^\.\/webhookEvents$/,
 		],

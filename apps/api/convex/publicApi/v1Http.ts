@@ -24,12 +24,29 @@ import {
 } from '../contacts/api';
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
+import { dryRunTransactional } from '../transactional/dryRunHttp';
 import { getTransactionalSend, listTransactionalSends } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
 import { listDomains } from './domainsHttp';
+import { verifyDomain } from './domainCheckHttp';
 import { getLimits } from './limitsHttp';
 import { getOpenApiDocument } from './openApiHttp';
+import { getBlockSchema } from './blockSchemaHttp';
+import {
+	createTransactionalEmail,
+	getTransactionalEmail,
+	listTransactionalEmails,
+	putTransactionalEmail,
+	transitionTransactionalEmail,
+} from './transactionalEmailsHttp';
+import {
+	createSavedBlock,
+	getSavedBlock,
+	listSavedBlocks,
+	updateSavedBlock,
+} from './savedBlocksHttp';
+import { renderEmail } from './renderHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -60,6 +77,20 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/openapi.json',
 		method: 'OPTIONS',
 		handler: getOpenApiDocument,
+	});
+
+	// The JSON Schema of block content (no authentication required), next to
+	// the OpenAPI document and answering its own preflight the same way.
+	http.route({
+		path: '/api/v1/schemas/blocks.json',
+		method: 'GET',
+		handler: getBlockSchema,
+	});
+
+	http.route({
+		path: '/api/v1/schemas/blocks.json',
+		method: 'OPTIONS',
+		handler: getBlockSchema,
 	});
 
 	// CORS preflight handlers for API routes
@@ -96,6 +127,37 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: handleCors,
 	});
 
+	// Transactional emails and saved blocks (templates)
+	http.route({
+		path: '/api/v1/transactional-emails',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		pathPrefix: '/api/v1/transactional-emails/',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		path: '/api/v1/saved-blocks',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		pathPrefix: '/api/v1/saved-blocks/',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		path: '/api/v1/render',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
 	// Status API
 	http.route({
 		path: '/api/v1/status',
@@ -106,6 +168,12 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 	// Domains API
 	http.route({
 		path: '/api/v1/domains',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		pathPrefix: '/api/v1/domains/',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -185,6 +253,14 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: sendTransactional,
 	});
 
+	// POST /api/v1/transactional/dry-run - What a send would do, without sending.
+	// An exact path: the `/api/v1/transactional/` prefix only answers GET.
+	http.route({
+		path: '/api/v1/transactional/dry-run',
+		method: 'POST',
+		handler: dryRunTransactional,
+	});
+
 	// GET /api/v1/transactional - List sends, by recipient, status or window
 	http.route({
 		path: '/api/v1/transactional',
@@ -197,6 +273,80 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		pathPrefix: '/api/v1/transactional/',
 		method: 'GET',
 		handler: getTransactionalSend,
+	});
+
+	// ============ TRANSACTIONAL EMAIL (TEMPLATE) ENDPOINTS ============
+
+	// GET /api/v1/transactional-emails - List transactional emails
+	http.route({
+		path: '/api/v1/transactional-emails',
+		method: 'GET',
+		handler: listTransactionalEmails,
+	});
+
+	// POST /api/v1/transactional-emails - Create a transactional email
+	http.route({
+		path: '/api/v1/transactional-emails',
+		method: 'POST',
+		handler: createTransactionalEmail,
+	});
+
+	// GET /api/v1/transactional-emails/{slug} - One transactional email
+	http.route({
+		pathPrefix: '/api/v1/transactional-emails/',
+		method: 'GET',
+		handler: getTransactionalEmail,
+	});
+
+	// PUT /api/v1/transactional-emails/{slug} - Create or replace by slug
+	http.route({
+		pathPrefix: '/api/v1/transactional-emails/',
+		method: 'PUT',
+		handler: putTransactionalEmail,
+	});
+
+	// POST /api/v1/transactional-emails/{slug}/publish and /unpublish
+	http.route({
+		pathPrefix: '/api/v1/transactional-emails/',
+		method: 'POST',
+		handler: transitionTransactionalEmail,
+	});
+
+	// ============ SAVED BLOCK ENDPOINTS ============
+
+	// GET /api/v1/saved-blocks - List saved blocks
+	http.route({
+		path: '/api/v1/saved-blocks',
+		method: 'GET',
+		handler: listSavedBlocks,
+	});
+
+	// POST /api/v1/saved-blocks - Create a saved block
+	http.route({
+		path: '/api/v1/saved-blocks',
+		method: 'POST',
+		handler: createSavedBlock,
+	});
+
+	// GET /api/v1/saved-blocks/{id} - One saved block
+	http.route({
+		pathPrefix: '/api/v1/saved-blocks/',
+		method: 'GET',
+		handler: getSavedBlock,
+	});
+
+	// PUT /api/v1/saved-blocks/{id} - Replace a saved block
+	http.route({
+		pathPrefix: '/api/v1/saved-blocks/',
+		method: 'PUT',
+		handler: updateSavedBlock,
+	});
+
+	// POST /api/v1/render - Render blocks without storing them
+	http.route({
+		path: '/api/v1/render',
+		method: 'POST',
+		handler: renderEmail,
 	});
 
 	// ============ STATUS API ENDPOINTS ============
@@ -215,6 +365,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/domains',
 		method: 'GET',
 		handler: listDomains,
+	});
+
+	// POST /api/v1/domains/{domain}/verify - Queue a fresh check of one domain
+	http.route({
+		pathPrefix: '/api/v1/domains/',
+		method: 'POST',
+		handler: verifyDomain,
 	});
 
 	// ============ LIMITS API ENDPOINTS ============

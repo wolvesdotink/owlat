@@ -1,22 +1,23 @@
 {
 	"name": "@owlat/docs",
-	"version": "0.6.25",
+	"version": "0.6.26",
 	"private": true,
-	"license": "Apache-2.0",
-	"homepage": "https://owlat.app",
 	"description": "Owlat Documentation",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
 		"dev": "nuxt dev --port 3003",
 		"build": "nuxt generate",
 		"preview": "nuxt preview",
 		"typecheck": "nuxt typecheck && tsc -p __tests__/tsconfig.json",
-		"lint": "oxlint --config ../../oxlintrc.json .",
+		"lint": "oxlint --config ../../oxlintrc.json . && bun scripts/blockReference.ts --check",
 		"lint:fix": "oxlint --config ../../oxlintrc.json . --fix",
 		"postinstall": "nuxt prepare",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage"
+		"test:coverage": "vitest run --coverage",
+		"block-reference": "bun scripts/blockReference.ts"
 	},
 	"dependencies": {
 		"@takumi-rs/core": "^2.20.0",
@@ -30,6 +31,8 @@
 		"@nuxtjs/i18n": "^10.6.0",
 		"@nuxtjs/mdc": "^0.23.3",
 		"@nuxtjs/seo": "^6.0.1",
+		"@owlat/email-renderer": "workspace:*",
+		"@owlat/public-contract": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@tailwindcss/vite": "catalog:vue",
 		"@vitest/coverage-v8": "catalog:",

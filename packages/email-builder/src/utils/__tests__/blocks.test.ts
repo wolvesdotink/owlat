@@ -8,6 +8,8 @@ import {
 	getBlockBackgroundColor,
 	blockSupportsBorderRadius,
 	getColumnWidths,
+	updateColumnsContent,
+	withColumnCount,
 	withPrimaryStoredImage,
 } from '../blocks';
 import {
@@ -511,5 +513,81 @@ describe('builder defaults', () => {
 		expect(defaultPadding).toBe(DEFAULT_BLOCK_PADDING);
 		expect(defaultMargin).toBe(DEFAULT_BLOCK_MARGIN);
 		expect(defaultTheme).toBe(DEFAULT_EMAIL_THEME);
+	});
+});
+
+describe('column count and widths', () => {
+	const item = (id: string) => ({
+		id,
+		type: 'text' as const,
+		content: { html: `<p>${id}</p>` } as TextBlockContent,
+	});
+	const twoColumns = (): ColumnsBlockContent => ({
+		columnCount: 2,
+		ratio: 'equal',
+		mobileStacking: true,
+		columns: [[item('a')], [item('b')]],
+		columnWidths: [15, 85],
+	});
+
+	it('grows the column lists to five and resets custom widths', () => {
+		const next = withColumnCount(twoColumns(), 5);
+		expect(next.columnCount).toBe(5);
+		expect(next.columns.map((column) => column.map((i) => i.id))).toEqual([
+			['a'],
+			['b'],
+			[],
+			[],
+			[],
+		]);
+		expect(next.columnWidths).toBeUndefined();
+		expect(getColumnWidths(next.columnCount, next.ratio, next.columnWidths)).toEqual(
+			Array(5).fill('20%')
+		);
+	});
+
+	it('moves the items of removed columns into the last remaining column', () => {
+		const five = withColumnCount(twoColumns(), 5);
+		five.columns[4]!.push(item('e'));
+		const next = withColumnCount(five, 1);
+		expect(next.columns.map((column) => column.map((i) => i.id))).toEqual([['a', 'b', 'e']]);
+	});
+
+	it('does not change the content it was given', () => {
+		const content = twoColumns();
+		withColumnCount(content, 3);
+		expect(content.columns).toHaveLength(2);
+		expect(content.columnWidths).toEqual([15, 85]);
+	});
+
+	it('a column count write reshapes the columns', () => {
+		const next = updateColumnsContent(twoColumns(), 'columnCount', 3);
+		expect(next.columns).toHaveLength(3);
+		expect(next.columnWidths).toBeUndefined();
+	});
+
+	it('re-selecting the current count keeps custom widths', () => {
+		const next = updateColumnsContent(twoColumns(), 'columnCount', 2);
+		expect(next.columnWidths).toEqual([15, 85]);
+		expect(next.columns).toHaveLength(2);
+	});
+
+	it('picking a ratio preset replaces custom widths', () => {
+		const next = updateColumnsContent(twoColumns(), 'ratio', 'left-wide');
+		expect(next.ratio).toBe('left-wide');
+		expect(next.columnWidths).toBeUndefined();
+		expect(getColumnWidths(next.columnCount, next.ratio, next.columnWidths)).toEqual([
+			'67%',
+			'33%',
+		]);
+	});
+
+	it('other writes keep custom widths', () => {
+		const next = updateColumnsContent(twoColumns(), 'columnGap', 12);
+		expect(next.columnGap).toBe(12);
+		expect(next.columnWidths).toEqual([15, 85]);
+		expect(updateColumnsContent(twoColumns(), 'columnWidths', [40, 60]).columnWidths).toEqual([
+			40, 60,
+		]);
 	});
 });

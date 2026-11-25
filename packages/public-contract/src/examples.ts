@@ -8,6 +8,8 @@
  * shows up as a failure rather than as an untested omission.
  */
 
+import { DOMAIN_AND_LIMIT_EXAMPLES } from './domainAndLimitExamples';
+import { RENDER_EXAMPLES } from './renderExamples';
 import type { PublicOperationId } from './operations';
 import type {
 	AddContactToTopicRequest,
@@ -15,7 +17,16 @@ import type {
 	AddToTopicResponse,
 	ApiResponse,
 	Contact,
+	CreateTransactionalEmailRequest,
 	DeliveryStatus,
+	PutTransactionalEmailRequest,
+	SavedBlock,
+	SavedBlockInput,
+	SavedBlockSummary,
+	SavedBlockWriteResult,
+	TransactionalEmail,
+	TransactionalEmailSummary,
+	TransactionalEmailWriteResult,
 	CreateContactRequest,
 	DeleteContactResponse,
 	HealthStatus,
@@ -25,8 +36,6 @@ import type {
 	SendEventResponse,
 	SendTransactionalRequest,
 	SendTransactionalResponse,
-	SendingDomainSetup,
-	SendLimits,
 	Topic,
 	TransactionalSendStatus,
 	UpdateContactRequest,
@@ -40,6 +49,111 @@ const CONTACT: Contact = {
 	source: 'api',
 	createdAt: '2026-01-15T09:30:00.000Z',
 	updatedAt: '2026-01-16T10:00:00.000Z',
+};
+
+const ORDER_EMAIL: TransactionalEmail = {
+	id: 'k57t3mpl4te0000000000000000000',
+	slug: 'order-confirmation',
+	name: 'Order confirmation',
+	status: 'published',
+	subject: 'Your order {{orderNumber}}',
+	defaultLanguage: 'en',
+	languages: ['en', 'de'],
+	revision: 4,
+	publishedAt: '2026-11-02T09:00:00.000Z',
+	createdAt: '2026-10-30T14:00:00.000Z',
+	updatedAt: '2026-11-02T09:00:00.000Z',
+	blocks: [
+		{
+			id: 'b-heading',
+			type: 'text',
+			content: { html: '<h1>Thanks for your order</h1>' },
+		},
+		{
+			id: 'b-button',
+			type: 'button',
+			content: { text: 'Track your order', url: 'https://shop.example.com/orders/{{orderNumber}}' },
+		},
+	],
+	translations: {
+		de: {
+			subject: 'Deine Bestellung {{orderNumber}}',
+			blocks: {
+				'b-heading': { html: '<h1>Danke für deine Bestellung</h1>' },
+				'b-button': { buttonText: 'Bestellung verfolgen' },
+			},
+		},
+	},
+	dataVariablesSchema: { orderNumber: 'string', total: 'number' },
+	dataVariableExamples: { orderNumber: 'A-1001', total: 42.5 },
+	showUnsubscribe: false,
+};
+
+const {
+	id: _id,
+	status: _status,
+	revision: _revision,
+	publishedAt: _publishedAt,
+	createdAt: _createdAt,
+	updatedAt: _updatedAt,
+	languages: _languages,
+	...ORDER_EMAIL_INPUT
+} = {
+	...ORDER_EMAIL,
+	dataVariablesSchema: { orderNumber: 'string', total: 'number' } as const,
+};
+
+const ORDER_EMAIL_SUMMARY: TransactionalEmailSummary = {
+	id: ORDER_EMAIL.id,
+	slug: ORDER_EMAIL.slug,
+	name: ORDER_EMAIL.name,
+	status: ORDER_EMAIL.status,
+	subject: ORDER_EMAIL.subject,
+	defaultLanguage: ORDER_EMAIL.defaultLanguage,
+	languages: ORDER_EMAIL.languages,
+	revision: ORDER_EMAIL.revision,
+	publishedAt: ORDER_EMAIL.publishedAt,
+	createdAt: ORDER_EMAIL.createdAt,
+	updatedAt: ORDER_EMAIL.updatedAt,
+};
+
+const NO_UNSUBSCRIBE_NOTE = {
+	severity: 'info',
+	code: 'COMPLIANCE_NO_UNSUBSCRIBE',
+	message:
+		'No unsubscribe link detected — CAN-SPAM/GDPR requires a clear opt-out mechanism. Gmail/Yahoo require List-Unsubscribe headers for bulk senders (header configuration is outside renderer scope).',
+	blockId: null,
+	blockType: null,
+} as const;
+
+const FOOTER_BLOCK: SavedBlock = {
+	id: 'k57bl0ck000000000000000000000',
+	name: 'Footer',
+	description: 'Address and support link',
+	createdAt: '2026-09-01T10:00:00.000Z',
+	updatedAt: '2026-11-01T10:00:00.000Z',
+	blocks: [
+		{
+			id: 'b-footer',
+			type: 'text',
+			content: { html: '<p>Owlat Shop · <a href="https://shop.example.com/help">Help</a></p>' },
+		},
+	],
+};
+
+const {
+	id: _blockId,
+	createdAt: _blockCreatedAt,
+	updatedAt: _blockUpdatedAt,
+	...FOOTER_BLOCK_INPUT
+} = FOOTER_BLOCK;
+
+const FOOTER_BLOCK_SUMMARY: SavedBlockSummary = {
+	id: FOOTER_BLOCK.id,
+	name: FOOTER_BLOCK.name,
+	description: FOOTER_BLOCK.description,
+	createdAt: FOOTER_BLOCK.createdAt,
+	updatedAt: FOOTER_BLOCK.updatedAt,
 };
 
 export interface OperationExample {
@@ -174,6 +288,65 @@ export const OPERATION_EXAMPLES = {
 			},
 		} satisfies ApiResponse<TransactionalSendStatus>,
 	},
+	listTransactionalEmails: {
+		response: {
+			data: [ORDER_EMAIL_SUMMARY],
+			pagination: { limit: 25, cursor: null, isDone: true },
+		} satisfies CursorPaginatedResponse<TransactionalEmailSummary>,
+	},
+	createTransactionalEmail: {
+		request: {
+			...ORDER_EMAIL_INPUT,
+			slug: ORDER_EMAIL.slug,
+		} satisfies CreateTransactionalEmailRequest,
+		response: {
+			data: {
+				email: { ...ORDER_EMAIL, status: 'draft', publishedAt: null, revision: 1 },
+				issues: [NO_UNSUBSCRIBE_NOTE],
+			},
+		} satisfies ApiResponse<TransactionalEmailWriteResult>,
+	},
+	getTransactionalEmail: {
+		response: { data: ORDER_EMAIL } satisfies ApiResponse<TransactionalEmail>,
+	},
+	putTransactionalEmail: {
+		request: ORDER_EMAIL_INPUT satisfies PutTransactionalEmailRequest,
+		response: {
+			data: {
+				email: { ...ORDER_EMAIL, revision: 5, updatedAt: '2026-11-03T08:00:00.000Z' },
+				issues: [NO_UNSUBSCRIBE_NOTE],
+			},
+		} satisfies ApiResponse<TransactionalEmailWriteResult>,
+	},
+	publishTransactionalEmail: {
+		response: { data: ORDER_EMAIL } satisfies ApiResponse<TransactionalEmail>,
+	},
+	unpublishTransactionalEmail: {
+		response: {
+			data: { ...ORDER_EMAIL, status: 'draft', publishedAt: null },
+		} satisfies ApiResponse<TransactionalEmail>,
+	},
+	listSavedBlocks: {
+		response: {
+			data: [FOOTER_BLOCK_SUMMARY],
+			pagination: { limit: 25, cursor: null, isDone: true },
+		} satisfies CursorPaginatedResponse<SavedBlockSummary>,
+	},
+	createSavedBlock: {
+		request: FOOTER_BLOCK_INPUT satisfies SavedBlockInput,
+		response: {
+			data: { block: FOOTER_BLOCK, issues: [] },
+		} satisfies ApiResponse<SavedBlockWriteResult>,
+	},
+	getSavedBlock: {
+		response: { data: FOOTER_BLOCK } satisfies ApiResponse<SavedBlock>,
+	},
+	updateSavedBlock: {
+		request: FOOTER_BLOCK_INPUT satisfies SavedBlockInput,
+		response: {
+			data: { block: FOOTER_BLOCK, issues: [] },
+		} satisfies ApiResponse<SavedBlockWriteResult>,
+	},
 	listTopics: {
 		response: {
 			data: [
@@ -248,59 +421,6 @@ export const OPERATION_EXAMPLES = {
 			},
 		} satisfies ApiResponse<DeliveryStatus>,
 	},
-	listDomains: {
-		response: {
-			data: [
-				{
-					id: 'k57d0main0000000000000000000000',
-					domain: 'news.example.com',
-					status: 'failed',
-					lastCheckedAt: '2026-11-21T07:30:00.000Z',
-					records: [
-						{
-							purpose: 'dkim',
-							type: 'CNAME',
-							host: 's1._domainkey.news.example.com',
-							value: 's1.dkim.owlat.example',
-							priority: null,
-							state: 'wrong',
-							foundValue: 'old.dkim.example.net',
-						},
-						{
-							purpose: 'dmarc',
-							type: 'TXT',
-							host: '_dmarc.news.example.com',
-							value: 'v=DMARC1; p=none',
-							priority: null,
-							state: 'missing',
-							foundValue: null,
-						},
-						{
-							purpose: 'mail_from',
-							type: 'MX',
-							host: 'bounce.news.example.com',
-							value: 'feedback.owlat.example',
-							priority: 10,
-							state: 'found',
-							foundValue: null,
-						},
-					],
-				},
-			],
-		} satisfies ApiResponse<SendingDomainSetup[]>,
-	},
-	getLimits: {
-		response: {
-			data: {
-				dailySends: {
-					isEnabled: true,
-					limit: 50_000,
-					used: 1_204,
-					remaining: 48_796,
-					resetsAt: '2026-11-24T00:00:00.000Z',
-				},
-				recipientSends: { isEnabled: true, limit: 5, windowSeconds: 3600 },
-			},
-		} satisfies ApiResponse<SendLimits>,
-	},
+	...DOMAIN_AND_LIMIT_EXAMPLES,
+	...RENDER_EXAMPLES,
 } satisfies Record<PublicOperationId, OperationExample>;

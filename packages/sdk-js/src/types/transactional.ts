@@ -3,14 +3,16 @@ import type { TransactionalSendStatusValue } from '@owlat/public-contract';
 export type {
 	SendTransactionalRequest as SendTransactionalParams,
 	SendTransactionalResponse,
+	SendTransactionalDryRun,
+	SendRefusal,
 	TransactionalAttachment,
 	TransactionalSendStatus,
 	TransactionalSendStatusValue,
 } from '@owlat/public-contract';
 
 /**
- * Filters and page of `owlat.transactional.list()`. Filter by `email` or by
- * `status`, not both. The window is when the sends were queued: `until`
+ * Filters and page of `owlat.transactional.list()`. Filter by `email`, by
+ * `status`, or by both. The window is when the sends were queued: `until`
  * defaults to now and `since` to 30 days before it, and it can be at most 30
  * days long.
  */

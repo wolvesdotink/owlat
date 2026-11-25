@@ -8,12 +8,8 @@
 
 import { z } from 'zod';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
-import {
-	anyNonemptyReference,
-	jsonPrimitiveRecordSchema,
-	requestBody,
-	requiredString,
-} from './common';
+import { MAX_REPEAT_ITEMS } from '@owlat/shared/sendRegions';
+import { anyNonemptyReference, jsonPrimitiveSchema, requestBody, requiredString } from './common';
 import { TRANSACTIONAL_SEND_STATUSES } from './types';
 
 /**
@@ -71,6 +67,48 @@ export const transactionalAttachmentSchema = z
 	})
 	.meta({ oneOf: [{ required: ['content'] }, { required: ['url'] }] });
 
+const DATA_VARIABLES_SHAPE =
+	'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them';
+
+/**
+ * The request's data variables. A list feeds a repeated Block: each entry is a
+ * primitive or a flat object of primitives, and the list is capped at the
+ * entries one repeated Block renders.
+ */
+export const transactionalDataVariablesSchema = z
+	.record(
+		z.string(),
+		z.union(
+			[
+				jsonPrimitiveSchema,
+				z
+					.array(
+						z.union([jsonPrimitiveSchema, z.record(z.string(), jsonPrimitiveSchema)], {
+							error: DATA_VARIABLES_SHAPE,
+						}),
+						{ error: DATA_VARIABLES_SHAPE }
+					)
+					.meta({ maxItems: MAX_REPEAT_ITEMS }),
+			],
+			{ error: DATA_VARIABLES_SHAPE }
+		),
+		{ error: DATA_VARIABLES_SHAPE }
+	)
+	.check((ctx) => {
+		// Checked here rather than with `.max()` on the list: a failed branch of
+		// the union reports only the union's message, which would hide the limit.
+		for (const [name, value] of Object.entries(ctx.value)) {
+			if (Array.isArray(value) && value.length > MAX_REPEAT_ITEMS) {
+				ctx.issues.push({
+					code: 'custom',
+					input: value,
+					path: [name],
+					message: `dataVariables.${name} can hold at most ${MAX_REPEAT_ITEMS} entries`,
+				});
+			}
+		}
+	});
+
 /**
  * `transactionalId` and `slug` may each be `null` or empty when the other one
  * names the template; the ID wins when both do.
@@ -79,9 +117,7 @@ export const sendTransactionalRequestSchema = requestBody({
 	email: requiredString('email is required', 'email must be a string'),
 	transactionalId: z.string({ error: 'transactionalId must be a string' }).nullish(),
 	slug: z.string({ error: 'slug must be a string' }).nullish(),
-	dataVariables: jsonPrimitiveRecordSchema(
-		'dataVariables must be an object of string, number, boolean or null values'
-	).optional(),
+	dataVariables: transactionalDataVariablesSchema.optional(),
 	language: z
 		.string({ error: 'language must be a string' })
 		.regex(LANGUAGE_PATTERN, {

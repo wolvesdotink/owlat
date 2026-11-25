@@ -495,8 +495,10 @@ sync_flag_mirror() {
 # container a rollback never recreates, so the answer outlives the restore.
 # Node's http client rather than fetch(), which gives up on a response that
 # takes more than five minutes to start (a restore waits for readiness). Prints
-# the answer's `description` (or `error`), then `snapshot-id: <id>` when the
-# answer names a snapshot; exits non-zero on a non-2xx answer.
+# the answer's `description` (or `error`; an update that succeeded carries
+# neither, only `rollout: "healthy"`), each of its `warnings`, then
+# `snapshot-id: <id>` when the answer names a snapshot; exits non-zero on a
+# non-2xx answer.
 # A body of `--stdin-field=<name>` sends `{"<name>": <stdin>}`: a compose
 # template is too large for an argument and the host may have no JSON encoder.
 UPDATER_REQUEST_JS='
@@ -520,8 +522,10 @@ const req = http.request(
 		res.on("data", (chunk) => (text += chunk));
 		res.on("end", () => {
 			let answer = {};
-			try { answer = JSON.parse(text); } catch {}
-			console.log(answer.description || answer.error || text);
+			try { answer = JSON.parse(text) || {}; } catch {}
+			const healthy = answer.rollout === "healthy" ? "The release is running and passed the readiness check." : "";
+			console.log(answer.description || answer.error || healthy || text);
+			for (const warning of Array.isArray(answer.warnings) ? answer.warnings : []) console.log("warning: " + warning);
 			if (answer.snapshot && answer.snapshot.id) console.log("snapshot-id: " + answer.snapshot.id);
 			process.exit(res.statusCode >= 200 && res.statusCode < 300 ? 0 : 1);
 		});
@@ -1179,7 +1183,7 @@ case "$cmd" in
 		# The web image has no curl, and the host may have no jq: the request goes
 		# through updater_request, from inside the updater container, which also
 		# holds the instance secret. It answers once the release is up or failed.
-		echo -e "${CYAN}${BOLD}[info]${RESET} Applying the release through the updater (this takes a few minutes)…"
+		echo -e "${CYAN}${BOLD}[info]${RESET} Applying the release through the updater (this takes a few minutes; 'owlat status' in another shell shows the containers it recreates)…"
 		upgrade_status=0
 		printf '%s' "$template" | updater_request POST /update --stdin-field=composeTemplate || upgrade_status=$?
 		if [[ "$upgrade_status" -ne 0 ]]; then

@@ -14,7 +14,10 @@ defineProps<{
 		v-if="sample === 'quickstart'"
 	><code><span class="c-kw">import</span> { Owlat } <span class="c-kw">from</span> <span class="c-str">'@owlat/sdk-js'</span>
 
-<span class="c-kw">const</span> owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>(<span class="c-str">'lm_live_...'</span>)
+<span class="c-kw">const</span> owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>({
+  <span class="c-prop">apiKey</span>:  <span class="c-str">'lm_live_...'</span>,
+  <span class="c-prop">baseUrl</span>: <span class="c-str">'https://rest.api.example.com'</span>
+})
 
 <span class="c-kw">await</span> owlat.transactional.<span class="c-fn">send</span>({
   <span class="c-prop">email</span>: <span class="c-str">'mira@acme.io'</span>,
@@ -27,7 +30,10 @@ defineProps<{
 		v-else-if="sample === 'sdk'"
 	><code><span class="c-kw">import</span> { Owlat } <span class="c-kw">from</span> <span class="c-str">'@owlat/sdk-js'</span>
 
-<span class="c-kw">const</span> owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>(<span class="c-str">'lm_live_...'</span>)
+<span class="c-kw">const</span> owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>({
+  <span class="c-prop">apiKey</span>:  <span class="c-str">'lm_live_...'</span>,
+  <span class="c-prop">baseUrl</span>: <span class="c-str">'https://rest.api.example.com'</span>
+})
 
 <span class="c-comment">// Send a transactional email</span>
 <span class="c-kw">await</span> owlat.transactional.<span class="c-fn">send</span>({
@@ -49,9 +55,14 @@ defineProps<{
 
 	<!-- Java -->
 	<pre v-else-if="sample === 'java'"><code><span class="c-kw">import</span> com.owlat.sdk.Owlat;
+<span class="c-kw">import</span> com.owlat.sdk.OwlatConfig;
 <span class="c-kw">import</span> com.owlat.sdk.model.transactional.*;
 
-Owlat owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>(<span class="c-str">"lm_live_..."</span>);
+Owlat owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>(
+    OwlatConfig.<span class="c-fn">builder</span>(<span class="c-str">"lm_live_..."</span>)
+        .<span class="c-fn">baseUrl</span>(<span class="c-str">"https://rest.api.example.com"</span>)
+        .<span class="c-fn">build</span>()
+);
 
 <span class="c-comment">// Send a transactional email</span>
 owlat.<span class="c-fn">transactional</span>().<span class="c-fn">send</span>(

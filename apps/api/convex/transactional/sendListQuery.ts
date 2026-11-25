@@ -124,12 +124,6 @@ export function readSendListQuery(
 			field: 'status',
 		};
 	}
-	// Each filter is one index range; both at once would have to read a
-	// recipient's sends and drop the other states.
-	if (email !== null && status !== null) {
-		return { ok: false, message: 'Filter by email or by status, not both', field: 'status' };
-	}
-
 	const since = readTimestamp(params, 'since');
 	if (isRefusal(since)) return since;
 	const until = readTimestamp(params, 'until');

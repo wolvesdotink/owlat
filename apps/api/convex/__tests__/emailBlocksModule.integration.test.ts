@@ -28,6 +28,7 @@ import type { Id } from '../_generated/dataModel';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { parseContentBlocks } from '../emailBlocks/consumers';
 import { mergeTranslationWithContent, parseTranslations } from '../lib/emailTranslations';
+import { itemTextKey } from '../emailTemplates/translationMerge';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 
 // Stub the workpool — the component isn't wired into convexTest and the
@@ -771,6 +772,155 @@ describe('Saved block module — propagation keeps linked copies translated', ()
 			'<p>Rechtliches</p>',
 			'<p>Hallo</p>',
 		]);
+	});
+
+	it('a linked list keeps the translation of each item when the saved block reorders them', async () => {
+		const t = convexTest(schema, modules);
+		const list = (id: string, items: string[]): Node => ({
+			id,
+			type: 'list',
+			content: { items, listType: 'bullet' },
+		});
+		const blockId = await t.run((ctx) =>
+			ctx.db.insert('emailBlocks', {
+				name: 'Footer',
+				content: savedContent([list('s-list', ['Hello', 'Bye'])]),
+				usageCount: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([linked(list('c-list', ['Hello', 'Bye']), blockId, 'g1')]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								'c-list': {
+									texts: { [itemTextKey('Hello')]: 'Hallo', [itemTextKey('Bye')]: 'Tschüss' },
+								},
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [list('s-list', ['Bye', 'New', 'Hello'])]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		const overlay = parseTranslations(row!.translations)['de']?.blocks ?? {};
+		const [merged] = JSON.parse(
+			mergeTranslationWithContent(JSON.stringify(parseContentBlocks(row!.content)), overlay)
+		) as Node[];
+		expect(merged!.content['items']).toEqual(['Tschüss', 'New', 'Hallo']);
+	});
+
+	it('a linked accordion keeps its translated section titles when its sections get linked-copy ids', async () => {
+		const t = convexTest(schema, modules);
+		const accordion = (id: string, sectionId: string, title: string): Node => ({
+			id,
+			type: 'accordion',
+			content: { sections: [{ id: sectionId, title, items: [] }] },
+		});
+		const blockId = await t.run((ctx) =>
+			ctx.db.insert('emailBlocks', {
+				name: 'Footer',
+				content: savedContent([accordion('s-acc', 's-sec', 'Shipping')]),
+				usageCount: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+		// The editor inserted the copy with fresh ids for the Block and its section.
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([
+						linked(accordion('c-acc', 'c-sec', 'Shipping'), blockId, 'g1'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: { 'c-acc': { sectionTitles: { 'c-sec': 'Versand' } } },
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [accordion('s-acc', 's-sec', 'Shipping and returns')]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		const overlay = parseTranslations(row!.translations)['de']?.blocks ?? {};
+		const [merged] = JSON.parse(
+			mergeTranslationWithContent(JSON.stringify(parseContentBlocks(row!.content)), overlay)
+		) as Node[];
+		expect((merged!.content['sections'] as { title: string }[])[0]!.title).toBe('Versand');
+	});
+
+	it('two older copies of a linked accordion that share a section id keep their own titles', async () => {
+		const t = convexTest(schema, modules);
+		const accordion = (id: string, title: string): Node => ({
+			id,
+			type: 'accordion',
+			content: { sections: [{ id: 's-sec', title, items: [] }] },
+		});
+		const blockId = await t.run((ctx) =>
+			ctx.db.insert('emailBlocks', {
+				name: 'Footer',
+				content: savedContent([accordion('s-acc', 'Shipping')]),
+				usageCount: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+		// Older propagations renewed only the root id, so both copies kept the
+		// saved block's section id.
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([
+						linked(accordion('block_1', 'Shipping'), blockId, 'g1'),
+						linked(accordion('block_2', 'Shipping'), blockId, 'g2'),
+					]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								block_1: { sectionTitles: { 's-sec': 'Versand' } },
+								block_2: { sectionTitles: { 's-sec': 'Lieferung' } },
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [accordion('s-acc', 'Shipping and returns')]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		const overlay = parseTranslations(row!.translations)['de']?.blocks ?? {};
+		const merged = JSON.parse(
+			mergeTranslationWithContent(JSON.stringify(parseContentBlocks(row!.content)), overlay)
+		) as Node[];
+		expect(
+			merged.map((node) => (node.content['sections'] as { title: string }[])[0]!.title)
+		).toEqual(['Versand', 'Lieferung']);
 	});
 
 	it('the same saved block linked twice keeps unique ids and a translation per copy', async () => {

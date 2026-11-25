@@ -178,7 +178,8 @@ const handleSave = async (): Promise<boolean> => {
 			overlayLanguages: Object.keys(translations.value),
 			updatePayload: {
 				subject: form.subject,
-				previewText: form.previewText || undefined,
+				// '' clears a stored preview text; leaving it out would keep it.
+				previewText: form.previewText,
 				defaultLanguage: form.defaultLanguage,
 				supportedLanguages: form.supportedLanguages,
 				translations: buildTranslationsJson(),

@@ -315,6 +315,51 @@ export const sanitizeEditorHtml = (html: string): string => {
 	return sanitizeHtmlLib(html, EDITOR_HTML_SANITIZE_CONFIG);
 };
 
+/**
+ * What a sanitizing policy keeps, as plain data: the allow-lists themselves,
+ * read from the config each sanitizer runs with. The block reference in the
+ * docs is generated from it, so the documented list cannot drift from the one
+ * that runs.
+ */
+export interface HtmlPolicySummary {
+	tags: readonly string[];
+	/** Attributes per tag; `*` holds the ones every tag keeps. */
+	attributes: Readonly<Record<string, readonly string[]>>;
+	/** URL schemes `href`, `src` and `srcset` may use, per tag where a tag differs. */
+	schemes: readonly string[];
+	schemesByTag: Readonly<Record<string, readonly string[]>>;
+	/** Each kept CSS property with the patterns (`/source/flags`) its value must match. */
+	styles: Readonly<Record<string, readonly string[]>>;
+}
+
+function summarizePolicy(config: IOptions): HtmlPolicySummary {
+	const attributes: Record<string, string[]> = {};
+	for (const [tag, names] of Object.entries(config.allowedAttributes || {})) {
+		attributes[tag] = names.map((name) => (typeof name === 'string' ? name : name.name));
+	}
+	const styles: Record<string, string[]> = {};
+	for (const [property, patterns] of Object.entries(config.allowedStyles?.['*'] || {})) {
+		styles[property] = patterns.map((pattern) => pattern.toString());
+	}
+	const schemesByTag: Record<string, string[]> = {};
+	for (const [tag, schemes] of Object.entries(config.allowedSchemesByTag || {})) {
+		if (Array.isArray(schemes)) schemesByTag[tag] = [...schemes];
+	}
+	return {
+		tags: [...(config.allowedTags || [])],
+		attributes,
+		schemes: Array.isArray(config.allowedSchemes) ? [...config.allowedSchemes] : [],
+		schemesByTag,
+		styles,
+	};
+}
+
+/** What `sanitizeEditorHtml` keeps in a text block's `html`. */
+export const TEXT_HTML_POLICY: HtmlPolicySummary = summarizePolicy(EDITOR_HTML_SANITIZE_CONFIG);
+
+/** What `sanitizeRawHtml` keeps in a raw HTML block. */
+export const RAW_HTML_POLICY: HtmlPolicySummary = summarizePolicy(RAW_HTML_SANITIZE_CONFIG);
+
 /** The JSON escape for one code unit, or undefined when it can stay as is. */
 const escapeJsonCodeUnit = (code: number): string | undefined => {
 	switch (code) {

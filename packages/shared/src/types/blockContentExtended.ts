@@ -53,7 +53,7 @@ export interface TableColumn {
 export type TableResponsiveMode = 'default' | 'stack' | 'scroll' | 'hide-columns';
 
 /**
- * Table block content - for data tables, invoices, pricing
+ * A data table, such as an invoice or a price list.
  */
 export interface TableBlockContent
 	extends
@@ -62,13 +62,19 @@ export interface TableBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** Header cell texts, one per column. */
 	headers: string[];
+	/** Body rows, each an array of cell texts in column order. */
 	rows: string[][];
 	headerBackgroundColor: string;
 	headerTextColor: string;
+	/** Color of the cell borders (CSS color). */
 	borderColor: string;
+	/** Alternate the background of body rows. */
 	striped: boolean;
+	/** Background of every other body row when `striped`. */
 	stripeColor: string;
+	/** Cell padding in px. */
 	cellPadding: number;
 	textAlign: 'left' | 'center' | 'right';
 	/** Per-column width and alignment definitions */
@@ -98,10 +104,11 @@ export interface TableBlockContent
 }
 
 /**
- * Raw HTML block content - escape hatch for power users
+ * HTML written by hand, sanitized when the email renders.
  */
 export interface RawHtmlBlockContent
 	extends ResponsiveVisibility, CssClassOption, ConditionalOption {
+	/** The HTML. Tags, attributes and styles outside the raw HTML policy are removed at render. */
 	html: string;
 	paddingTop?: number;
 	paddingRight?: number;
@@ -115,7 +122,7 @@ export interface RawHtmlBlockContent
 }
 
 /**
- * Video thumbnail block content - thumbnail with play button overlay
+ * A video thumbnail with a play button that links to the video.
  */
 export interface VideoBlockContent
 	extends
@@ -124,12 +131,17 @@ export interface VideoBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** Thumbnail image URL (https). */
 	thumbnailUrl: string;
+	/** Where a click leads, such as the video's page. */
 	videoUrl: string;
+	/** Alternative text of the thumbnail. */
 	alt: string;
+	/** Width in percent of the available width, 1 to 100. */
 	width: number;
 	align: 'left' | 'center' | 'right';
 	playButtonColor?: string;
+	/** Play button size in px. */
 	playButtonSize?: number;
 	paddingTop?: number;
 	paddingRight?: number;
@@ -148,17 +160,18 @@ export interface VideoBlockContent
 }
 
 /**
- * Accordion section item
+ * One section of an accordion: a title and the blocks it reveals.
  */
 export interface AccordionSection {
+	/** Unique within the email. */
 	id: string;
 	title: string;
+	/** The blocks shown when the section is open. */
 	items: ContainerItem[];
 }
 
 /**
- * Accordion block content - CSS-only expandable sections
- * Works in Apple Mail, iOS Mail (~60% of clients), falls back to all sections expanded.
+ * Sections that open and close. Clients without support, Gmail among them, show every section open.
  */
 export interface AccordionBlockContent
 	extends
@@ -201,7 +214,7 @@ export interface AccordionBlockContent
 }
 
 /**
- * Menu/navbar link item
+ * One link of a menu.
  */
 export interface MenuLink {
 	label: string;
@@ -209,7 +222,7 @@ export interface MenuLink {
 }
 
 /**
- * Menu/navbar block content - horizontal navigation links
+ * A row of navigation links.
  */
 export interface MenuBlockContent
 	extends
@@ -218,6 +231,7 @@ export interface MenuBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** The links, left to right. */
 	items: MenuLink[];
 	align: 'left' | 'center' | 'right';
 	/** Font size for menu links */
@@ -255,18 +269,20 @@ export interface MenuBlockContent
 }
 
 /**
- * Carousel image item
+ * One slide of a carousel.
  */
 export interface CarouselImage {
+	/** Image URL (https). */
 	src: string;
 	alt: string;
+	/** Where a click on the slide leads. */
 	linkUrl?: string;
+	/** Smaller image for the thumbnail strip. */
 	thumbnailSrc?: string;
 }
 
 /**
- * Carousel block content - CSS-only image slideshow
- * Interactive in Apple Mail, iOS (~40% of clients). Falls back to first/stacked images.
+ * An image slideshow. Clients without support, Gmail among them, show the first image.
  */
 export interface CarouselBlockContent
 	extends
@@ -275,6 +291,7 @@ export interface CarouselBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
+	/** The slides, in order. At least one. */
 	images: CarouselImage[];
 	/** Navigation dot size in px */
 	iconWidth?: number;
@@ -302,7 +319,7 @@ export interface CarouselBlockContent
 }
 
 /**
- * List block content - table-based list rendering for cross-client consistency
+ * A bulleted, numbered, checkmark or icon list.
  */
 export interface ListBlockContent
 	extends
@@ -344,7 +361,7 @@ export interface ListBlockContent
 }
 
 /**
- * Progress bar block content - table-based progress indicator
+ * A horizontal bar filled to a value.
  */
 export interface ProgressBarBlockContent
 	extends

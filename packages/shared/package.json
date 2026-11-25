@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/shared",
-	"version": "0.6.25",
+	"version": "0.6.26",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -65,6 +65,14 @@
 		"./threadBriefRules": {
 			"types": "./src/threadBriefRules.ts",
 			"import": "./src/threadBriefRules.ts"
+		},
+		"./sendRegions": {
+			"types": "./src/sendRegions.ts",
+			"import": "./src/sendRegions.ts"
+		},
+		"./dataVariableExamples": {
+			"types": "./src/dataVariableExamples.ts",
+			"import": "./src/dataVariableExamples.ts"
 		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
@@ -585,6 +593,10 @@
 		"./aiModelCatalog": {
 			"types": "./src/aiModelCatalog.ts",
 			"import": "./src/aiModelCatalog.ts"
+		},
+		"./aiBudget": {
+			"types": "./src/aiBudget.ts",
+			"import": "./src/aiBudget.ts"
 		},
 		"./aiRouting": {
 			"types": "./src/aiRouting.ts",

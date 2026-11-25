@@ -17,6 +17,8 @@ import { devStackPaths } from './state';
 const CONVEX_SELECTION_KEYS = [
 	'CONVEX_DEPLOYMENT',
 	'CONVEX_DEPLOY_KEY',
+	// The CLI's alias for CONVEX_DEPLOY_KEY.
+	'CONVEX_DEPLOYMENT_TOKEN',
 	'CONVEX_SELF_HOSTED_URL',
 	'CONVEX_SELF_HOSTED_ADMIN_KEY',
 ] as const;

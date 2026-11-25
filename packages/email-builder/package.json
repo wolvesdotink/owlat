@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/email-builder",
-	"version": "0.6.25",
+	"version": "0.6.26",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -32,6 +32,10 @@
 		"./plain-clone": {
 			"types": "./src/utils/plainClone.ts",
 			"import": "./src/utils/plainClone.ts"
+		},
+		"./variable-example-field": {
+			"types": "./src/components/dialogs/VariableExampleField.vue",
+			"import": "./src/components/dialogs/VariableExampleField.vue"
 		}
 	},
 	"scripts": {
@@ -50,6 +54,7 @@
 		"fast-json-patch": "^3.1.1"
 	},
 	"devDependencies": {
+		"@owlat/public-contract": "workspace:*",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"happy-dom": "catalog:",

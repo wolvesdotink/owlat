@@ -9,7 +9,10 @@ import { describe, expect, it } from 'vitest';
 import { API_QUICKSTART_ROUTES } from '../apiQuickstartRoutes';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V1_HTTP = join(HERE, '../../../../api/convex/publicApi/v1Http.ts');
-const OPERATIONS = join(HERE, '../../../../../packages/public-contract/src/operations.ts');
+/** The contract's operation table and the modules of operations it splices in. */
+const OPERATIONS = ['operations.ts', 'templateOperations.ts', 'renderOperations.ts'].map((file) =>
+	join(HERE, '../../../../../packages/public-contract/src', file)
+);
 
 /** A catalog's endpoint descriptions, read untyped: the full catalog type is huge. */
 function endpointDescriptions(locale: 'en' | 'de'): Record<string, string> {
@@ -39,7 +42,7 @@ function tableRoutes(): string[] {
 
 /** `METHOD /path` for every operation of the public contract, `{param}` as `:param`. */
 function contractRoutes(): string[] {
-	const source = readFileSync(OPERATIONS, 'utf8');
+	const source = OPERATIONS.map((file) => readFileSync(file, 'utf8')).join('\n');
 	return [...source.matchAll(/method: '([A-Z]+)',\s*path: '([^']+)'/g)]
 		.map(([, method, path]) => `${method} ${path!.replace(/\{(\w+)\}/g, ':$1')}`)
 		.sort();
@@ -50,10 +53,10 @@ describe('API quickstart routes', () => {
 		const table = API_QUICKSTART_ROUTES.flatMap(({ methods, path }) =>
 			methods.map((method) => `${method} ${path}`)
 		);
-		// The OpenAPI document serves the contract and is not an operation of it.
-		expect(table.filter((route) => route !== 'GET /api/v1/openapi.json').sort()).toEqual(
-			contractRoutes()
-		);
+		// The OpenAPI document and the block schema are served as they are and
+		// are not operations of the contract.
+		const served = new Set(['GET /api/v1/openapi.json', 'GET /api/v1/schemas/blocks.json']);
+		expect(table.filter((route) => !served.has(route)).sort()).toEqual(contractRoutes());
 	});
 
 	it('lists every public route the backend registers, and no other', () => {

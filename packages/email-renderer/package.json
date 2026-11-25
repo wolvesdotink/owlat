@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/email-renderer",
-	"version": "0.6.25",
+	"version": "0.6.26",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -28,6 +28,10 @@
 		"./registry-latch": {
 			"types": "./src/registryLatch.ts",
 			"import": "./src/registryLatch.ts"
+		},
+		"./preheader": {
+			"types": "./src/preheader.ts",
+			"import": "./src/preheader.ts"
 		},
 		"./sanitize": {
 			"types": "./src/sanitize.ts",

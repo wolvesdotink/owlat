@@ -18,6 +18,8 @@ const props = defineProps<{
 	label: string;
 	/** Id of the listbox, referenced by the trigger's `aria-controls`. */
 	listboxId: string;
+	/** Disables the menu and names the order the rows are in instead. */
+	disabledLabel?: string;
 }>();
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
@@ -33,6 +35,15 @@ const select = (value: string) => {
 	emit('update:modelValue', value);
 	isOpen.value = false;
 };
+
+// Disabled while open (a search starts): the listbox would offer a choice
+// that no longer applies.
+watch(
+	() => props.disabledLabel,
+	(label) => {
+		if (label) isOpen.value = false;
+	}
+);
 
 useClickOutsideSelector('[data-sort-dropdown]', () => {
 	isOpen.value = false;
@@ -84,13 +95,16 @@ watch(isOpen, async (open) => {
 			aria-haspopup="listbox"
 			:aria-expanded="isOpen"
 			:aria-controls="listboxId"
-			:aria-label="label"
+			:aria-label="disabledLabel ? `${label}: ${disabledLabel}` : label"
+			:disabled="!!disabledLabel"
 			@click="isOpen = !isOpen"
 		>
 			<template #iconLeft>
 				<ArrowDownUpIcon class="w-4 h-4" />
 			</template>
-			<span v-if="current" class="hidden sm:inline">{{ t(current.label) }}</span>
+			<!-- Shown at every width: it is the only place that says why the menu is off. -->
+			<span v-if="disabledLabel">{{ disabledLabel }}</span>
+			<span v-else-if="current" class="hidden sm:inline">{{ t(current.label) }}</span>
 			<template #iconRight>
 				<ChevronDownIcon class="w-4 h-4" />
 			</template>

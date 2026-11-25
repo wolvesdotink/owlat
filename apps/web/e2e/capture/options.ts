@@ -9,6 +9,7 @@ import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { APP_LOCALES, isAppLocale, type AppLocale } from '@owlat/shared/appLocales';
 import { composeProjectName, resolveDevStackConfig } from '../../../../scripts/dev-stack/config';
 
 export class CaptureUsageError extends Error {}
@@ -20,17 +21,74 @@ export interface Viewport {
 	readonly height: number;
 }
 
+/**
+ * Who the browser is: one of the accounts `bun run dev:seed` creates, or
+ * nobody (`--signed-out`).
+ */
+export const ACCOUNTS = ['owner', 'admin', 'member', 'signed-out'] as const;
+export type Account = (typeof ACCOUNTS)[number];
+
+export interface Credentials {
+	readonly email: string;
+	readonly password: string;
+}
+
+/** Mirrors the owner and the two teammates `scripts/dev-seed.ts` creates. */
+const SEEDED_ACCOUNTS: Readonly<Record<Exclude<Account, 'signed-out'>, Credentials>> = {
+	owner: { email: 'dev@example.com', password: 'devpassword12345' },
+	admin: { email: 'taylor@example.com', password: 'devpassword12345' },
+	member: { email: 'jordan@example.com', password: 'devpassword12345' },
+};
+
+/**
+ * The account a pair signs in as, or null for a signed-out pair.
+ * OWLAT_CAPTURE_EMAIL and OWLAT_CAPTURE_PASSWORD replace the owner, for a
+ * stack whose owner predates the seed; the teammates are always the seeded ones.
+ */
+export function captureCredentials(env: NodeJS.ProcessEnv, account: Account): Credentials | null {
+	if (account === 'signed-out') return null;
+	const seeded = SEEDED_ACCOUNTS[account];
+	if (account !== 'owner') return seeded;
+	return {
+		email: env['OWLAT_CAPTURE_EMAIL'] || seeded.email,
+		password: env['OWLAT_CAPTURE_PASSWORD'] || seeded.password,
+	};
+}
+
+/**
+ * One step a `--path` shot takes after the route loaded and before the shot,
+ * in command-line order. `target` is a Playwright selector: CSS, or
+ * `role=button[name="New campaign"]` to find a control by role and
+ * accessible name.
+ */
+export type CaptureStep =
+	| { readonly action: 'click'; readonly target: string }
+	| { readonly action: 'fill'; readonly target: string; readonly value: string }
+	| { readonly action: 'press'; readonly key: string }
+	| { readonly action: 'wait-for'; readonly target: string };
+
+/** A `--path` shot as the command line asked for it. */
+export interface PathRequest {
+	/** The app route, e.g. `/dashboard/files`. */
+	readonly path: string;
+	/** `--name`: the shot is `path-<name>` instead of a name made from the route. */
+	readonly name: string | undefined;
+	readonly steps: readonly CaptureStep[];
+}
+
 export interface CaptureRequest {
 	readonly label: string;
 	/** Surface names, in the order given. */
 	readonly surfaces: readonly string[];
-	/** Extra app routes to capture as they render, e.g. `/dashboard/files`. */
-	readonly paths: readonly string[];
+	/** Extra app routes to capture, each with the steps given after it. */
+	readonly paths: readonly PathRequest[];
 	readonly out: string | undefined;
 	readonly url: string | undefined;
 	readonly theme: Theme | undefined;
 	readonly viewport: Viewport | undefined;
 	readonly fullPage: boolean;
+	readonly locale: AppLocale | undefined;
+	readonly account: Account | undefined;
 	readonly force: boolean;
 	readonly list: boolean;
 	readonly help: boolean;
@@ -42,6 +100,98 @@ export interface CaptureRequest {
  */
 const LABEL = /^[a-z0-9]{1,24}$/;
 const VIEWPORT = /^(\d{3,4})x(\d{3,4})$/;
+const SHOT_NAME = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+/** The options that belong to the `--path` before them. */
+const PATH_OPTIONS = new Set(['name', 'click', 'fill', 'press', 'wait-for']);
+/**
+ * A Playwright selector engine name, at the start of the selector or of a
+ * `>>` part. The `=` after it is part of the selector, not the `--fill` split.
+ */
+const ENGINE_BEFORE =
+	/(?:^|>>\s*)(?:css|xpath|text|id|data-testid|data-test-id|data-test|role|nth|visible)$/;
+
+/**
+ * `--fill <selector>=<value>`, split at the first `=` outside brackets and
+ * quotes that does not follow an engine name, so
+ * `role=textbox[name="Search"]=owlat`, `#card >> role=textbox[name=Name]=owlat`
+ * and `input[name=q]=owlat` all work and the value may itself contain `=`.
+ */
+export function parseFill(raw: string): { target: string; value: string } {
+	let depth = 0;
+	let quote: string | null = null;
+	for (let index = 0; index < raw.length; index++) {
+		const char = raw[index]!;
+		if (quote) {
+			if (char === '\\') index++;
+			else if (char === quote) quote = null;
+		} else if (char === '"' || char === "'") quote = char;
+		else if (char === '[' || char === '(') depth++;
+		else if (char === ']' || char === ')') depth--;
+		else if (
+			char === '=' &&
+			depth === 0 &&
+			index > 0 &&
+			!ENGINE_BEFORE.test(raw.slice(0, index).trim())
+		) {
+			return { target: raw.slice(0, index), value: raw.slice(index + 1) };
+		}
+	}
+	throw new CaptureUsageError(`--fill must be <selector>=<value>, got ${JSON.stringify(raw)}.`);
+}
+
+function pathStep(option: string, raw: string): CaptureStep {
+	if (raw.trim() === '') throw new CaptureUsageError(`--${option} needs a value.`);
+	switch (option) {
+		case 'click':
+			return { action: 'click', target: raw };
+		case 'fill':
+			return { action: 'fill', ...parseFill(raw) };
+		case 'press':
+			return { action: 'press', key: raw };
+		default:
+			return { action: 'wait-for', target: raw };
+	}
+}
+
+/**
+ * The `--path` shots in command-line order, each with the `--name` and steps
+ * that follow it up to the next `--path`. parseArgs groups repeated options by
+ * name, so the order comes from its tokens.
+ */
+function readPaths(
+	tokens: ReadonlyArray<{ kind: string; name?: string; value?: string | undefined }>
+): PathRequest[] {
+	const paths: Array<{ path: string; name: string | undefined; steps: CaptureStep[] }> = [];
+	for (const token of tokens) {
+		if (token.kind !== 'option' || token.name === undefined) continue;
+		const value = token.value ?? '';
+		if (token.name === 'path') {
+			paths.push({ path: value, name: undefined, steps: [] });
+			continue;
+		}
+		if (!PATH_OPTIONS.has(token.name)) continue;
+		const current = paths.at(-1);
+		if (!current) {
+			throw new CaptureUsageError(
+				`--${token.name} belongs to a --path shot; put it after the --path it acts on.`
+			);
+		}
+		if (token.name === 'name') {
+			if (current.name !== undefined) {
+				throw new CaptureUsageError(`--path ${current.path} has two --name values.`);
+			}
+			if (!SHOT_NAME.test(value)) {
+				throw new CaptureUsageError(
+					`--name must be lowercase letters, digits and dashes, got "${value}".`
+				);
+			}
+			current.name = value;
+		} else {
+			current.steps.push(pathStep(token.name, value));
+		}
+	}
+	return paths;
+}
 
 export function parseCaptureArgs(argv: readonly string[]): CaptureRequest {
 	let parsed;
@@ -50,6 +200,7 @@ export function parseCaptureArgs(argv: readonly string[]): CaptureRequest {
 			args: [...argv],
 			allowPositionals: true,
 			strict: true,
+			tokens: true,
 			options: {
 				surface: { type: 'string', multiple: true },
 				path: { type: 'string', multiple: true },
@@ -58,6 +209,14 @@ export function parseCaptureArgs(argv: readonly string[]): CaptureRequest {
 				theme: { type: 'string' },
 				viewport: { type: 'string' },
 				'full-page': { type: 'boolean', default: false },
+				locale: { type: 'string' },
+				as: { type: 'string' },
+				'signed-out': { type: 'boolean', default: false },
+				name: { type: 'string', multiple: true },
+				click: { type: 'string', multiple: true },
+				fill: { type: 'string', multiple: true },
+				press: { type: 'string', multiple: true },
+				'wait-for': { type: 'string', multiple: true },
 				force: { type: 'boolean', default: false },
 				list: { type: 'boolean', default: false },
 				help: { type: 'boolean', short: 'h', default: false },
@@ -66,7 +225,7 @@ export function parseCaptureArgs(argv: readonly string[]): CaptureRequest {
 	} catch (error) {
 		throw new CaptureUsageError(error instanceof Error ? error.message : String(error));
 	}
-	const { values, positionals } = parsed;
+	const { values, positionals, tokens } = parsed;
 	const help = values.help === true;
 	const list = values.list === true;
 	if (positionals.length > 1) {
@@ -79,7 +238,8 @@ export function parseCaptureArgs(argv: readonly string[]): CaptureRequest {
 			.map((name) => name.trim())
 			.filter(Boolean)
 	);
-	const paths = values.path ?? [];
+	const paths = readPaths(tokens);
+	const account = parseAccount(values.as, values['signed-out'] === true);
 	if (!help && !list) {
 		if (!LABEL.test(label)) {
 			throw new CaptureUsageError(
@@ -99,6 +259,8 @@ export function parseCaptureArgs(argv: readonly string[]): CaptureRequest {
 		theme: parseTheme(values.theme),
 		viewport: parseViewport(values.viewport),
 		fullPage: values['full-page'] === true,
+		locale: parseLocale(values.locale),
+		account,
 		force: values.force === true,
 		list,
 		help,
@@ -109,6 +271,22 @@ function parseTheme(raw: string | undefined): Theme | undefined {
 	if (raw === undefined) return undefined;
 	if (raw === 'light' || raw === 'dark') return raw;
 	throw new CaptureUsageError(`--theme must be light or dark, got "${raw}".`);
+}
+
+function parseLocale(raw: string | undefined): AppLocale | undefined {
+	if (raw === undefined) return undefined;
+	if (isAppLocale(raw)) return raw;
+	throw new CaptureUsageError(`--locale must be one of ${APP_LOCALES.join(', ')}, got "${raw}".`);
+}
+
+function parseAccount(raw: string | undefined, signedOut: boolean): Account | undefined {
+	if (signedOut) {
+		if (raw !== undefined) throw new CaptureUsageError('--as and --signed-out exclude each other.');
+		return 'signed-out';
+	}
+	if (raw === undefined) return undefined;
+	if (raw === 'owner' || raw === 'admin' || raw === 'member') return raw;
+	throw new CaptureUsageError(`--as must be owner, admin or member, got "${raw}".`);
 }
 
 function parseViewport(raw: string | undefined): Viewport | undefined {
@@ -127,6 +305,8 @@ export interface PlannedShot {
 	readonly name: string;
 	/** Set for a `--path` shot; a surface shot names a registered surface instead. */
 	readonly path?: string;
+	/** A `--path` shot's steps before the screenshot. */
+	readonly steps?: readonly CaptureStep[];
 	readonly file: string;
 }
 
@@ -198,7 +378,10 @@ export function planShots(
 			`Unknown surface ${unknown.join(', ')}. Known: ${knownSurfaces.join(', ')}.`
 		);
 	}
-	const pathShots = request.paths.map((path) => ({ name: pathShotName(path), path }));
+	const pathShots = request.paths.map(({ path, name, steps }) => {
+		const derived = pathShotName(path);
+		return { name: name === undefined ? derived : `path-${name}`, path, steps };
+	});
 	const seen = new Set<string>();
 	for (const name of [...request.surfaces, ...pathShots.map((shot) => shot.name)]) {
 		if (seen.has(name)) {
@@ -308,94 +491,4 @@ export function resolveAppUrl(
 		);
 	}
 	return url.origin;
-}
-
-/**
- * The presentation every capture in one output directory shares. The first
- * run records it; later runs reuse it, so "before" and "after" have the same
- * viewport and theme and see the same clock (relative times such as "5m ago"
- * would otherwise differ between the two).
- */
-export interface CaptureManifest {
-	readonly version: 1;
-	/** ISO time the app's clock starts at in every run of the pair. */
-	readonly clock: string;
-	readonly theme: Theme;
-	readonly viewport: Viewport;
-	readonly fullPage: boolean;
-}
-
-export const MANIFEST_FILE = 'capture.json';
-export const DEFAULT_VIEWPORT: Viewport = { width: 1440, height: 900 };
-
-export function parseManifest(raw: string, file: string): CaptureManifest {
-	let value: unknown;
-	try {
-		value = JSON.parse(raw);
-	} catch {
-		throw new CaptureUsageError(`${file} is not valid JSON; delete it to start a new pair.`);
-	}
-	const manifest = value as Partial<CaptureManifest> | null;
-	const viewport = manifest?.viewport;
-	if (
-		manifest?.version !== 1 ||
-		typeof manifest.clock !== 'string' ||
-		Number.isNaN(Date.parse(manifest.clock)) ||
-		(manifest.theme !== 'light' && manifest.theme !== 'dark') ||
-		typeof viewport?.width !== 'number' ||
-		typeof viewport.height !== 'number' ||
-		typeof manifest.fullPage !== 'boolean'
-	) {
-		throw new CaptureUsageError(
-			`${file} is not a capture manifest; delete it to start a new pair.`
-		);
-	}
-	return manifest as CaptureManifest;
-}
-
-/**
- * The manifest for this run: the recorded one, or a new one from the flags.
- * A flag that disagrees with the recorded pair is refused instead of silently
- * producing a capture that does not match its partner.
- */
-export function settleManifest(
-	recorded: CaptureManifest | null,
-	request: Pick<CaptureRequest, 'theme' | 'viewport' | 'fullPage'>,
-	now: Date
-): { manifest: CaptureManifest; created: boolean } {
-	if (!recorded) {
-		return {
-			manifest: {
-				version: 1,
-				clock: now.toISOString(),
-				theme: request.theme ?? 'light',
-				viewport: request.viewport ?? DEFAULT_VIEWPORT,
-				fullPage: request.fullPage,
-			},
-			created: true,
-		};
-	}
-	const conflicts: string[] = [];
-	if (request.theme !== undefined && request.theme !== recorded.theme) {
-		conflicts.push(`--theme ${request.theme} (recorded: ${recorded.theme})`);
-	}
-	const viewport = request.viewport;
-	if (
-		viewport !== undefined &&
-		(viewport.width !== recorded.viewport.width || viewport.height !== recorded.viewport.height)
-	) {
-		conflicts.push(
-			`--viewport ${viewport.width}x${viewport.height} (recorded: ${recorded.viewport.width}x${recorded.viewport.height})`
-		);
-	}
-	if (request.fullPage && !recorded.fullPage) {
-		conflicts.push('--full-page (recorded: viewport only)');
-	}
-	if (conflicts.length > 0) {
-		throw new CaptureUsageError(
-			`This directory already holds a pair captured differently: ${conflicts.join(', ')}. ` +
-				'Drop the flag, or use a new --out for a new pair.'
-		);
-	}
-	return { manifest: recorded, created: false };
 }

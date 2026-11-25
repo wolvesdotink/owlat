@@ -12,7 +12,8 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import { errorResponse, invalidInputResponse } from '../auth/apiResponses';
-import type { JsonPrimitiveValue } from '../lib/inputGuards';
+import type { Infer } from 'convex/values';
+import type { dataVariablesRecord } from '../lib/convexValidators';
 import { validateOutboundUrl } from '../lib/outboundUrlValidation';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { AttachmentRef, DispatchOutcome } from './dispatch';
@@ -166,7 +167,7 @@ export async function uploadAttachments(
 interface DispatchRequest {
 	templateLookup: { kind: 'id'; id: string } | { kind: 'slug'; slug: string };
 	email: string;
-	dataVariables?: Record<string, JsonPrimitiveValue>;
+	dataVariables?: Infer<typeof dataVariablesRecord>;
 	language?: string;
 	idempotency?: IdempotencyArg;
 	apiKeyId?: Id<'apiKeys'>;

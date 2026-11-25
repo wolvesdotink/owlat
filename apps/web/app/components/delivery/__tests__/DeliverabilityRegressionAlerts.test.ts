@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type {
 	DeliverabilityChecklistGroup,
 	DeliverabilityRegressionAlert,
+	DeliverabilitySendingHold,
 } from '~/utils/deliverabilityCenter';
 import DeliverabilityRegressionAlerts from '../DeliverabilityRegressionAlerts.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
@@ -159,5 +160,50 @@ describe('DeliverabilityRegressionAlerts', () => {
 		expect(wrapper.get('[data-testid="alert-channels"]').text()).toBe(
 			'Email · In app to 2 people · Webhook to 1 endpoint · Webhook still sending to 1 endpoint · Webhook failed on 1 endpoint'
 		);
+	});
+
+	describe('a sending hold', () => {
+		const hold: DeliverabilitySendingHold = {
+			alertId: 'sending_hold:1000',
+			holdStatus: 'banned',
+			previousHoldStatus: 'suspended',
+			reason: 'Phishing reported',
+			observedAt: Date.UTC(2026, 6, 26, 11),
+			channels: {
+				email: { state: 'sent', isOnAffectedTransport: true },
+				inAppCount: 2,
+				push: { delivered: 0, failed: 0, held: 0 },
+				webhook: { delivered: 1, failed: 0, pending: 0 },
+			},
+		};
+
+		function mountHold(alerts: DeliverabilityRegressionAlert[] = []) {
+			return mount(DeliverabilityRegressionAlerts, {
+				props: { alerts, sendingHold: hold, groups },
+				global: { plugins: [createTestI18n()], stubs },
+			});
+		}
+
+		it('lists the hold with what each channel did, and nothing to acknowledge', () => {
+			const wrapper = mountHold();
+			expectFullyLocalized(wrapper);
+			expect(wrapper.text()).toContain('Sending is stopped');
+			const article = wrapper.get('[data-testid="sending-hold-alert"]');
+			expect(article.text()).toContain('Sending banned');
+			expect(article.text()).toContain('It was suspended before.');
+			expect(article.text()).toContain('Phishing reported');
+			expect(article.get('[data-testid="alert-channels"]').text()).toBe(
+				'Email, handed to the affected server · In app to 2 people · Webhook to 1 endpoint'
+			);
+			expect(article.find('[data-testid="alert-email-may-not-arrive"]').exists()).toBe(true);
+			expect(wrapper.text()).not.toContain('Acknowledge');
+			expect(wrapper.text()).not.toContain('Resolve alert');
+		});
+
+		it('keeps the regression heading when checks regressed too', () => {
+			const wrapper = mountHold([alert]);
+			expect(wrapper.text()).toContain('Deliverability regression detected');
+			expect(wrapper.findAll('article')).toHaveLength(2);
+		});
 	});
 });

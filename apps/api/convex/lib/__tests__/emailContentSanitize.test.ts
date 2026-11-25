@@ -174,6 +174,58 @@ describe('sanitizeStoredBlocksJson numeric style fields', () => {
 	});
 });
 
+describe('sanitizeStoredBlocksJson column widths', () => {
+	const columns = (content: Record<string, unknown>) =>
+		JSON.stringify([
+			{
+				id: 'c',
+				type: 'columns',
+				content: { ratio: 'equal', mobileStacking: true, ...content },
+			},
+		]);
+
+	it('keeps valid custom widths, five columns included', () => {
+		const two = columns({ columnCount: 2, columns: [[], []], columnWidths: [15, 85] });
+		expect(sanitizeStoredBlocksJson(two)).toBe(two);
+		const five = columns({
+			columnCount: 5,
+			columns: [[], [], [], [], []],
+			columnWidths: [10, 10, 10, 10, 60],
+		});
+		expect(sanitizeStoredBlocksJson(five)).toBe(five);
+	});
+
+	it('removes custom widths the renderer would ignore', () => {
+		for (const columnWidths of [[40, 50], [5, 95], [50, 50, 0], [33.5, 66.5], '40,60']) {
+			const out = JSON.parse(
+				sanitizeStoredBlocksJson(columns({ columnCount: 2, columns: [[], []], columnWidths }))
+			);
+			expect(out[0].content).not.toHaveProperty('columnWidths');
+			expect(out[0].content.ratio).toBe('equal');
+		}
+	});
+
+	it('removes custom widths in a nested columns block', () => {
+		const json = JSON.stringify([
+			{
+				id: 'k',
+				type: 'container',
+				content: {
+					items: [
+						{
+							id: 'c',
+							type: 'columns',
+							content: { columnCount: 2, columns: [[], []], columnWidths: [60, 60] },
+						},
+					],
+				},
+			},
+		]);
+		const out = JSON.parse(sanitizeStoredBlocksJson(json));
+		expect(out[0].content.items[0].content).not.toHaveProperty('columnWidths');
+	});
+});
+
 describe('translation overlays', () => {
 	it('cleans overlay html in a translations blob and keeps the rest', () => {
 		const blob = JSON.stringify({

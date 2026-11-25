@@ -67,14 +67,15 @@ describe('importBatch: the outcome', () => {
 			// One within-batch duplicate, one existing contact under `skip`.
 			skipped: 2,
 			failed: 1,
+			// The existing contact's row is skipped whole, so its property is never read.
 			errors: [
 				'Invalid email: not-an-email',
-				"Property 'unknown_key' is not registered; values dropped for 2 row(s).",
+				"Property 'unknown_key' is not registered; values dropped for 1 row(s).",
 			],
 			addedToTopics: 0,
 			propertiesSet: 1,
 			propertiesAutoRegistered: 0,
-			propertiesSkipped: 2,
+			propertiesSkipped: 1,
 			activitiesRecorded: 1,
 			keptUnsubscribed: 0,
 		});

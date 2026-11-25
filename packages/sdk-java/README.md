@@ -45,7 +45,24 @@ Contact contact = owlat.contacts().create(
 
 `baseUrl` is your instance's API URL: the web app shows it as **Your API base URL** under **Settings → API → API quickstart**. It is the `NUXT_PUBLIC_CONVEX_SITE_URL` your operator set, `https://rest.api.<your-domain>` when the setup wizard derived it from your domain.
 
-> **No `baseUrl`:** the client sends requests and your API key to `https://api.owlat.app`, which is not your instance, and logs a warning through `java.util.logging`. `new Owlat(String apiKey)` does the same and is deprecated. The base URL will become required.
+The base URL is required. `OwlatConfig.Builder.build()` throws an `IllegalArgumentException` that says where to find it when the base URL is missing, blank, or not an absolute `http` or `https` URL. A path prefix is kept (`https://example.com/owlat`), a trailing slash is dropped, and a query string or fragment is refused.
+
+### Upgrading from a key-only client
+
+`new Owlat(String apiKey)` and a config built without `baseUrl` sent requests and your API key to `https://api.owlat.app`, which is not your instance. The constructor is gone, and such a config no longer builds: set your instance's API URL.
+
+```java
+// Before
+Owlat owlat = new Owlat("lm_live_xxxxxxxx");
+
+// After
+Owlat owlat = new Owlat(
+    OwlatConfig.builder("lm_live_xxxxxxxx")
+        // Your API base URL, from Settings → API → API quickstart
+        .baseUrl("https://rest.api.example.com")
+        .build()
+);
+```
 
 ## Configuration
 
@@ -177,6 +194,15 @@ send.getErrorCode(); // e.g. "MTA_UNREACHABLE" once it failed
 // within at most the last 30 days.
 CursorPaginatedResponse<TransactionalSendStatus> sends = owlat.transactional().list(
     ListTransactionalSendsParams.builder().email("user@example.com").build());
+
+// A dry run (POST /api/v1/transactional/dry-run): what the send would deliver
+// and whether it would be accepted, without sending, storing or counting
+// anything. A server older than the dry run answers 404 and sends nothing; the
+// SDK throws a NotFoundException saying the instance does not support dry runs.
+SendTransactionalDryRun preview = owlat.transactional().dryRun(
+    SendTransactionalParams.builder("user@example.com").slug("welcome-email").build());
+preview.isWouldQueue();
+preview.getHtml();
 ```
 
 ### Events
@@ -232,6 +258,36 @@ for (SendingDomainSetup domain : owlat.domains().list()) {
     domain.getStatus();  // "verified", "pending", ...
     domain.getRecords(); // each with getHost(), getValue() and getState(): found, wrong, missing or unchecked
 }
+```
+
+After publishing records, ask for a fresh check and poll the list until it has
+run. This needs the `domains:verify` scope; one check per domain per minute.
+
+```java
+DomainCheckRequest check = owlat.domains().verify("news.example.com");
+String requestedAt = check.getRequestedAt();
+```
+
+### Templates
+
+Transactional emails and saved blocks: read, write and publish. Reads need the
+`templates:read` scope, writes `templates:write`. A read is the export, and
+`toInput()` gives what `upsert` takes.
+
+```java
+TransactionalEmail email = owlat.transactionalEmails().get("order-confirmation");
+owlat.transactionalEmails().upsert(email.getSlug(), email.toInput(),
+        TransactionalEmailWriteOptions.ifRevision(email.getRevision()).whilePublished());
+owlat.transactionalEmails().publish("order-confirmation");
+CursorPaginatedResponse<SavedBlockSummary> savedBlocks = owlat.savedBlocks().list();
+
+// Render blocks as the instance would store them, without storing anything.
+RenderResult rendered = owlat.render().email(RenderParams.builder(email.getBlocks())
+        .subject(email.getSubject())
+        .dataVariables(Map.of("orderNumber", "A-1001"))
+        .build());
+rendered.getHtml();
+rendered.getIssues();
 ```
 
 ## Error Handling

@@ -5,8 +5,11 @@ import com.owlat.sdk.resource.ContactsResource;
 import com.owlat.sdk.resource.DomainsResource;
 import com.owlat.sdk.resource.EventsResource;
 import com.owlat.sdk.resource.LimitsResource;
+import com.owlat.sdk.resource.RenderResource;
+import com.owlat.sdk.resource.SavedBlocksResource;
 import com.owlat.sdk.resource.StatusResource;
 import com.owlat.sdk.resource.TopicsResource;
+import com.owlat.sdk.resource.TransactionalEmailsResource;
 import com.owlat.sdk.resource.TransactionalResource;
 
 public class Owlat {
@@ -18,20 +21,14 @@ public class Owlat {
     private final StatusResource status;
     private final DomainsResource domains;
     private final LimitsResource limits;
+    private final TransactionalEmailsResource transactionalEmails;
+    private final SavedBlocksResource savedBlocks;
+    private final RenderResource render;
 
     /**
-     * A client from an API key alone, which talks to the hosted address
-     * {@code https://api.owlat.app} instead of your instance.
-     *
-     * @deprecated Build an {@link OwlatConfig} with
-     *     {@link OwlatConfig.Builder#baseUrl(String)} set to your instance's API
-     *     URL. This constructor goes away when the base URL becomes required.
+     * A client for the instance {@code config} names. The config's builder
+     * refuses a missing or unusable base URL, so every client has one.
      */
-    @Deprecated
-    public Owlat(String apiKey) {
-        this(OwlatConfig.builder(apiKey).build());
-    }
-
     public Owlat(OwlatConfig config) {
         HttpClient httpClient = new HttpClient(
                 config.getApiKey(), config.getBaseUrl(), config.getTimeout(), config.getRetry());
@@ -42,6 +39,9 @@ public class Owlat {
         this.status = new StatusResource(httpClient);
         this.domains = new DomainsResource(httpClient);
         this.limits = new LimitsResource(httpClient);
+        this.transactionalEmails = new TransactionalEmailsResource(httpClient);
+        this.savedBlocks = new SavedBlocksResource(httpClient);
+        this.render = new RenderResource(httpClient);
     }
 
     public ContactsResource contacts() {
@@ -73,5 +73,20 @@ public class Owlat {
     /** The send limits that apply to this key, and what is left of them. */
     public LimitsResource limits() {
         return limits;
+    }
+
+    /** Read and write transactional emails, and publish them. */
+    public TransactionalEmailsResource transactionalEmails() {
+        return transactionalEmails;
+    }
+
+    /** Read and write saved blocks. */
+    public SavedBlocksResource savedBlocks() {
+        return savedBlocks;
+    }
+
+    /** Render block content without storing it, as this instance would. */
+    public RenderResource render() {
+        return render;
     }
 }

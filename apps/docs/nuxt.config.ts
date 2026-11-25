@@ -1,6 +1,8 @@
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import type { ModuleOptions } from 'nuxt-og-image';
+import { llmsTxtSections } from './scripts/llmsTxt';
 
 export default defineNuxtConfig({
 	extends: ['../../packages/ui'],
@@ -98,5 +100,23 @@ export default defineNuxtConfig({
 
 	vite: {
 		plugins: [tailwindcss() as PluginOption],
+	},
+
+	nitro: {
+		// The block content schema, published at /schemas/blocks.json (its
+		// `$id`) straight from the file the contract package generates.
+		publicAssets: [
+			{
+				dir: fileURLToPath(new URL('../../packages/public-contract/schemas', import.meta.url)),
+				baseURL: '/schemas',
+				maxAge: 300,
+			},
+		],
+	},
+
+	// nuxt-ai-ready (from @nuxtjs/seo) writes llms.txt; these notes and
+	// sections come before its index of every page.
+	aiReady: {
+		llmsTxt: llmsTxtSections(fileURLToPath(new URL('./content/en', import.meta.url))),
 	},
 });
