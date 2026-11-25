@@ -10876,6 +10876,7 @@
 							"contact": "Read, update, or delete a contact",
 							"contacts": "List or create contacts",
 							"domains": "Sending domains and the DNS records each needs",
+							"domainVerify": "Ask for a fresh DNS check of one sending domain",
 							"events": "Track custom events",
 							"health": "Health probe",
 							"limits": "This key's send limits and what is left",
@@ -10986,6 +10987,10 @@
 							"contactsWrite": {
 								"description": "Create, update, and delete contacts.",
 								"label": "Contacts — write"
+							},
+							"domainsVerify": {
+								"description": "Ask for a fresh DNS check of a sending domain, which can change its verification state.",
+								"label": "Domains — check"
 							},
 							"eventsWrite": {
 								"description": "Ingest events that can trigger automations.",

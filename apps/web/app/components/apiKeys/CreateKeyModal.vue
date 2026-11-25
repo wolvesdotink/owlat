@@ -68,6 +68,11 @@ const AVAILABLE_SCOPES = computed<
 		label: t('dashboard.admin.team.api.index.scopes.templatesWrite.label'),
 		description: t('dashboard.admin.team.api.index.scopes.templatesWrite.description'),
 	},
+	{
+		value: 'domains:verify',
+		label: t('dashboard.admin.team.api.index.scopes.domainsVerify.label'),
+		description: t('dashboard.admin.team.api.index.scopes.domainsVerify.description'),
+	},
 ]);
 </script>
 

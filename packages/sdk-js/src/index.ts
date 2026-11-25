@@ -36,7 +36,9 @@ export type {
 	TransactionalSendStatusValue,
 	// Limits
 	DailySendLimit,
+	GetLimitsParams,
 	RecipientSendLimit,
+	RecipientSendUsage,
 	SendLimits,
 	// Events
 	SendEventParams,
@@ -44,6 +46,7 @@ export type {
 	// Domains
 	DnsRecordPurpose,
 	DnsRecordState,
+	DomainCheckRequest,
 	DnsRecordType,
 	SendingDomainRecord,
 	SendingDomainSetup,

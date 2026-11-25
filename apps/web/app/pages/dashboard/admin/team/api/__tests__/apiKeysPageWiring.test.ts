@@ -159,7 +159,7 @@ describe('API keys page', () => {
 		expect(ops['Create API key']).not.toHaveBeenCalled();
 
 		const boxes = modal().findAll('input[type="checkbox"]');
-		expect(boxes).toHaveLength(9);
+		expect(boxes).toHaveLength(10);
 		await boxes[2]!.setValue(true);
 		await boxes[0]!.setValue(true);
 		await modal().get('form').trigger('submit');

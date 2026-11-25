@@ -3,6 +3,7 @@ package com.owlat.sdk.resource;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.owlat.sdk.internal.HttpClient;
 import com.owlat.sdk.model.ApiResponse;
+import com.owlat.sdk.model.limits.GetLimitsParams;
 import com.owlat.sdk.model.limits.SendLimits;
 
 public class LimitsResource extends BaseResource {
@@ -19,6 +20,22 @@ public class LimitsResource extends BaseResource {
      * read spends no send.
      */
     public SendLimits get() {
-        return httpClient.get(BASE_PATH, new TypeReference<ApiResponse<SendLimits>>() {}).getData();
+        return get(null);
+    }
+
+    /**
+     * The limits as {@link #get()} reads them, plus the per-recipient count of
+     * one template and one address in
+     * {@code getRecipientSends().getUsage()}. Naming a pair needs the
+     * {@code transactional:send} scope.
+     *
+     * @throws com.owlat.sdk.exception.ValidationException if the address is
+     *         malformed or the template is missing
+     * @throws com.owlat.sdk.exception.NotFoundException if no template has that
+     *         ID or slug
+     */
+    public SendLimits get(GetLimitsParams params) {
+        String path = BASE_PATH + (params == null ? "" : params.toQueryString());
+        return httpClient.get(path, new TypeReference<ApiResponse<SendLimits>>() {}).getData();
     }
 }

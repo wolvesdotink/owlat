@@ -19,7 +19,7 @@ import type {
 	deleteContactResponseSchema,
 	updateContactRequestSchema,
 } from '../contacts';
-import type { sendingDomainSetupSchema } from '../domains';
+import type { domainCheckRequestSchema, sendingDomainSetupSchema } from '../domains';
 import type { sendEventRequestSchema, sendEventResponseSchema } from '../events';
 import type { sendLimitsSchema } from '../limits';
 import type { deliveryStatusSchema } from '../status';
@@ -88,6 +88,7 @@ describe('schema and type agreement', () => {
 		>().toEqualTypeOf<T.RemoveFromTopicResponse>();
 		expectTypeOf<z.output<typeof topicSchema>>().toEqualTypeOf<T.Topic>();
 		expectTypeOf<z.output<typeof sendingDomainSetupSchema>>().toEqualTypeOf<T.SendingDomainSetup>();
+		expectTypeOf<z.output<typeof domainCheckRequestSchema>>().toEqualTypeOf<T.DomainCheckRequest>();
 		expectTypeOf<z.output<typeof deliveryStatusSchema>>().toEqualTypeOf<T.DeliveryStatus>();
 		expectTypeOf<z.output<typeof sendLimitsSchema>>().toEqualTypeOf<T.SendLimits>();
 		expectTypeOf<z.output<typeof healthStatusSchema>>().toEqualTypeOf<T.HealthStatus>();

@@ -104,8 +104,13 @@ const CALLS: Record<
 		path: '/api/v1/domains',
 		result: example('listDomains').response.data,
 	},
+	verifyDomain: {
+		call: (client) => client.domains.verify('news.example.com'),
+		path: '/api/v1/domains/news.example.com/verify',
+		result: example('verifyDomain').response.data,
+	},
 	getLimits: {
-		call: (client) => client.limits.get(),
+		call: (client) => client.limits.get({ email: 'ada@example.com', slug: 'password-reset' }),
 		path: '/api/v1/limits',
 		result: example('getLimits').response.data,
 	},

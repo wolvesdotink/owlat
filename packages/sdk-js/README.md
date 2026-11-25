@@ -265,6 +265,13 @@ for (const domain of await owlat.domains.list()) {
 }
 ```
 
+After publishing records, ask for a fresh check and poll the list until it has
+run. This needs the `domains:verify` scope; one check per domain per minute.
+
+```typescript
+const { requestedAt } = await owlat.domains.verify('news.example.com');
+```
+
 ### Templates
 
 Transactional emails and saved blocks: read, write and publish. Reads need the

@@ -21,7 +21,7 @@ import {
 	deleteContactResponseSchema,
 	updateContactRequestSchema,
 } from './contacts';
-import { sendingDomainSetupListSchema } from './domains';
+import { domainCheckRequestSchema, sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { sendLimitsSchema } from './limits';
 import { TEMPLATE_OPERATIONS } from './templateOperations';
@@ -40,6 +40,7 @@ import {
 import { ERROR_REASON_STATUS } from './errors';
 import {
 	API_KEY_ERROR_REASONS,
+	DOMAIN_CHECK_REFUSAL_REASONS,
 	SEND_LIST_MAX_WINDOW_DAYS,
 	TRANSACTIONAL_REFUSAL_REASONS,
 	WRITE_REFUSAL_REASONS,
@@ -48,6 +49,7 @@ import {
 import {
 	ANY_KEY,
 	CONTACT_REF,
+	LIMITS_RECIPIENT_QUERY,
 	PAGE_CURSOR,
 	PAGE_LIMIT,
 	SEND_ID,
@@ -248,7 +250,7 @@ export const PUBLIC_OPERATIONS = [
 		method: 'GET',
 		path: '/api/v1/transactional',
 		tag: 'Transactional',
-		summary: `List the transactional sends, newest first, each with its delivery status, filtered by recipient or by status, within a window of at most ${SEND_LIST_MAX_WINDOW_DAYS} days. Needs the same scope as sending.`,
+		summary: `List the transactional sends, newest first, each with its delivery status, filtered by recipient, by status or both, within a window of at most ${SEND_LIST_MAX_WINDOW_DAYS} days. Needs the same scope as sending.`,
 		scope: 'transactional:send',
 		pathParameters: [],
 		queryParameters: [PAGE_LIMIT, PAGE_CURSOR, ...SEND_LIST_FILTERS],
@@ -401,15 +403,42 @@ export const PUBLIC_OPERATIONS = [
 		reasons: [],
 	},
 	{
+		operationId: 'verifyDomain',
+		method: 'POST',
+		path: '/api/v1/domains/{domain}/verify',
+		tag: 'Domains',
+		summary:
+			'Ask for a fresh DNS check of one sending domain, at most once a minute per domain. The check runs in the background: poll `GET /api/v1/domains` until `lastCheckedAt` is at or after `requestedAt`.',
+		scope: 'domains:verify',
+		pathParameters: [
+			{
+				name: 'domain',
+				description: 'The domain name, or its `id` from `GET /api/v1/domains`.',
+			},
+		],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 202,
+			description: 'The check is queued.',
+			name: 'DomainCheckRequest',
+			data: domainCheckRequestSchema,
+			paginated: false,
+		},
+		errors: [404, 409, 422],
+		reasons: [...DOMAIN_CHECK_REFUSAL_REASONS, ...WRITE_REFUSAL_REASONS],
+	},
+	{
 		operationId: 'getLimits',
 		method: 'GET',
 		path: '/api/v1/limits',
 		tag: 'Transactional',
 		summary:
-			"Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own.",
+			"Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own. With `email` and a template, also what is left of the per-recipient limit for that pair, which needs the same scope as sending.",
 		scope: ANY_KEY,
 		pathParameters: [],
-		queryParameters: [],
+		queryParameters: LIMITS_RECIPIENT_QUERY,
 		idempotent: false,
 		request: null,
 		success: {
@@ -419,8 +448,9 @@ export const PUBLIC_OPERATIONS = [
 			data: sendLimitsSchema,
 			paginated: false,
 		},
-		errors: [],
-		reasons: [],
+		// The 403 and 404 belong to the per-recipient count alone.
+		errors: [403, 404],
+		reasons: ['missing_scope', 'feature_disabled', 'template_not_found'],
 	},
 ] as const satisfies readonly PublicOperation[];
 

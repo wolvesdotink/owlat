@@ -37,4 +37,6 @@ export const ERROR_REASON_STATUS: Record<ApiErrorReason, number> = {
 	content_blocked: 422,
 	html_render_pending: 422,
 	template_write_rate_limited: 429,
+	domain_check_rate_limited: 429,
+	domain_registering: 409,
 };

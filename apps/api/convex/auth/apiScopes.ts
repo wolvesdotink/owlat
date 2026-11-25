@@ -39,6 +39,7 @@ export const ENDPOINT_SCOPES = [
 	'status:read',
 	'templates:read',
 	'templates:write',
+	'domains:verify',
 ] as const;
 
 /**

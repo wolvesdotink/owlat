@@ -44,6 +44,7 @@ export const API_QUICKSTART_ROUTES: readonly ApiQuickstartRoute[] = [
 	{ methods: ['GET', 'PUT'], path: '/api/v1/saved-blocks/:id', key: 'savedBlock' },
 	{ methods: ['GET'], path: '/api/v1/status', key: 'status' },
 	{ methods: ['GET'], path: '/api/v1/domains', key: 'domains' },
+	{ methods: ['POST'], path: '/api/v1/domains/:domain/verify', key: 'domainVerify' },
 	{ methods: ['GET'], path: '/api/v1/limits', key: 'limits' },
 	{ methods: ['GET'], path: '/api/v1/topics', key: 'topics' },
 	{ methods: ['POST'], path: '/api/v1/topics/:topicId/contacts', key: 'topicContactAdd' },

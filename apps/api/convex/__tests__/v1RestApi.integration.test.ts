@@ -36,11 +36,16 @@ import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
 import { listDomains } from '../publicApi/domainsHttp';
+import { verifyDomain } from '../publicApi/domainCheckHttp';
 import { getLimits } from '../publicApi/limitsHttp';
 import * as transactionalEmailsApi from '../publicApi/transactionalEmailsHttp';
 import * as savedBlocksApi from '../publicApi/savedBlocksHttp';
 import { rateLimiter } from '../lib/rateLimiter';
-import { PER_API_KEY_DAILY_BUCKET, PER_API_KEY_DAILY_CONFIG } from '../transactional/sendCaps';
+import {
+	chargeTransactionalSendCaps,
+	PER_API_KEY_DAILY_BUCKET,
+	PER_API_KEY_DAILY_CONFIG,
+} from '../transactional/sendCaps';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
 import type { DeliveryHealthLevel, DomainStatus } from '../delivery/health';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
@@ -123,6 +128,7 @@ const ALL_SCOPES = [
 	'status:read',
 	'templates:read',
 	'templates:write',
+	'domains:verify',
 ];
 
 function setupTest() {
@@ -1576,6 +1582,81 @@ describe('GET /api/v1/transactional (listTransactionalSends → transactional:se
 		expect(await listedIds(res)).toEqual([failedLater, failed]);
 	});
 
+	it('filters by recipient and status at once, a page at a time', async () => {
+		const t = setupTest();
+		const bounced: string[] = [];
+		for (let i = 0; i < 5; i++) {
+			bounced.push(await seedSendAt(t, T0 - (10 - 2 * i) * MINUTE, { status: 'bounced' }));
+			// Ada's other sends and someone else's bounce sit between hers.
+			await seedSendAt(t, T0 - (9 - 2 * i) * MINUTE, { status: 'delivered' });
+			await seedSendAt(t, T0 - (9 - 2 * i) * MINUTE + 1, {
+				email: 'grace@example.com',
+				status: 'bounced',
+			});
+		}
+		const key = await seedKey(t, ['transactional:send']);
+		const filter = { ...WINDOW, email: 'Ada@Example.com', status: 'bounced', limit: '2' };
+
+		const seen: string[] = [];
+		let cursor: string | null = null;
+		let pages = 0;
+		do {
+			const res = await listSends(t, key, cursor ? { ...filter, cursor } : filter);
+			await expectContractSuccess('listTransactionalSends', res);
+			const body = await res.json();
+			for (const send of body.data as Array<{ sendId: string; email: string; status: string }>) {
+				expect(send).toMatchObject({ email: 'ada@example.com', status: 'bounced' });
+				seen.push(send.sendId);
+			}
+			cursor = body.pagination.cursor;
+			pages += 1;
+		} while (cursor !== null);
+
+		expect(pages).toBe(3);
+		expect(seen).toEqual([...bounced].reverse());
+	});
+
+	it('keeps the window when both filters are given', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0 - MINUTE - 1, { status: 'failed' });
+		const inside = await seedSendAt(t, T0 - MINUTE, { status: 'failed' });
+		await seedSendAt(t, T0 + MINUTE, { status: 'failed' });
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, {
+			email: 'ada@example.com',
+			status: 'failed',
+			since: new Date(T0 - MINUTE).toISOString(),
+			until: new Date(T0 + MINUTE).toISOString(),
+		});
+		expect(await listedIds(res)).toEqual([inside]);
+	});
+
+	it.each([
+		['the address alone', { email: 'ada@example.com' }],
+		['the status alone', { status: 'bounced' }],
+		['another status', { email: 'ada@example.com', status: 'failed' }],
+		['another address', { email: 'grace@example.com', status: 'bounced' }],
+	])('refuses a cursor for both filters sent with %s', async (_label, other) => {
+		const t = setupTest();
+		await seedSendAt(t, T0, { status: 'bounced' });
+		await seedSendAt(t, T0 + MINUTE, { status: 'bounced' });
+		const key = await seedKey(t, ['transactional:send']);
+		const both = { ...WINDOW, email: 'ada@example.com', status: 'bounced', limit: '1' };
+		const first = await (await listSends(t, key, both)).json();
+		expect(first.pagination.isDone).toBe(false);
+		const res = await listSends(t, key, {
+			...WINDOW,
+			limit: '1',
+			...other,
+			cursor: first.pagination.cursor,
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toMatchObject({
+			category: 'invalid_input',
+			data: { field: 'cursor' },
+		});
+	});
+
 	it('filters by when the send was queued: since is inclusive, until is not', async () => {
 		const t = setupTest();
 		await seedSendAt(t, T0 - MINUTE - 1);
@@ -1664,7 +1745,6 @@ describe('GET /api/v1/transactional (listTransactionalSends → transactional:se
 		['an until that is no timestamp', { until: '2026-13-45' }, 'until'],
 		['an unknown status', { status: 'lost' }, 'status'],
 		['a malformed address', { email: 'not-an-address' }, 'email'],
-		['an address and a status at once', { email: 'ada@example.com', status: 'failed' }, 'status'],
 		['a cursor this route did not issue', { cursor: 'not-a-cursor' }, 'cursor'],
 		['a non-positive limit', { limit: '0' }, 'limit'],
 		[
@@ -2021,6 +2101,257 @@ describe('GET /api/v1/limits (getLimits → any key)', () => {
 			remaining: null,
 			resetsAt: null,
 		});
+	});
+});
+
+describe('GET /api/v1/limits?email=…&slug=… (one template and one address)', () => {
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const MINUTE_MS = 60_000;
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedTemplate(
+		t: ReturnType<typeof convexTest>,
+		fields: Record<string, unknown> = {}
+	): Promise<Id<'transactionalEmails'>> {
+		return await t.run(
+			async (ctx) =>
+				await ctx.db.insert(
+					'transactionalEmails',
+					createTestTransactionalEmail({ slug: 'password-reset', ...fields }) as never
+				)
+		);
+	}
+
+	/** Count `sends` of the template to `email`, as accepted sends do; false once refused. */
+	async function chargePair(
+		t: ReturnType<typeof convexTest>,
+		templateId: Id<'transactionalEmails'>,
+		email: string,
+		sends: number
+	): Promise<boolean[]> {
+		return await t.run(async (ctx) => {
+			const accepted: boolean[] = [];
+			for (let i = 0; i < sends; i++) {
+				const refusal = await chargeTransactionalSendCaps(
+					ctx,
+					{ _id: templateId },
+					{ email },
+					null
+				);
+				accepted.push(refusal === null);
+			}
+			return accepted;
+		});
+	}
+
+	async function readPair(
+		t: ReturnType<typeof convexTest>,
+		key: string,
+		query: Record<string, string>
+	) {
+		return await t.fetch(`/api/v1/limits?${new URLSearchParams(query).toString()}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+	}
+
+	it('counts what one template sent to one address, what is left and when the count is back to zero', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		await chargePair(t, templateId, 'ada@example.com', 2);
+		const key = await seedKey(t, ['transactional:send']);
+
+		const res = await readPair(t, key, { email: ' Ada@Example.com ', slug: 'password-reset' });
+		await expectContractSuccess('getLimits', res);
+		const body = await res.json();
+		expect(body.data.recipientSends).toEqual({
+			isEnabled: true,
+			limit: 5,
+			windowSeconds: 3600,
+			usage: {
+				email: 'ada@example.com',
+				templateId,
+				slug: 'password-reset',
+				isExempt: false,
+				used: 2,
+				remaining: 3,
+				// The allowance refills at 5 per hour: two sends drain in 24 minutes.
+				resetsAt: new Date(NOW + 24 * MINUTE_MS).toISOString(),
+			},
+		});
+		expect(body.data.dailySends).toMatchObject({ isEnabled: true, limit: 50_000 });
+
+		const byId = await readPair(t, key, { email: 'ada@example.com', transactionalId: templateId });
+		expect((await byId.json()).data.recipientSends.usage).toEqual(body.data.recipientSends.usage);
+	});
+
+	it('counts each template and address apart', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		const otherTemplateId = await seedTemplate(t, { slug: 'sign-in-link' });
+		await chargePair(t, templateId, 'ada@example.com', 4);
+		const key = await seedKey(t, ['transactional:send']);
+
+		const otherAddress = await readPair(t, key, {
+			email: 'grace@example.com',
+			slug: 'password-reset',
+		});
+		expect((await otherAddress.json()).data.recipientSends.usage).toMatchObject({
+			used: 0,
+			remaining: 5,
+			resetsAt: null,
+		});
+		const otherTemplate = await readPair(t, key, {
+			email: 'ada@example.com',
+			transactionalId: otherTemplateId,
+		});
+		expect((await otherTemplate.json()).data.recipientSends.usage).toMatchObject({
+			slug: 'sign-in-link',
+			used: 0,
+			remaining: 5,
+		});
+	});
+
+	it('reading the count neither creates nor extends it', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const query = { email: 'ada@example.com', slug: 'password-reset' };
+
+		// A pair never sent to: reading it charges nothing, so five sends still fit.
+		for (let i = 0; i < 3; i++) expect((await readPair(t, key, query)).status).toBe(200);
+		expect(await chargePair(t, templateId, 'ada@example.com', 6)).toEqual([
+			true,
+			true,
+			true,
+			true,
+			true,
+			false,
+		]);
+
+		// Spent: reading it again does not push back when one more send fits.
+		const spent = (await (await readPair(t, key, query)).json()).data.recipientSends.usage;
+		expect(spent).toMatchObject({ used: 5, remaining: 0 });
+		expect(spent.resetsAt).toBe(new Date(NOW + 60 * MINUTE_MS).toISOString());
+		vi.setSystemTime(NOW + 12 * MINUTE_MS);
+		await readPair(t, key, query);
+		await readPair(t, key, query);
+		expect((await (await readPair(t, key, query)).json()).data.recipientSends.usage).toMatchObject({
+			used: 4,
+			remaining: 1,
+			resetsAt: new Date(NOW + 60 * MINUTE_MS).toISOString(),
+		});
+		expect(await chargePair(t, templateId, 'ada@example.com', 2)).toEqual([true, false]);
+	});
+
+	it('gives no count for an exempt template or while the cap is off', async () => {
+		const t = setupTest();
+		const exemptId = await seedTemplate(t, { isRecipientCapExempt: true });
+		await seedTemplate(t, { slug: 'sign-in-link' });
+		const key = await seedKey(t, ['transactional:send']);
+
+		const exempt = await readPair(t, key, { email: 'ada@example.com', transactionalId: exemptId });
+		await expectContractSuccess('getLimits', exempt);
+		expect((await exempt.json()).data.recipientSends.usage).toEqual({
+			email: 'ada@example.com',
+			templateId: exemptId,
+			slug: 'password-reset',
+			isExempt: true,
+			used: null,
+			remaining: null,
+			resetsAt: null,
+		});
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: NOW,
+				transactionalSendCaps: {
+					perRecipient: { isEnabled: false, count: 5, windowMs: 60 * MINUTE_MS },
+					perApiKeyDaily: { isEnabled: true, count: 50_000 },
+					updatedAt: NOW,
+					updatedBy: 'admin-user',
+				},
+			});
+		});
+		const off = await readPair(t, key, { email: 'ada@example.com', slug: 'sign-in-link' });
+		expect((await off.json()).data.recipientSends).toMatchObject({
+			isEnabled: false,
+			usage: { isExempt: false, used: null, remaining: null, resetsAt: null },
+		});
+	});
+
+	it.each([
+		['an address without a template', { email: 'ada@example.com' }, 'slug'],
+		['a slug without an address', { slug: 'password-reset' }, 'email'],
+		['a template ID without an address', { transactionalId: 'abc' }, 'email'],
+		['an empty slug without an address', { slug: '' }, 'email'],
+		['an empty template ID without an address', { transactionalId: '' }, 'email'],
+		['an address with an empty slug', { email: 'ada@example.com', slug: '' }, 'slug'],
+		['an empty address', { email: '', slug: 'password-reset' }, 'email'],
+		['a malformed address', { email: 'not-an-address', slug: 'password-reset' }, 'email'],
+	])('400 invalid_input naming the parameter for %s', async (_label, query, field) => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await readPair(t, key, query);
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toMatchObject({ category: 'invalid_input', data: { field } });
+	});
+
+	it.each([
+		['an unknown slug', { slug: 'no-such-template' }],
+		['a malformed template ID', { transactionalId: 'not-an-id' }],
+	])('404 template_not_found for %s', async (_label, template) => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await readPair(t, key, { email: 'ada@example.com', ...template });
+		expect(res.status).toBe(404);
+		expectDocumentedReason('getLimits', res, await res.json(), 'template_not_found');
+	});
+
+	it('403 for a key that cannot send, which learns nothing about the address', async () => {
+		const t = setupTest();
+		const templateId = await seedTemplate(t);
+		await chargePair(t, templateId, 'ada@example.com', 1);
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'transactional:send')
+		);
+		const res = await readPair(t, key, { email: 'ada@example.com', slug: 'password-reset' });
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'transactional:send' });
+		expectDocumentedReason('getLimits', res, body, 'missing_scope');
+		// The same key still reads the caps without a pair.
+		expect(
+			(await t.fetch('/api/v1/limits', { method: 'GET', headers: authHeaders(key) })).status
+		).toBe(200);
+	});
+
+	it('403 forbidden while the transactional feature is off', async () => {
+		const t = setupTest();
+		await seedTemplate(t);
+		const key = await seedKey(t, ['transactional:send']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: NOW,
+				featureFlags: { transactional: false },
+			});
+		});
+		const res = await readPair(t, key, { email: 'ada@example.com', slug: 'password-reset' });
+		expect(res.status).toBe(403);
+		expectDocumentedReason('getLimits', res, await res.json(), 'feature_disabled');
 	});
 });
 
@@ -3088,6 +3419,210 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 	});
 });
 
+// ─── POST /api/v1/domains/{domain}/verify ─────────────────────────────────────
+
+describe('POST /api/v1/domains/{domain}/verify (verifyDomain → domains:verify)', () => {
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const CHECKED_AT = Date.UTC(2026, 10, 21, 7, 30, 0);
+	const CHECK_JOB = 'domains/requestedVerification:verifyRequested';
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedDomain(
+		t: ReturnType<typeof convexTest>,
+		domain: string,
+		fields: Record<string, unknown> = {}
+	): Promise<Id<'domains'>> {
+		return await t.run(
+			async (ctx) =>
+				await ctx.db.insert('domains', {
+					domain,
+					status: 'pending',
+					providerType: 'mta',
+					dnsRecords: {
+						spf: { type: 'TXT', host: '@', value: 'v=spf1 include:spf.owlat.example ~all' },
+					},
+					lastVerifiedAt: CHECKED_AT,
+					createdAt: CHECKED_AT,
+					updatedAt: CHECKED_AT,
+					...fields,
+				} as never)
+		);
+	}
+
+	function verify(t: ReturnType<typeof convexTest>, key: string, domain: string) {
+		return t.fetch(`/api/v1/domains/${domain}/verify`, {
+			method: 'POST',
+			headers: authHeaders(key),
+		});
+	}
+
+	/** The checks scheduled so far, each with the domain it is for. */
+	async function scheduledChecks(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect())
+				.filter((job) => job.name === CHECK_JOB)
+				.map((job) => job.args[0] as { domainId: string })
+		);
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const res = await t.fetch('/api/v1/domains/mail.example.com/verify', { method: 'POST' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that can read the domains but not check them, and schedules nothing', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(
+			t,
+			ALL_SCOPES.filter((scope) => scope !== 'domains:verify')
+		);
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'domains:verify' });
+		expectDocumentedReason('verifyDomain', res, body, 'missing_scope');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('202 and a check scheduled, named by the domain or by its id', async () => {
+		const t = setupTest();
+		const id = await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+
+		const res = await verify(t, key, 'Mail.Example.com');
+		await expectContractSuccess('verifyDomain', res);
+		expect((await res.json()).data).toEqual({
+			id,
+			domain: 'mail.example.com',
+			status: 'pending',
+			lastCheckedAt: new Date(CHECKED_AT).toISOString(),
+			requestedAt: new Date(NOW).toISOString(),
+		});
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }]);
+
+		vi.setSystemTime(NOW + 2 * 60_000);
+		const byId = await verify(t, key, id);
+		expect(byId.status).toBe(202);
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }, { domainId: id }]);
+	});
+
+	it('429 with Retry-After for a second check of one domain within the minute, and none scheduled', async () => {
+		const t = setupTest();
+		const id = await seedDomain(t, 'mail.example.com');
+		const other = await seedDomain(t, 'news.example.com');
+		const key = await seedKey(t, ['domains:verify'], `first${'a'.repeat(40)}`);
+		const otherKey = await seedKey(t, ['domains:verify'], `second${'a'.repeat(40)}`);
+		expect((await verify(t, key, 'mail.example.com')).status).toBe(202);
+
+		vi.setSystemTime(NOW + 20_000);
+		// The limit is the domain's, whichever key asks.
+		const refused = await verify(t, otherKey, 'mail.example.com');
+		expect(refused.status).toBe(429);
+		expect(refused.headers.get('Retry-After')).toBe('40');
+		const body = await refused.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error.category).toBe('rate_limited');
+		expectDocumentedReason('verifyDomain', refused, body, 'domain_check_rate_limited');
+		expect(await scheduledChecks(t)).toEqual([{ domainId: id }]);
+
+		// Another domain has its own allowance.
+		expect((await verify(t, key, 'news.example.com')).status).toBe(202);
+
+		vi.setSystemTime(NOW + 60_000);
+		expect((await verify(t, key, 'mail.example.com')).status).toBe(202);
+		expect(await scheduledChecks(t)).toEqual([
+			{ domainId: id },
+			{ domainId: other },
+			{ domainId: id },
+		]);
+	});
+
+	it.each([
+		['an unknown domain', 'unknown'],
+		['a malformed id', 'malformed'],
+		['a segment that does not decode', 'undecodable'],
+		['the id of another kind of record', 'contact'],
+		['a removed domain', 'removed'],
+		['a tracking domain, which is not a sending domain', 'tracking'],
+	])('404 not_found for %s, saying nothing else', async (_label, kind) => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		let ref: string;
+		if (kind === 'unknown') ref = 'other.example.com';
+		else if (kind === 'malformed') ref = 'not-a-domain-id';
+		else if (kind === 'undecodable') ref = '%ZZ';
+		else if (kind === 'contact') {
+			ref = await t.run(async (ctx) => await ctx.db.insert('contacts', createTestContact()));
+		} else if (kind === 'removed') {
+			const id = await seedDomain(t, 'old.example.com');
+			await t.run(async (ctx) => await ctx.db.delete(id));
+			ref = id;
+		} else {
+			await t.run(async (ctx) => {
+				await ctx.db.insert('trackingDomains', {
+					domain: 'click.example.com',
+					cnameTarget: 'track.owlat.example',
+					isVerified: false,
+					createdAt: NOW,
+				});
+			});
+			ref = 'click.example.com';
+		}
+		const res = await verify(t, key, ref);
+		expect(res.status).toBe(404);
+		const body = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body.error).toEqual({ category: 'not_found', message: 'Domain not found' });
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('409 for a domain still being registered, with nothing published to check', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com', { status: 'registering', dnsRecords: {} });
+		const key = await seedKey(t, ['domains:verify']);
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(409);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'domain_registering');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('422 while the workspace is being deleted, and schedules nothing', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		await t.run((ctx) => openWorkspaceDeletionFence(ctx));
+		const res = await verify(t, key, 'mail.example.com');
+		expect(res.status).toBe(422);
+		expectDocumentedReason('verifyDomain', res, await res.json(), 'workspace_deletion_in_progress');
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+
+	it('404 for a path that names no check', async () => {
+		const t = setupTest();
+		await seedDomain(t, 'mail.example.com');
+		const key = await seedKey(t, ['domains:verify']);
+		for (const path of [
+			'/api/v1/domains/mail.example.com',
+			'/api/v1/domains/mail.example.com/check',
+		]) {
+			const res = await t.fetch(path, { method: 'POST', headers: authHeaders(key) });
+			expect(res.status).toBe(404);
+		}
+		expect(await scheduledChecks(t)).toEqual([]);
+	});
+});
+
 // ─── GET /api/v1/openapi.json ────────────────────────────────────────────────
 
 describe('GET /api/v1/openapi.json (the instance describes its own API)', () => {
@@ -3223,6 +3758,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	listTopics,
 	getStatus,
 	listDomains,
+	verifyDomain,
 	getLimits,
 	listTransactionalEmails: transactionalEmailsApi.listTransactionalEmails,
 	createTransactionalEmail: transactionalEmailsApi.createTransactionalEmail,

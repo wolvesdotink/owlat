@@ -37,8 +37,17 @@ export const PER_RECIPIENT_BUCKET = 'transactionalPerRecipientUsage';
 export const PER_API_KEY_DAILY_BUCKET = 'transactionalPerApiKeyDailyUsage';
 
 /** Usage drains continuously at the cap's own rate: `count` per window. */
-function perRecipientConfig(count: number, windowMs: number): RateLimitConfig {
+export function perRecipientConfig(count: number, windowMs: number): RateLimitConfig {
 	return { kind: 'token bucket', rate: count, period: windowMs, capacity: USAGE_CEILING };
+}
+
+/**
+ * The per-recipient bucket of one template and address. It carries the
+ * address's digest, not the address: the limiter's rows sit outside contact
+ * erasure.
+ */
+export function perRecipientKey(templateId: Id<'transactionalEmails'>, email: string): string {
+	return `${templateId}:${redactEmailAddress(email)}`;
 }
 
 /** `start: 0` puts the window boundary at UTC midnight. */
@@ -75,9 +84,6 @@ export async function readBucketUsage(
  * daily cap does not also use up the recipient's allowance. A cap that is off,
  * or the per-recipient cap of an exempt template, is neither checked nor
  * charged.
- *
- * The recipient key carries the address's digest, not the address: the
- * limiter's rows sit outside contact erasure.
  */
 export async function chargeTransactionalSendCaps(
 	ctx: MutationCtx,
@@ -91,7 +97,7 @@ export async function chargeTransactionalSendCaps(
 
 	const { perRecipient, perApiKeyDaily } = caps;
 	if (perRecipient.isEnabled && template.isRecipientCapExempt !== true) {
-		const key = `${template._id}:${redactEmailAddress(request.email)}`;
+		const key = perRecipientKey(template._id, request.email);
 		const config = perRecipientConfig(perRecipient.count, perRecipient.windowMs);
 		const { used } = await readBucketUsage(ctx, PER_RECIPIENT_BUCKET, key, config, now);
 		const verdict = capVerdict({

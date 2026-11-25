@@ -28,6 +28,7 @@ import { getTransactionalSend, listTransactionalSends } from '../transactional/s
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
 import { listDomains } from './domainsHttp';
+import { verifyDomain } from './domainCheckHttp';
 import { getLimits } from './limitsHttp';
 import { getOpenApiDocument } from './openApiHttp';
 import { getBlockSchema } from './blockSchemaHttp';
@@ -159,6 +160,12 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 	// Domains API
 	http.route({
 		path: '/api/v1/domains',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		pathPrefix: '/api/v1/domains/',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -335,6 +342,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/domains',
 		method: 'GET',
 		handler: listDomains,
+	});
+
+	// POST /api/v1/domains/{domain}/verify - Queue a fresh check of one domain
+	http.route({
+		pathPrefix: '/api/v1/domains/',
+		method: 'POST',
+		handler: verifyDomain,
 	});
 
 	// ============ LIMITS API ENDPOINTS ============

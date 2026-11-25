@@ -869,6 +869,7 @@ import type * as domains_providers_ses_returnPath from '../domains/providers/ses
 import type * as domains_providers_types from '../domains/providers/types.js';
 import type * as domains_queries from '../domains/queries.js';
 import type * as domains_recordStates from '../domains/recordStates.js';
+import type * as domains_requestedVerification from '../domains/requestedVerification.js';
 import type * as domains_returnPath from '../domains/returnPath.js';
 import type * as domains_returnPathProviders from '../domains/returnPathProviders.js';
 import type * as domains_reverification from '../domains/reverification.js';
@@ -1817,6 +1818,8 @@ import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as publicApi_blockSchemaHttp from '../publicApi/blockSchemaHttp.js';
+import type * as publicApi_domainCheck from '../publicApi/domainCheck.js';
+import type * as publicApi_domainCheckHttp from '../publicApi/domainCheckHttp.js';
 import type * as publicApi_domains from '../publicApi/domains.js';
 import type * as publicApi_domainsHttp from '../publicApi/domainsHttp.js';
 import type * as publicApi_events from '../publicApi/events.js';
@@ -2907,6 +2910,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/types': typeof domains_providers_types;
 	'domains/queries': typeof domains_queries;
 	'domains/recordStates': typeof domains_recordStates;
+	'domains/requestedVerification': typeof domains_requestedVerification;
 	'domains/returnPath': typeof domains_returnPath;
 	'domains/returnPathProviders': typeof domains_returnPathProviders;
 	'domains/reverification': typeof domains_reverification;
@@ -4100,6 +4104,8 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
 	'publicApi/blockSchemaHttp': typeof publicApi_blockSchemaHttp;
+	'publicApi/domainCheck': typeof publicApi_domainCheck;
+	'publicApi/domainCheckHttp': typeof publicApi_domainCheckHttp;
 	'publicApi/domains': typeof publicApi_domains;
 	'publicApi/domainsHttp': typeof publicApi_domainsHttp;
 	'publicApi/events': typeof publicApi_events;

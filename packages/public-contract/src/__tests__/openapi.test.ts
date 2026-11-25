@@ -108,10 +108,23 @@ describe('sending domains', () => {
 });
 
 describe('the limits', () => {
-	it('take any key: no scope, and no 403 for a scope the key lacks', () => {
+	it('take any key, and answer 403 or 404 only for the count of one template and address', () => {
 		const limits = (committed['paths'] as Record<string, any>)['/api/v1/limits'].get;
 		expect(limits.security).toEqual([{ apiKey: [] }]);
-		expect(Object.keys(limits.responses)).toEqual(['200', '400', '401', '429', '500']);
+		expect(Object.keys(limits.responses)).toEqual([
+			'200',
+			'400',
+			'401',
+			'403',
+			'404',
+			'429',
+			'500',
+		]);
+		expect(limits.parameters.map((parameter: { name: string }) => parameter.name)).toEqual([
+			'email',
+			'slug',
+			'transactionalId',
+		]);
 	});
 });
 
@@ -216,7 +229,10 @@ describe('error reasons', () => {
 				const listed = reasonsListed(operation.operationId, ERROR_REASON_STATUS[reason]);
 				if (operation.scope === null) expect(listed, operation.operationId).toEqual([]);
 				else if (operation.scope === ANY_KEY && reason === 'missing_scope') {
-					expect(listed, operation.operationId).not.toContain(reason);
+					// Only a part of an any-key operation that needs a scope can lack one.
+					const ownReasons: readonly string[] = operation.reasons;
+					if (ownReasons.includes(reason)) expect(listed, operation.operationId).toContain(reason);
+					else expect(listed, operation.operationId).not.toContain(reason);
 				} else expect(listed, `${operation.operationId} ${reason}`).toContain(reason);
 			}
 		}

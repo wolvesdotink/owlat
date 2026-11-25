@@ -23,7 +23,8 @@ export type PublicApiScope =
 	| 'topics:read'
 	| 'status:read'
 	| 'templates:read'
-	| 'templates:write';
+	| 'templates:write'
+	| 'domains:verify';
 
 /** The `scope` of an operation every authenticated key may call, whatever its scopes. */
 export const ANY_KEY = 'any_key';
@@ -131,12 +132,12 @@ export const SEND_LIST_FILTERS: readonly QueryParameter[] = [
 	{
 		name: 'email',
 		description:
-			'Only sends to this recipient address, matched exactly after trimming and lowercasing. Cannot be combined with `status`.',
+			'Only sends to this recipient address, matched exactly after trimming and lowercasing. Can be combined with `status`.',
 		schema: { type: 'string', format: 'email' },
 	},
 	{
 		name: 'status',
-		description: 'Only sends in this delivery state. Cannot be combined with `email`.',
+		description: 'Only sends in this delivery state. Can be combined with `email`.',
 		schema: { type: 'string', enum: [...TRANSACTIONAL_SEND_STATUSES] },
 	},
 	{
@@ -148,5 +149,28 @@ export const SEND_LIST_FILTERS: readonly QueryParameter[] = [
 		name: 'until',
 		description: 'ISO 8601 timestamp: only sends queued before it. Defaults to now.',
 		schema: { type: 'string', format: 'date-time' },
+	},
+];
+
+/**
+ * `GET /api/v1/limits` names one template and one address with these, the way
+ * the send body names them, to read their per-recipient count.
+ */
+export const LIMITS_RECIPIENT_QUERY: readonly QueryParameter[] = [
+	{
+		name: 'email',
+		description:
+			'With `slug` or `transactionalId`: the address whose count to read, matched after trimming and lowercasing. Needs the `transactional:send` scope.',
+		schema: { type: 'string', format: 'email' },
+	},
+	{
+		name: 'slug',
+		description: 'With `email`: the slug of the template whose count to read.',
+		schema: { type: 'string' },
+	},
+	{
+		name: 'transactionalId',
+		description: 'With `email`: the ID of the template whose count to read. Wins over `slug`.',
+		schema: { type: 'string' },
 	},
 ];

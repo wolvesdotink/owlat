@@ -9,9 +9,12 @@ import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.DomainCheckRequest;
 import com.owlat.sdk.model.domain.SendingDomainRecord;
 import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
+import com.owlat.sdk.model.limits.GetLimitsParams;
+import com.owlat.sdk.model.limits.RecipientSendUsage;
 import com.owlat.sdk.model.limits.SendLimits;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.status.SendingHoldLift;
@@ -296,6 +299,26 @@ class ResourceHttpTest {
         assertFalse(limits.getDailySends().isEnabled());
         assertNull(limits.getDailySends().getRemaining());
         assertEquals(3600, limits.getRecipientSends().getWindowSeconds());
+        assertNull(limits.getRecipientSends().getUsage());
+    }
+
+    @Test
+    void limitsGetWithATemplateAndAnAddressReadsTheirCount() {
+        responseBody = "{\"data\":{\"dailySends\":{\"isEnabled\":false,\"limit\":50000,\"used\":null,"
+                + "\"remaining\":null,\"resetsAt\":null},"
+                + "\"recipientSends\":{\"isEnabled\":true,\"limit\":5,\"windowSeconds\":3600,"
+                + "\"usage\":{\"email\":\"ada@example.com\",\"templateId\":\"t1\",\"slug\":\"password-reset\","
+                + "\"isExempt\":false,\"used\":5,\"remaining\":0,\"resetsAt\":\"2026-11-23T16:30:00.000Z\"}}}}";
+        SendLimits limits = client().limits().get(GetLimitsParams.bySlug("ada+1@example.com", "password-reset"));
+        assertEquals("GET", method);
+        assertEquals("/api/v1/limits", rawPath);
+        assertEquals("email=ada%2B1%40example.com&slug=password-reset", query);
+        RecipientSendUsage usage = limits.getRecipientSends().getUsage();
+        assertEquals(0, usage.getRemaining());
+        assertEquals("2026-11-23T16:30:00.000Z", usage.getResetsAt());
+
+        client().limits().get(GetLimitsParams.byTransactionalId("ada@example.com", "t1"));
+        assertEquals("email=ada%40example.com&transactionalId=t1", query);
     }
 
     // ── domains ─────────────────────────────────────────────────────────────
@@ -317,6 +340,19 @@ class ResourceHttpTest {
         assertEquals(10, record.getPriority());
         assertEquals("wrong", record.getState());
         assertEquals("10 mx.example.net", record.getFoundValue());
+    }
+
+    @Test
+    void domainsVerifyPostsToTheDomainsCheckRoute() {
+        responseBody = "{\"data\":{\"id\":\"d1\",\"domain\":\"news.example.com\",\"status\":\"failed\","
+                + "\"lastCheckedAt\":null,\"requestedAt\":\"2026-11-23T15:30:00.000Z\"}}";
+        DomainCheckRequest request = client().domains().verify("news.example.com");
+        assertEquals("POST", method);
+        assertEquals("/api/v1/domains/news.example.com/verify", rawPath);
+        assertEquals("", body);
+        assertEquals("failed", request.getStatus());
+        assertNull(request.getLastCheckedAt());
+        assertEquals("2026-11-23T15:30:00.000Z", request.getRequestedAt());
     }
 
     // ── status ──────────────────────────────────────────────────────────────

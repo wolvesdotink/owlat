@@ -8,6 +8,7 @@
  * shows up as a failure rather than as an untested omission.
  */
 
+import { DOMAIN_AND_LIMIT_EXAMPLES } from './domainAndLimitExamples';
 import type { PublicOperationId } from './operations';
 import type {
 	AddContactToTopicRequest,
@@ -34,8 +35,6 @@ import type {
 	SendEventResponse,
 	SendTransactionalRequest,
 	SendTransactionalResponse,
-	SendingDomainSetup,
-	SendLimits,
 	Topic,
 	TransactionalSendStatus,
 	UpdateContactRequest,
@@ -420,59 +419,5 @@ export const OPERATION_EXAMPLES = {
 			},
 		} satisfies ApiResponse<DeliveryStatus>,
 	},
-	listDomains: {
-		response: {
-			data: [
-				{
-					id: 'k57d0main0000000000000000000000',
-					domain: 'news.example.com',
-					status: 'failed',
-					lastCheckedAt: '2026-11-21T07:30:00.000Z',
-					records: [
-						{
-							purpose: 'dkim',
-							type: 'CNAME',
-							host: 's1._domainkey.news.example.com',
-							value: 's1.dkim.owlat.example',
-							priority: null,
-							state: 'wrong',
-							foundValue: 'old.dkim.example.net',
-						},
-						{
-							purpose: 'dmarc',
-							type: 'TXT',
-							host: '_dmarc.news.example.com',
-							value: 'v=DMARC1; p=none',
-							priority: null,
-							state: 'missing',
-							foundValue: null,
-						},
-						{
-							purpose: 'mail_from',
-							type: 'MX',
-							host: 'bounce.news.example.com',
-							value: 'feedback.owlat.example',
-							priority: 10,
-							state: 'found',
-							foundValue: null,
-						},
-					],
-				},
-			],
-		} satisfies ApiResponse<SendingDomainSetup[]>,
-	},
-	getLimits: {
-		response: {
-			data: {
-				dailySends: {
-					isEnabled: true,
-					limit: 50_000,
-					used: 1_204,
-					remaining: 48_796,
-					resetsAt: '2026-11-24T00:00:00.000Z',
-				},
-				recipientSends: { isEnabled: true, limit: 5, windowSeconds: 3600 },
-			},
-		} satisfies ApiResponse<SendLimits>,
-	},
+	...DOMAIN_AND_LIMIT_EXAMPLES,
 } satisfies Record<PublicOperationId, OperationExample>;

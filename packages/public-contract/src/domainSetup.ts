@@ -53,3 +53,21 @@ export interface SendingDomainSetup {
 	/** Every record to publish; empty while the domain is still being registered. */
 	records: SendingDomainRecord[];
 }
+
+/**
+ * Body of `POST /api/v1/domains/{domain}/verify`: the check is queued. The
+ * domain's state is the one before the check; read `GET /api/v1/domains` for
+ * the result once `lastCheckedAt` is at or after `requestedAt`. Every check of
+ * the domain that reaches a verdict moves that timestamp, so it shows that a check reached a verdict
+ * since the request, not which one.
+ */
+export interface DomainCheckRequest {
+	id: string;
+	domain: string;
+	/** Verification state before the check. */
+	status: SendingDomainStatusValue;
+	/** ISO 8601 timestamp of the last check that reached a verdict, or `null` before the first. */
+	lastCheckedAt: string | null;
+	/** ISO 8601 timestamp the check was requested. */
+	requestedAt: string;
+}
