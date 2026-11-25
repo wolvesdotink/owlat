@@ -26,18 +26,9 @@ public class Owlat {
     private final RenderResource render;
 
     /**
-     * A client from an API key alone, which talks to the hosted address
-     * {@code https://api.owlat.app} instead of your instance.
-     *
-     * @deprecated Build an {@link OwlatConfig} with
-     *     {@link OwlatConfig.Builder#baseUrl(String)} set to your instance's API
-     *     URL. This constructor goes away when the base URL becomes required.
+     * A client for the instance {@code config} names. The config's builder
+     * refuses a missing or unusable base URL, so every client has one.
      */
-    @Deprecated
-    public Owlat(String apiKey) {
-        this(OwlatConfig.builder(apiKey).build());
-    }
-
     public Owlat(OwlatConfig config) {
         HttpClient httpClient = new HttpClient(
                 config.getApiKey(), config.getBaseUrl(), config.getTimeout(), config.getRetry());

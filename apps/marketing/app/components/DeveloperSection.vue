@@ -11,7 +11,10 @@ const copied = ref(false);
 const codeSnippets = {
 	sdk: `import { Owlat } from '@owlat/sdk-js'
 
-const owlat = new Owlat('lm_live_...')
+const owlat = new Owlat({
+  apiKey:  'lm_live_...',
+  baseUrl: 'https://rest.api.example.com'
+})
 
 // Send a transactional email
 await owlat.transactional.send({
@@ -214,7 +217,10 @@ async function copyCode() {
 						class="px-5 py-5 m-0 overflow-x-auto font-mono text-[0.75rem] leading-[1.85] text-text-secondary"
 					><code class="font-[inherit]"><span class="c-kw">import</span> { Owlat } <span class="c-kw">from</span> <span class="c-str">'@owlat/sdk-js'</span>
 
-<span class="c-kw">const</span> owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>(<span class="c-str">'lm_live_...'</span>)
+<span class="c-kw">const</span> owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>({
+  <span class="c-prop">apiKey</span>:  <span class="c-str">'lm_live_...'</span>,
+  <span class="c-prop">baseUrl</span>: <span class="c-str">'https://rest.api.example.com'</span>
+})
 
 <span class="c-comment">// Send a transactional email</span>
 <span class="c-kw">await</span> owlat.transactional.<span class="c-fn">send</span>({
