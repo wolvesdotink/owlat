@@ -19,6 +19,7 @@ import type {
 	deleteContactResponseSchema,
 	updateContactRequestSchema,
 } from '../contacts';
+import type { brandKitSchema, brandKitUpdateRequestSchema } from '../brandKit';
 import type { domainCheckRequestSchema, sendingDomainSetupSchema } from '../domains';
 import type { sendEventRequestSchema, sendEventResponseSchema } from '../events';
 import type { sendLimitsSchema } from '../limits';
@@ -117,6 +118,7 @@ describe('schema and type agreement', () => {
 			z.output<typeof savedBlockWriteResultSchema>
 		>().toEqualTypeOf<T.SavedBlockWriteResult>();
 		expectTypeOf<z.output<typeof renderResultSchema>>().toEqualTypeOf<T.RenderResult>();
+		expectTypeOf<z.output<typeof brandKitSchema>>().toEqualTypeOf<T.BrandKit>();
 		expectTypeOf<
 			z.output<typeof sendTransactionalDryRunSchema>
 		>().toEqualTypeOf<T.SendTransactionalDryRun>();
@@ -155,6 +157,9 @@ describe('schema and type agreement', () => {
 		>().toEqualTypeOf<true>();
 		expectTypeOf<
 			RequestAgrees<T.RenderRequest, typeof renderRequestSchema>
+		>().toEqualTypeOf<true>();
+		expectTypeOf<
+			RequestAgrees<T.BrandKitInput, typeof brandKitUpdateRequestSchema>
 		>().toEqualTypeOf<true>();
 	});
 

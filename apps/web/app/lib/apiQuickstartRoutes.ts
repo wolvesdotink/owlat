@@ -4,8 +4,9 @@
  *
  * The routes are registered in `apps/api/convex/publicApi/v1Http.ts` and
  * described in `packages/public-contract/src/operations.ts`,
- * `templateOperations.ts` and `renderOperations.ts`; a test compares the table
- * with both, so a route added there fails until it has a row here.
+ * `templateOperations.ts`, `renderOperations.ts` and `brandKitOperations.ts`;
+ * a test compares the table with both, so a route added there fails until it
+ * has a row here.
  * A path parameter is written `:name`; everything from the first `:` on is the
  * part the router matches by prefix.
  *
@@ -44,6 +45,7 @@ export const API_QUICKSTART_ROUTES: readonly ApiQuickstartRoute[] = [
 	{ methods: ['GET', 'POST'], path: '/api/v1/saved-blocks', key: 'savedBlocks' },
 	{ methods: ['GET', 'PUT'], path: '/api/v1/saved-blocks/:id', key: 'savedBlock' },
 	{ methods: ['POST'], path: '/api/v1/render', key: 'render' },
+	{ methods: ['GET', 'PUT'], path: '/api/v1/brand-kit', key: 'brandKit' },
 	{ methods: ['GET'], path: '/api/v1/status', key: 'status' },
 	{ methods: ['GET'], path: '/api/v1/domains', key: 'domains' },
 	{ methods: ['POST'], path: '/api/v1/domains/:domain/verify', key: 'domainVerify' },

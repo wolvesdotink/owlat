@@ -1,4 +1,5 @@
 export * from './types';
+export * from './brandKit';
 export * from './common';
 export * from './contacts';
 export * from './domains';

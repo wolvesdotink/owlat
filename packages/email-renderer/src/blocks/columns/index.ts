@@ -18,7 +18,7 @@ import {
 } from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { toPixelWidth, toPercentNumber } from '../../helpers/dimensions';
-import { getColumnWidths } from '../../helpers/table';
+import { OWN_BACKGROUND_CLASS, getColumnWidths } from '../../helpers/table';
 import {
 	msoColumnsOpen,
 	msoColumnCellOpen,
@@ -73,7 +73,6 @@ export const columnsModule: BlockModule<'columns'> = {
 			const colStyle = content.columnStyles?.[colIdx];
 			const columnStacks = colStyle?.stackOnMobile ?? content.mobileStacking;
 			if (columnStacks) someColumnStacks = true;
-			const mobileClass = columnStacks ? ' class="owlat-col"' : '';
 
 			const colBg = colStyle?.backgroundColor
 				? `background-color:${escapeCss(colStyle.backgroundColor)};`
@@ -108,6 +107,15 @@ export const columnsModule: BlockModule<'columns'> = {
 					)
 				: '';
 
+			const reverseStack = columnStacks && content.mobileStacking && mobileStackOrder === 'reverse';
+			const ownBackground = (colBg && colStyle?.backgroundColor !== 'transparent') || colBgImage;
+			const colClasses = [
+				columnStacks ? 'owlat-col' : '',
+				reverseStack ? `owlat-col-rev-${colIdx}` : '',
+				ownBackground ? OWN_BACKGROUND_CLASS : '',
+			].filter(Boolean);
+			const colClassAttr = colClasses.length > 0 ? ` class="${colClasses.join(' ')}"` : '';
+
 			const msoWidth = toPixelWidth(widthPercent, ctx.baseWidth);
 
 			const safeWidth = escapeCss(width);
@@ -115,19 +123,14 @@ export const columnsModule: BlockModule<'columns'> = {
 				? `display:table-cell;width:${safeWidth};max-width:${msoWidth}px;vertical-align:${colVAlign};box-sizing:border-box;`
 				: `display:inline-block;width:${safeWidth};max-width:${msoWidth}px;vertical-align:${colVAlign};box-sizing:border-box;font-size:14px;`;
 
-			return `${msoColumnCellOpen(msoWidth, colVAlign)}<div${mobileClass} style="${displayStyle}${colBg}${colBgImage}${colPadding}${colBorder}${colBorderRadius}">${itemsHtml || '&nbsp;'}</div>${msoColumnCellClose()}`;
+			return `${msoColumnCellOpen(msoWidth, colVAlign)}<div${colClassAttr} style="${displayStyle}${colBg}${colBgImage}${colPadding}${colBorder}${colBorderRadius}">${itemsHtml || '&nbsp;'}</div>${msoColumnCellClose()}`;
 		});
 
 		if (content.mobileStacking && mobileStackOrder === 'reverse') {
 			for (const colIdx of columnIndices) {
 				ctx.responsiveRules.push(`.owlat-col-rev-${colIdx}{display:table-footer-group!important;}`);
 			}
-			const reversedParts = columnHtmlParts.map((html, i) => {
-				const colIdx = columnIndices[i];
-				return html.replace('class="owlat-col"', `class="owlat-col owlat-col-rev-${colIdx}"`);
-			});
-			const reversedInner = reversedParts.join('');
-			return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="font-size:0;line-height:0;">${reversedInner}</div>${msoColumnsClose()}`;
+			return `${msoColumnsOpen(ctx.baseWidth, direction)}<div style="font-size:0;line-height:0;">${columnHtmlParts.join('')}</div>${msoColumnsClose()}`;
 		}
 
 		const inner = columnHtmlParts.join('');

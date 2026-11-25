@@ -15,12 +15,14 @@
  * Entry points:
  *   - `get`             — the resolved kit (every member: every editor reads it).
  *   - `update`          — save the whole kit; requires `settings:manage`.
+ *   - `writeBrandKit`   — the validation and store behind `update` and
+ *                         `PUT /api/v1/brand-kit` (`publicApi/brandKit.ts`).
  *   - `assertCanManage` — the permission check the website import runs first.
  */
 
 import { v } from 'convex/values';
 import {
-	brandKitDesignProblem,
+	brandKitDesignIssue,
 	resolveBrandKitDesign,
 	type BrandKitDesign,
 	type BrandKitProblem,
@@ -32,7 +34,7 @@ import {
 	type BrandLogos,
 } from '@owlat/shared/brandKitBlocks';
 import { generateId, type EditorBlock } from '@owlat/shared';
-import { internalQuery, type QueryCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
@@ -131,6 +133,81 @@ async function assertLogoAsset(ctx: QueryCtx, assetId: Id<'mediaAssets'>): Promi
 	if (!asset.mimeType.startsWith('image/')) throwInvalidInput('A logo must be an image');
 }
 
+/** A whole kit as a write stores it: the design without `isConfigured`, and the logo assets. */
+export interface BrandKitWrite extends Omit<BrandKitDesign, 'isConfigured'> {
+	logoMediaAssetId?: Id<'mediaAssets'>;
+	logoDarkMediaAssetId?: Id<'mediaAssets'>;
+}
+
+/**
+ * Validate and store a whole kit, and audit it under `actor`. The dashboard's
+ * `update` and the API's `PUT /api/v1/brand-kit` both write through here, so a
+ * rule added to the check applies to both. A refusal is `invalid_input` with
+ * the field at fault in `data.field`.
+ */
+export async function writeBrandKit(
+	ctx: MutationCtx,
+	kit: BrandKitWrite,
+	actor: string
+): Promise<void> {
+	const { logoMediaAssetId, logoDarkMediaAssetId, ...design } = kit;
+	const normalized = {
+		...design,
+		swatches: design.swatches.map((c) => c.toLowerCase()),
+		footerCompanyName: design.footerCompanyName.trim(),
+		footerAddress: design.footerAddress.trim(),
+		footerSocialLinks: design.footerSocialLinks.map((l) => ({ ...l, url: l.url.trim() })),
+	};
+	const issue = brandKitDesignIssue(normalized);
+	if (issue) throwInvalidInput(PROBLEM_MESSAGES[issue.problem], { field: issue.field });
+	if (logoDarkMediaAssetId && !logoMediaAssetId) {
+		throwInvalidInput('Set the main logo before a dark-mode version', {
+			field: 'logoDarkMediaAssetId',
+		});
+	}
+	if (logoMediaAssetId) await assertLogoAsset(ctx, logoMediaAssetId);
+	if (logoDarkMediaAssetId) await assertLogoAsset(ctx, logoDarkMediaAssetId);
+
+	const emailTheme = {
+		primaryColor: normalized.primaryColor,
+		fontFamily: normalized.bodyFontFamily,
+		backgroundColor: normalized.backgroundColor,
+		baseWidth: normalized.baseWidth,
+	};
+	const brandKit = {
+		secondaryColor: normalized.secondaryColor,
+		textColor: normalized.textColor,
+		linkColor: normalized.linkColor,
+		swatches: normalized.swatches,
+		headingFontFamily: normalized.headingFontFamily,
+		buttonRadius: normalized.buttonRadius,
+		buttonPaddingX: normalized.buttonPaddingX,
+		buttonPaddingY: normalized.buttonPaddingY,
+		footerCompanyName: normalized.footerCompanyName,
+		footerAddress: normalized.footerAddress,
+		footerSocialLinks: normalized.footerSocialLinks,
+		...(logoMediaAssetId ? { logoMediaAssetId } : {}),
+		...(logoDarkMediaAssetId ? { logoDarkMediaAssetId } : {}),
+	};
+
+	const existing = await getInstanceSettings(ctx.db);
+	const changes: Record<string, { from: unknown; to: unknown }> = {};
+	for (const [key, to] of Object.entries({ emailTheme, brandKit })) {
+		const from = existing?.[key as 'emailTheme' | 'brandKit'] ?? null;
+		if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
+	}
+	const settingsId = await upsertInstanceSettings(ctx, { emailTheme, brandKit });
+	if (Object.keys(changes).length > 0) {
+		await recordAuditLog(ctx, {
+			userId: actor,
+			action: 'settings.updated',
+			resource: 'settings',
+			resourceId: settingsId,
+			detailsBlob: JSON.stringify({ changes }),
+		});
+	}
+}
+
 export const update = authedMutation({
 	args: {
 		primaryColor: v.string(),
@@ -156,60 +233,7 @@ export const update = authedMutation({
 			hasPermission(session.role, 'settings:manage'),
 			'Only owners and admins can change the brand kit'
 		);
-		const { logoMediaAssetId, logoDarkMediaAssetId, ...design } = args;
-		const normalized = {
-			...design,
-			swatches: design.swatches.map((c) => c.toLowerCase()),
-			footerCompanyName: design.footerCompanyName.trim(),
-			footerAddress: design.footerAddress.trim(),
-			footerSocialLinks: design.footerSocialLinks.map((l) => ({ ...l, url: l.url.trim() })),
-		};
-		const problem = brandKitDesignProblem(normalized);
-		if (problem) throwInvalidInput(PROBLEM_MESSAGES[problem]);
-		if (logoDarkMediaAssetId && !logoMediaAssetId) {
-			throwInvalidInput('Set the main logo before a dark-mode version');
-		}
-		if (logoMediaAssetId) await assertLogoAsset(ctx, logoMediaAssetId);
-		if (logoDarkMediaAssetId) await assertLogoAsset(ctx, logoDarkMediaAssetId);
-
-		const emailTheme = {
-			primaryColor: normalized.primaryColor,
-			fontFamily: normalized.bodyFontFamily,
-			backgroundColor: normalized.backgroundColor,
-			baseWidth: normalized.baseWidth,
-		};
-		const brandKit = {
-			secondaryColor: normalized.secondaryColor,
-			textColor: normalized.textColor,
-			linkColor: normalized.linkColor,
-			swatches: normalized.swatches,
-			headingFontFamily: normalized.headingFontFamily,
-			buttonRadius: normalized.buttonRadius,
-			buttonPaddingX: normalized.buttonPaddingX,
-			buttonPaddingY: normalized.buttonPaddingY,
-			footerCompanyName: normalized.footerCompanyName,
-			footerAddress: normalized.footerAddress,
-			footerSocialLinks: normalized.footerSocialLinks,
-			...(logoMediaAssetId ? { logoMediaAssetId } : {}),
-			...(logoDarkMediaAssetId ? { logoDarkMediaAssetId } : {}),
-		};
-
-		const existing = await getInstanceSettings(ctx.db);
-		const changes: Record<string, { from: unknown; to: unknown }> = {};
-		for (const [key, to] of Object.entries({ emailTheme, brandKit })) {
-			const from = existing?.[key as 'emailTheme' | 'brandKit'] ?? null;
-			if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
-		}
-		const settingsId = await upsertInstanceSettings(ctx, { emailTheme, brandKit });
-		if (Object.keys(changes).length > 0) {
-			await recordAuditLog(ctx, {
-				userId: session.userId,
-				action: 'settings.updated',
-				resource: 'settings',
-				resourceId: settingsId,
-				detailsBlob: JSON.stringify({ changes }),
-			});
-		}
+		await writeBrandKit(ctx, args, session.userId);
 		return null;
 	},
 });

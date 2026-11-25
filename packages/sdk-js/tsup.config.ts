@@ -12,9 +12,11 @@ export default defineConfig({
 	dts: {
 		resolve: [
 			/^@owlat\/public-contract$/,
+			/^\.\/brandKitTypes$/,
 			/^\.\/deliveryStatus$/,
 			/^\.\/domainSetup$/,
 			/^\.\/errorReasons$/,
+			/^\.\/renderTypes$/,
 			/^\.\/sendLimits$/,
 			/^\.\/sendList$/,
 			/^\.\/templateTypes$/,

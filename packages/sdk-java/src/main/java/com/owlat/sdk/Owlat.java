@@ -1,6 +1,7 @@
 package com.owlat.sdk;
 
 import com.owlat.sdk.internal.HttpClient;
+import com.owlat.sdk.resource.BrandKitResource;
 import com.owlat.sdk.resource.ContactsResource;
 import com.owlat.sdk.resource.DomainsResource;
 import com.owlat.sdk.resource.EventsResource;
@@ -24,6 +25,7 @@ public class Owlat {
     private final TransactionalEmailsResource transactionalEmails;
     private final SavedBlocksResource savedBlocks;
     private final RenderResource render;
+    private final BrandKitResource brandKit;
 
     /**
      * A client for the instance {@code config} names. The config's builder
@@ -42,6 +44,7 @@ public class Owlat {
         this.transactionalEmails = new TransactionalEmailsResource(httpClient);
         this.savedBlocks = new SavedBlocksResource(httpClient);
         this.render = new RenderResource(httpClient);
+        this.brandKit = new BrandKitResource(httpClient);
     }
 
     public ContactsResource contacts() {
@@ -88,5 +91,10 @@ public class Owlat {
     /** Render block content without storing it, as this instance would. */
     public RenderResource render() {
         return render;
+    }
+
+    /** Read and change the brand kit. */
+    public BrandKitResource brandKit() {
+        return brandKit;
     }
 }

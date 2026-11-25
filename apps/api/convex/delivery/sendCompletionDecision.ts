@@ -116,7 +116,7 @@ const SUPPRESSED_SEND_FAILURE = {
 	},
 	contact_deleted: { message: 'Contact deleted before dispatch', code: 'CONTACT_DELETED' },
 	topic_unsubscribed: {
-		message: "Contact left the automation's topic before dispatch",
+		message: 'Contact left the topic the email was sent for before dispatch',
 		code: 'RECIPIENT_LEFT_TOPIC',
 	},
 	// Not about the recipient: the sender withdrew the mail. It shares the

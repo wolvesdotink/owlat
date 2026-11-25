@@ -290,6 +290,24 @@ rendered.getHtml();
 rendered.getIssues();
 ```
 
+### Brand kit
+
+The colours, fonts, button style and footer every email starts from. Reading
+needs the `brand-kit:read` scope, changing it `brand-kit:write`. `update` sends
+only the fields the builder sets; the rest keep their stored value, and it
+returns the whole kit. A font is one of the CSS font stacks the brand kit page
+offers, spelled exactly (the OpenAPI document lists them). The logos cannot be
+changed through the API.
+
+```java
+BrandKit kit = owlat.brandKit().get();
+owlat.brandKit().update(BrandKitInput.builder()
+        .headingFontFamily("'Montserrat', Arial, sans-serif")
+        .footerCompanyName("Example Shop GmbH")
+        .footerAddress("1 Example Street\n12345 Example City")
+        .build());
+```
+
 ## Error Handling
 
 All exceptions extend `OwlatException` (unchecked) and include the HTTP status code and rate limit info.

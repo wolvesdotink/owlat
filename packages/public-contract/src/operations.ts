@@ -24,6 +24,7 @@ import {
 import { domainCheckRequestSchema, sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { sendLimitsSchema } from './limits';
+import { BRAND_KIT_OPERATIONS } from './brandKitOperations';
 import { RENDER_OPERATIONS } from './renderOperations';
 import { TEMPLATE_OPERATIONS } from './templateOperations';
 import { deliveryStatusSchema } from './status';
@@ -291,6 +292,7 @@ export const PUBLIC_OPERATIONS = [
 	},
 	...TEMPLATE_OPERATIONS,
 	...RENDER_OPERATIONS,
+	...BRAND_KIT_OPERATIONS,
 	{
 		operationId: 'listTopics',
 		method: 'GET',
