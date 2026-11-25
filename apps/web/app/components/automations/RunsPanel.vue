@@ -5,7 +5,8 @@
  * The filter lives in the URL (`?runs=`), so the automations list can link
  * straight to the runs behind a health count: `?runs=failed` lists the runs a
  * failed step ended and `?runs=stalled` the runs the stalled-run sweep ended,
- * both over the list's last 7 days. The other values filter by run status.
+ * both over the list's last 7 days, and `?runs=waiting` the runs whose email
+ * waits for the sending setup now. The other values filter by run status.
  */
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
@@ -33,7 +34,15 @@ const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 
-const RUN_FILTERS = ['all', 'running', 'completed', 'cancelled', 'failed', 'stalled'] as const;
+const RUN_FILTERS = [
+	'all',
+	'running',
+	'waiting',
+	'completed',
+	'cancelled',
+	'failed',
+	'stalled',
+] as const;
 type RunFilter = (typeof RUN_FILTERS)[number];
 
 const isRunFilter = (value: unknown): value is RunFilter =>
@@ -44,7 +53,17 @@ const selectedFilter = computed<RunFilter>({
 	set: (value) =>
 		void router.replace({
 			query: { ...route.query, runs: value === 'all' ? undefined : value },
+			// Dropping `#runs` would scroll the page back to the top.
+			hash: route.hash,
 		}),
+});
+
+// A link from the list or the health notice names `#runs`. The panel loads
+// after the page, too late for the router's own scroll to the hash, so it
+// scrolls itself into view once it is there.
+const panel = ref<HTMLElement | null>(null);
+onMounted(() => {
+	if (route.hash === '#runs') panel.value?.scrollIntoView({ block: 'start' });
 });
 
 const pageSize = 10;
@@ -68,9 +87,11 @@ const {
 			? { endReason: 'step_failed' as const }
 			: filter === 'stalled'
 				? { endReason: 'stalled' as const }
-				: filter === 'all'
-					? {}
-					: { status: filter }),
+				: filter === 'waiting'
+					? { waiting: true }
+					: filter === 'all'
+						? {}
+						: { status: filter }),
 		limit: pageSize,
 		offset: runsOffset.value,
 	};
@@ -79,6 +100,7 @@ const {
 const runFilters = computed(() => [
 	{ value: 'all' as const, label: t('common.all') },
 	{ value: 'running' as const, label: t('dashboard.automations.detail.index.runs.inProgress') },
+	{ value: 'waiting' as const, label: t('dashboard.automations.detail.index.runs.waitingBadge') },
 	{ value: 'completed' as const, label: t('dashboard.automations.detail.index.runs.completed') },
 	{ value: 'cancelled' as const, label: t('dashboard.automations.detail.index.runs.cancelled') },
 	{ value: 'failed' as const, label: t('dashboard.automations.detail.index.runs.failed') },
@@ -92,6 +114,8 @@ const filterNote = computed(() => {
 			return t('dashboard.automations.detail.index.runs.failedNote');
 		case 'stalled':
 			return t('dashboard.automations.detail.index.runs.stalledNote');
+		case 'waiting':
+			return t('dashboard.automations.detail.index.runs.waitingNote');
 		default:
 			return null;
 	}
@@ -174,7 +198,7 @@ const loadPrevRuns = () => {
 </script>
 
 <template>
-	<div class="card p-0 overflow-hidden">
+	<div ref="panel" class="card p-0 overflow-hidden">
 		<div class="px-6 py-4 border-b border-border-subtle">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<h3 class="text-lg font-medium text-text-primary">

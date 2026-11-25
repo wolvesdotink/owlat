@@ -12,11 +12,17 @@
  * so the renderer falls back to its default. The renderer coerces these
  * fields too; this keeps the stored JSON in the shape the types describe.
  *
- * Pure helpers (no Convex-runtime imports). The only dependency is the
+ * Custom column widths (`columnWidths` on a columns block) that the renderer
+ * would ignore (wrong length, a sum other than 100, a column below the
+ * minimum) are removed, so the stored row says what it renders: the ratio
+ * preset.
+ *
+ * Pure helpers (no Convex-runtime imports). The dependencies are the
  * `@owlat/email-renderer/sanitize` entry, which pulls in `sanitize-html` and
- * nothing else from the renderer.
+ * nothing else from the renderer, and the shared column-width rules.
  */
 
+import { isValidColumnWidths } from '@owlat/shared';
 import { sanitizeEditorHtml } from '@owlat/email-renderer/sanitize';
 
 type JsonObject = Record<string, unknown>;
@@ -120,6 +126,14 @@ function sanitizeField(holder: JsonObject, key: string): boolean {
 	return true;
 }
 
+/** Remove `columnWidths` from columns content when the renderer would ignore it. */
+function dropInvalidColumnWidths(content: JsonObject): boolean {
+	if (!('columnWidths' in content)) return false;
+	if (isValidColumnWidths(content['columnWidths'], content['columnCount'])) return false;
+	delete content['columnWidths'];
+	return true;
+}
+
 /**
  * Walk a parsed block tree, sanitize the `content.html` of every text block
  * and normalize numeric style fields, however deeply they are nested
@@ -137,6 +151,9 @@ function sanitizeBlockTree(node: unknown): boolean {
 	let changed = normalizeNumericFields(node);
 	if (node['type'] === 'text' && isObject(node['content'])) {
 		changed = sanitizeField(node['content'], 'html') || changed;
+	}
+	if (node['type'] === 'columns' && isObject(node['content'])) {
+		changed = dropInvalidColumnWidths(node['content']) || changed;
 	}
 	for (const value of Object.values(node)) {
 		if (typeof value === 'object' && value !== null) {

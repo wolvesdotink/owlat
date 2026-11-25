@@ -13,6 +13,7 @@ export const newsletterPreset: TemplatePreset = {
 			id: 'newsletter-text-1',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<h1 style="text-align: center">Weekly Newsletter</h1>',
 				fontSize: 28,
 				textColor: '#111827',
@@ -22,6 +23,7 @@ export const newsletterPreset: TemplatePreset = {
 			id: 'newsletter-text-2',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center; color: #6B7280">Your weekly dose of updates and insights</p>',
 				fontSize: 14,
 				textColor: '#6B7280',
@@ -51,6 +53,7 @@ export const newsletterPreset: TemplatePreset = {
 			id: 'newsletter-text-3',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<h2>Top Story</h2>',
 				fontSize: 20,
 				textColor: '#111827',
@@ -60,6 +63,7 @@ export const newsletterPreset: TemplatePreset = {
 			id: 'newsletter-text-4',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p>Your main story content goes here. Share the most important news or update of the week.</p>',
 				fontSize: 16,
 				textColor: '#374151',
@@ -90,6 +94,7 @@ export const newsletterPreset: TemplatePreset = {
 			id: 'newsletter-text-5',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<h2>Quick Links</h2>',
 				fontSize: 20,
 				textColor: '#111827',
@@ -99,6 +104,7 @@ export const newsletterPreset: TemplatePreset = {
 			id: 'newsletter-text-6',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p>- <a href="#">Link to article or resource 1</a></p><p>- <a href="#">Link to article or resource 2</a></p><p>- <a href="#">Link to article or resource 3</a></p>',
 				fontSize: 16,
 				textColor: '#374151',
@@ -128,6 +134,7 @@ export const newsletterPreset: TemplatePreset = {
 			id: 'newsletter-text-7',
 			type: 'text',
 			content: {
+				blockType: 'paragraph',
 				html: '<p style="text-align: center">Thanks for reading! See you next week.</p>',
 				fontSize: 14,
 				textColor: '#6B7280',

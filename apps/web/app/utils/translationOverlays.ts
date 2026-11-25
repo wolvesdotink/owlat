@@ -22,8 +22,21 @@ function isOptionalString(value: unknown): boolean {
 	return value === undefined || typeof value === 'string';
 }
 
+const BLOCK_TEXT_MAPS = ['texts', 'sectionTitles'] as const;
+
+/** True when `value` is absent or an object of strings. */
+function isOptionalTextMap(value: unknown): boolean {
+	return value === undefined || (isRecord(value) && Object.values(value).every(isString));
+}
+
+const isString = (value: unknown): boolean => typeof value === 'string';
+
 function isBlockText(value: unknown): value is TranslatableBlockContent {
-	return isRecord(value) && BLOCK_TEXT_FIELDS.every((field) => isOptionalString(value[field]));
+	return (
+		isRecord(value) &&
+		BLOCK_TEXT_FIELDS.every((field) => isOptionalString(value[field])) &&
+		BLOCK_TEXT_MAPS.every((field) => isOptionalTextMap(value[field]))
+	);
 }
 
 function isOverlay(value: unknown): value is StoredTranslationOverlay {

@@ -116,14 +116,20 @@ export async function readBoundedRepositoryUtf8File(
 			);
 		}
 
-		const buffer = Buffer.allocUnsafe(maxBytes + 1);
+		// Sized from the opened file, not from maxBytes: a scan reads thousands of files, and a
+		// maxBytes buffer for each one costs gigabytes of allocation. The spare byte detects a file
+		// that grew after the stat.
+		const buffer = Buffer.allocUnsafe(opened.size + 1);
 		let offset = 0;
 		for (;;) {
 			const { bytesRead } = await file.read(buffer, offset, buffer.length - offset, offset);
 			if (bytesRead === 0) break;
 			offset += bytesRead;
-			if (offset > maxBytes) {
-				throw new BoundedRepositoryFileError('too_large', `File exceeds ${maxBytes} bytes`);
+			if (offset > opened.size) {
+				throw new BoundedRepositoryFileError(
+					offset > maxBytes ? 'too_large' : 'changed',
+					offset > maxBytes ? `File exceeds ${maxBytes} bytes` : 'File grew while it was read'
+				);
 			}
 		}
 		try {

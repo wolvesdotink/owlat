@@ -7,6 +7,8 @@ import { TopicsResource } from './resources/topics';
 import { StatusResource } from './resources/status';
 import { DomainsResource } from './resources/domains';
 import { LimitsResource } from './resources/limits';
+import { TransactionalEmailsResource } from './resources/transactionalEmails';
+import { SavedBlocksResource } from './resources/savedBlocks';
 
 /**
  * The hosted Owlat address. No self-hosted instance answers here, so a client
@@ -80,6 +82,16 @@ export class Owlat {
 	readonly limits: LimitsResource;
 
 	/**
+	 * Read and write transactional emails, and publish them.
+	 */
+	readonly transactionalEmails: TransactionalEmailsResource;
+
+	/**
+	 * Read and write saved blocks.
+	 */
+	readonly savedBlocks: SavedBlocksResource;
+
+	/**
 	 * Create a client from an API key alone, which talks to the hosted address
 	 * instead of your instance.
 	 *
@@ -116,5 +128,7 @@ export class Owlat {
 		this.status = new StatusResource(http);
 		this.domains = new DomainsResource(http);
 		this.limits = new LimitsResource(http);
+		this.transactionalEmails = new TransactionalEmailsResource(http);
+		this.savedBlocks = new SavedBlocksResource(http);
 	}
 }

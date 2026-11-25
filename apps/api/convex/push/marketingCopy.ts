@@ -47,6 +47,8 @@ interface MarketingCopy {
 	alertPrivate: string;
 	suspendedTitle: string;
 	suspendedBody: string;
+	bannedTitle: string;
+	bannedBody: string;
 	resumedTitle: string;
 	resumedBody: string;
 	open: string;
@@ -95,6 +97,9 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		alertPrivate: 'A deliverability check stopped passing',
 		suspendedTitle: 'Sending suspended',
 		suspendedBody: 'No new mail goes out from this instance. Open Delivery health to see why',
+		bannedTitle: 'Sending banned',
+		bannedBody:
+			'No new mail goes out from this instance until a platform admin lifts the ban. Open Delivery health to see why',
 		resumedTitle: 'Sending resumed',
 		resumedBody: 'Mail from this instance goes out again',
 		open: 'Open',
@@ -145,6 +150,9 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		suspendedTitle: 'Versand ausgesetzt',
 		suspendedBody:
 			'Von dieser Instanz geht keine neue Mail raus. Unter Zustellungsgesundheit siehst du, warum',
+		bannedTitle: 'Versand gesperrt',
+		bannedBody:
+			'Von dieser Instanz geht keine neue Mail raus, bis ein Plattform-Admin die Sperre aufhebt. Unter Zustellungsgesundheit siehst du, warum',
 		resumedTitle: 'Versand wieder aktiv',
 		resumedBody: 'Mails von dieser Instanz gehen wieder raus',
 		open: 'Öffnen',
@@ -258,7 +266,9 @@ export function marketingPayload(
 		// The stored reason can name rates and domains, so the push stays generic
 		// and the delivery hub shows the detail.
 		case 'sending_suspended':
-			return { ...base, title: copy.suspendedTitle, body: copy.suspendedBody };
+			return notice.holdStatus === 'banned'
+				? { ...base, title: copy.bannedTitle, body: copy.bannedBody }
+				: { ...base, title: copy.suspendedTitle, body: copy.suspendedBody };
 		case 'sending_resumed':
 			return { ...base, title: copy.resumedTitle, body: copy.resumedBody };
 	}

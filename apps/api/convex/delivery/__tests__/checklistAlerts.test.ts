@@ -99,6 +99,7 @@ describe('deliverability regression email retry policy', () => {
 		completion?: { state: 'pending' | 'sent' | 'unavailable'; retryScheduled: boolean };
 		sendEmail?: RegressionEmailDependencies['sendEmail'];
 		boundaryFailureRetryDisposition?: RegressionEmailDependencies['boundaryFailureRetryDisposition'];
+		locales?: Record<string, string>;
 	}) {
 		const runQuery = vi.fn(async (): Promise<{ emailDirectoryAttemptCount?: number } | null> => ({
 			emailDirectoryAttemptCount: 0,
@@ -114,6 +115,7 @@ describe('deliverability regression email retry policy', () => {
 		const ctx = { runQuery, runMutation } as never;
 		const dependencies: RegressionEmailDependencies = {
 			loadRecipients: vi.fn(async () => options?.recipients ?? []),
+			loadLocales: vi.fn(async () => new Map(Object.entries(options?.locales ?? {}))),
 			sendEmail: options?.sendEmail ?? vi.fn(async () => acceptedMail()),
 			boundaryFailureRetryDisposition:
 				options?.boundaryFailureRetryDisposition ?? vi.fn((): 'terminal' => 'terminal'),
@@ -151,6 +153,55 @@ describe('deliverability regression email retry policy', () => {
 		const html = vi.mocked(test.dependencies.sendEmail).mock.calls[0]?.[1].html;
 		expect(html).toContain('also shows this alert in the app');
 		expect(html).toContain('push notification');
+	});
+
+	it('writes each admin the email in the language they chose', async () => {
+		const test = harness({
+			recipients: [
+				{ userId: 'user-de', email: 'de@example.test' },
+				{ userId: 'user-en', email: 'en@example.test' },
+			],
+			claims: [
+				{ userId: 'user-de', email: 'de@example.test', attemptCount: 1 },
+				{ userId: 'user-en', email: 'en@example.test', attemptCount: 1 },
+			],
+			locales: { 'user-de': 'de' },
+		});
+		await deliverRegressionEmailHandler(
+			test.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			test.dependencies
+		);
+		const byRecipient = Object.fromEntries(
+			vi.mocked(test.dependencies.sendEmail).mock.calls.map(([, payload]) => [payload.to, payload])
+		);
+		expect(byRecipient['de@example.test']).toMatchObject({
+			subject: 'Owlat: Zustellbarkeit verschlechtert',
+		});
+		expect(byRecipient['de@example.test']!.html).toContain('Zustellbarkeitsprüfung');
+		// The check's own message is quoted as recorded, escaped.
+		expect(byRecipient['de@example.test']!.html).toContain('PTR regressed &lt;unsafe&gt;');
+		expect(byRecipient['en@example.test']).toMatchObject({
+			subject: 'Owlat deliverability regression detected',
+		});
+	});
+
+	it('mails in English when the language lookup fails', async () => {
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+		});
+		test.dependencies.loadLocales = vi.fn(async () => {
+			throw new Error('query failed');
+		});
+		await deliverRegressionEmailHandler(
+			test.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			test.dependencies
+		);
+		expect(vi.mocked(test.dependencies.sendEmail).mock.calls[0]?.[1].subject).toBe(
+			'Owlat deliverability regression detected'
+		);
 	});
 
 	it('records a terminal failure, and sends nothing, when no sender is configured', async () => {

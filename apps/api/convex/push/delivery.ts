@@ -60,9 +60,10 @@ async function tallyAlertPushes(
 ): Promise<void> {
 	if (event.kind !== 'marketing') return;
 	const notice = await ctx.db.get(event.noticeId);
-	if (!notice?.alertId) return;
+	const countedOn = notice?.alertId ?? notice?.sendingHoldAlertId;
+	if (!countedOn) return;
 	const delivered = outcomes.filter((row) => row.outcome === 'delivered').length;
-	await recordAlertPushOutcomes(ctx, notice.alertId, {
+	await recordAlertPushOutcomes(ctx, countedOn, {
 		delivered,
 		failed: outcomes.length - delivered,
 		held,

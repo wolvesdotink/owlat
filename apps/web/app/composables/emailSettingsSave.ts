@@ -38,7 +38,7 @@ import {
 
 export interface EmailSettingsUpdatePayload {
 	subject: string;
-	previewText: string | undefined;
+	previewText: string;
 	defaultLanguage: string;
 	supportedLanguages: string[];
 	translations: string;
