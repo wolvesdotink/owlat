@@ -39,7 +39,7 @@ export function stripPreheaderHtml(html: string): string {
 	return html.replace(PREHEADER_RE, '');
 }
 
-/** The preheader's own text as the HTML carries it (escaped), or '' without one. */
-export function preheaderTextHtml(html: string): string {
-	return PREHEADER_RE.exec(html)?.[1] ?? '';
+/** The preheader's own text as the HTML carries it (escaped), or undefined without one. */
+export function preheaderTextHtml(html: string): string | undefined {
+	return PREHEADER_RE.exec(html)?.[1];
 }

@@ -425,6 +425,21 @@ describe('composeForSend — transactional', () => {
 		expect(textOf(html(''))).toBe('Order A-7 is on its way');
 	});
 
+	it('drops a preheader whose tokens all resolve empty from an image-only email', () => {
+		const htmlContent = renderEmailHtml(
+			[{ id: 'i', type: 'image', content: { src: 'https://example.com/a.png', alt: '' } } as never],
+			{ variableType: 'data', preheaderText: "{{name|''}}" }
+		);
+		expect(htmlContent).toContain('&zwnj;');
+		const composed = composeForSend({
+			kind: 'transactional',
+			template: { subject: 's', htmlContent },
+		});
+		expect(composed.html).not.toContain('&zwnj;');
+		expect(composed.html).toContain('https://example.com/a.png');
+		expect(composed.text).toBe('');
+	});
+
 	it('returns merged attachment refs', () => {
 		const composed = composeForSend({
 			kind: 'transactional',

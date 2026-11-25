@@ -73,7 +73,7 @@ const COMPOSERS = {
  */
 export function composeForSend(input: ComposeInput): ComposeOutput {
 	const composer = COMPOSERS[input.kind] as ComposerFn<typeof input.kind>;
-	const composed = composer(input);
+	const composed = withoutBlankPreheader(composer(input));
 	// The text/plain alternative, in preference order:
 	//  1. the template's `plainTextContent` — the author's manual override, or
 	//     the body generated from the block document at save time. It is
@@ -116,6 +116,17 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 }
 
 /**
+ * A preview text whose tokens all resolved empty leaves only the padding: drop
+ * the whole preheader so neither the HTML nor a text part derived from it
+ * carries it.
+ */
+function withoutBlankPreheader<T extends { html: string }>(composed: T): T {
+	const preheader = preheaderTextHtml(composed.html);
+	if (preheader === undefined || htmlToPlainText(preheader) !== '') return composed;
+	return { ...composed, html: stripPreheaderHtml(composed.html) };
+}
+
+/**
  * The text part derived from the HTML, without the hidden preheader and its
  * padding. An email with no visible text (images only) gets the preheader line
  * instead: an empty text part would make the transport derive one from the
@@ -123,7 +134,7 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
  */
 function htmlTextPart(html: string): string {
 	const visible = htmlToPlainText(stripPreheaderHtml(html), { preserveBreaks: true });
-	return visible || htmlToPlainText(preheaderTextHtml(html));
+	return visible || htmlToPlainText(preheaderTextHtml(html) ?? '');
 }
 
 /**
