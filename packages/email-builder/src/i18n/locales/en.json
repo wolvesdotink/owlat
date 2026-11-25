@@ -510,8 +510,10 @@
 				"string": "String",
 				"number": "Number",
 				"boolean": "Boolean",
-				"date": "Date"
+				"date": "Date",
+				"array": "List"
 			},
+			"arrayHint": "A list of entries for a repeated block. Choose it under the block's Repeat setting, and use {example} inside the block.",
 			"preview": "Preview",
 			"usage": "Used in the API payload",
 			"create": "Create variable"

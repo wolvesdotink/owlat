@@ -17,8 +17,16 @@ export * from './topicList';
 export * from './webhookEvents';
 // ── Shared envelopes and values ─────────────────────────────────────────────
 
-/** A JSON primitive: the only value a template variable or event property may hold. */
+/** A JSON primitive: the only value an event property may hold. */
 export type JsonPrimitive = string | number | boolean | null;
+
+/**
+ * A transactional data variable: a JSON primitive, or a list (for a repeated
+ * Block) of primitives or of flat objects of primitives, at most 500 entries.
+ */
+export type DataVariableValue =
+	| JsonPrimitive
+	| Array<JsonPrimitive | Record<string, JsonPrimitive>>;
 
 /**
  * Query parameters of a cursor-paginated list request.
@@ -363,10 +371,12 @@ export interface SendTransactionalRequest {
 	/**
 	 * Variables to replace in the email template.
 	 * Keys should match the variable names defined in your template. Each value
-	 * must be a string, number, boolean or `null`; nested objects and arrays are
+	 * is a string, number, boolean or `null`, or a list of at most 500 entries
+	 * for a repeated Block: each entry a primitive or an object of primitives,
+	 * whose fields the Block reads as `{{item.field}}`. Deeper nesting is
 	 * rejected.
 	 */
-	dataVariables?: Record<string, JsonPrimitive>;
+	dataVariables?: Record<string, DataVariableValue>;
 	/**
 	 * Language code for selecting a translation (e.g., 'en', 'de', 'fr').
 	 * Falls back to contact's language preference, then template default.

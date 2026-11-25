@@ -770,8 +770,10 @@
 				"string": "Zeichenkette",
 				"number": "Zahl",
 				"boolean": "Wahrheitswert",
-				"date": "Datum"
+				"date": "Datum",
+				"array": "Liste"
 			},
+			"arrayHint": "Eine Liste von Einträgen für einen wiederholten Block. Wähl sie unter „Wiederholen“ des Blocks und nutze darin {example}.",
 			"preview": "Vorschau",
 			"usage": "Wird in der API-Nutzlast verwendet",
 			"create": "Variable anlegen"

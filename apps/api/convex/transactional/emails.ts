@@ -27,7 +27,7 @@ import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 import { scanPublishedEdit } from './lifecycle';
 
 // Data variable type for schema definition
-export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
+export type DataVariableType = 'string' | 'number' | 'boolean' | 'date' | 'array';
 
 /**
  * List all transactional emails for an organization with optional filtering
@@ -443,7 +443,7 @@ export const updateSchema = transactionalMutation({
 
 		// Validate schema format
 		const schema = args.dataVariablesSchema;
-		const validTypes: DataVariableType[] = ['string', 'number', 'boolean', 'date'];
+		const validTypes: DataVariableType[] = ['string', 'number', 'boolean', 'date', 'array'];
 
 		for (const [key, type] of Object.entries(schema)) {
 			// Validate key format

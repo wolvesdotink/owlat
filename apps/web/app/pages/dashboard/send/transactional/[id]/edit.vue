@@ -62,7 +62,7 @@ const testSender = useResolvedTransactionalSender(emailId);
 // Data variables from schema
 interface DataVariableInfo {
 	key: string;
-	type: 'string' | 'number' | 'boolean' | 'date';
+	type: 'string' | 'number' | 'boolean' | 'date' | 'array';
 }
 
 const dataVariables = ref<DataVariableInfo[]>([]);

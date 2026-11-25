@@ -227,6 +227,34 @@ function resolveNodes(
 	return out;
 }
 
+function collectRepeatVariables(
+	nodes: readonly RegionNode[],
+	variables: SendRegionVariables,
+	into: Set<string>
+): void {
+	for (const node of nodes) {
+		if (node.kind === 'if') {
+			if (!isCondition(node.condition) || evaluateBlockCondition(node.condition, variables)) {
+				collectRepeatVariables(node.children, variables, into);
+			}
+		} else if (node.kind === 'each' && isRepeat(node.repeat)) {
+			into.add(node.repeat.variable);
+			collectRepeatVariables(node.children, variables, into);
+		}
+	}
+}
+
+/**
+ * The list variables of the repeated regions a send with `variables` keeps:
+ * a repeat inside a dropped condition is not among them.
+ */
+export function repeatVariablesIn(content: string, variables: SendRegionVariables): string[] {
+	if (!hasSendRegions(content)) return [];
+	const names = new Set<string>();
+	collectRepeatVariables(parseRegions(content), variables, names);
+	return [...names];
+}
+
 /**
  * The body a send delivers: each conditional region kept or dropped and each
  * repeated region written once per entry, against `variables`, with every

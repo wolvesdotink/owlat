@@ -6,6 +6,7 @@ import {
 	evaluateBlockCondition,
 	hasSendRegions,
 	repeatItems,
+	repeatVariablesIn,
 	repeatRegionStart,
 	resolveSendRegions,
 	stripSendRegionMarkers,
@@ -146,5 +147,17 @@ describe('stripSendRegionMarkers', () => {
 	it('removes every marker and keeps every region', () => {
 		const body = `a${ifRegion({ variable: 'v', operator: 'exists' }, 'b')}${eachRegion({ variable: 'l', itemAlias: 'i' }, 'c')}`;
 		expect(stripSendRegionMarkers(body)).toBe('abc');
+	});
+});
+
+describe('repeatVariablesIn', () => {
+	it('names the lists of the repeats a send keeps, not those inside a dropped condition', () => {
+		const body = `${eachRegion({ variable: 'lines', itemAlias: 'l' }, 'x')}${ifRegion(
+			{ variable: 'gift', operator: 'exists' },
+			eachRegion({ variable: 'giftLines', itemAlias: 'g' }, 'y')
+		)}`;
+		expect(repeatVariablesIn(body, {})).toEqual(['lines']);
+		expect(repeatVariablesIn(body, { gift: 'yes' })).toEqual(['lines', 'giftLines']);
+		expect(repeatVariablesIn('<p>plain</p>', {})).toEqual([]);
 	});
 });

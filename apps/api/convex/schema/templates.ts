@@ -2,8 +2,8 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { softDeleteFields } from '../lib/validators/softDelete';
 import {
+	dataVariablesRecord,
 	dataVariablesSchemaValidator,
-	jsonPrimitiveRecord,
 	emailTemplateTypeValidator,
 } from '../lib/convexValidators';
 import { sendStatusValidator } from '../lib/literalValidators';
@@ -337,7 +337,7 @@ export const templateTables = {
 		language: v.optional(v.string()),
 		// Data variables that were used for this send. Removed by the retention
 		// sweep once the send is done (`transactional/sendDataRetention.ts`).
-		dataVariables: v.optional(jsonPrimitiveRecord),
+		dataVariables: v.optional(dataVariablesRecord),
 		// What the retention sweep keeps of `dataVariables`: the names, so the
 		// send page can still say what the caller supplied.
 		dataVariableNames: v.optional(v.array(v.string())),

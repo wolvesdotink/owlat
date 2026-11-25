@@ -110,7 +110,7 @@ async function seedBaseline(
 		domainStatus?: 'verified' | 'pending' | 'failed' | 'registering';
 		templateStatus?: 'draft' | 'published' | 'pending_review';
 		htmlContent?: string;
-		dataVariablesSchema?: Record<string, 'string' | 'number' | 'boolean' | 'date'>;
+		dataVariablesSchema?: Record<string, 'string' | 'number' | 'boolean' | 'date' | 'array'>;
 		htmlTranslations?: string;
 		supportedLanguages?: string[];
 		defaultLanguage?: string;
@@ -1232,5 +1232,120 @@ describe('transactional.dispatch.dispatch — block conditions', () => {
 		expect(sent.html).not.toContain('Your booking code is');
 		expect(sent.text).toContain('We will send your booking code later');
 		expect(sent.text).not.toContain('Your booking code is');
+	});
+});
+
+describe('transactional.dispatch.dispatch — repeated blocks', () => {
+	const repeatedBlocks = (html: string) =>
+		JSON.stringify([
+			{ id: 'intro', type: 'text', content: { html: '<p>Your order</p>' } },
+			{
+				id: 'line',
+				type: 'text',
+				content: { html, repeat: { variable: 'items', itemAlias: 'item' } },
+			},
+		]);
+
+	async function publishRepeated(t: TestConvex<typeof schema>, html: string) {
+		const { templateId } = await seedBaseline(t, {
+			templateStatus: 'draft',
+			dataVariablesSchema: { items: 'array' },
+		});
+		await t.mutation(api.transactional.emails.update, {
+			id: templateId,
+			content: repeatedBlocks(html),
+		});
+		await t.mutation(api.transactional.emails.publish, { id: templateId });
+		return templateId;
+	}
+
+	it('writes the block once per entry of the list the request sends, in html and text', async () => {
+		const t = newTest();
+		const templateId = await publishRepeated(t, '<p>{{item.name}} x {{item.quantity}}</p>');
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: {
+				items: [
+					{ name: 'Tent', quantity: 1 },
+					{ name: '<b>Stove</b>', quantity: 2 },
+				],
+			},
+		});
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}: ${outcome.detail}`);
+		const queued = vi.mocked(transactionalEmailPool.enqueueAction).mock.calls[0]?.[2] as {
+			envelopeInput: Parameters<typeof buildComposeInput>[0];
+		};
+		const sent = composeForSend(buildComposeInput(queued.envelopeInput));
+
+		expect(sent.html).toContain('Tent x 1');
+		expect(sent.html).toContain('&lt;b&gt;Stove&lt;/b&gt; x 2');
+		expect(sent.text).toContain('Tent x 1');
+		expect(sent.text).toContain('<b>Stove</b> x 2');
+		expect(sent.html).not.toContain('{{item.');
+		expect(sent.html).not.toContain('owlat:');
+		expect(sent.text).not.toContain('owlat:');
+	});
+
+	it('refuses a request that leaves out the list the email repeats', async () => {
+		const t = newTest();
+		const templateId = await publishRepeated(t, '<p>{{item.name}}</p>');
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: {},
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'invalid_variables', variables: ['items'] });
+	});
+
+	it('sends an empty list without the block', async () => {
+		const t = newTest();
+		const templateId = await publishRepeated(t, '<p>Line {{item.name}}</p>');
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: { items: [] },
+		});
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		const queued = vi.mocked(transactionalEmailPool.enqueueAction).mock.calls[0]?.[2] as {
+			envelopeInput: Parameters<typeof buildComposeInput>[0];
+		};
+		const sent = composeForSend(buildComposeInput(queued.envelopeInput));
+		expect(sent.html).toContain('Your order');
+		expect(sent.html).not.toContain('Line');
+	});
+
+	it('refuses a list whose entries build too large an email, naming the list', async () => {
+		const t = newTest();
+		const templateId = await publishRepeated(t, `<p>${'x'.repeat(4000)} {{item.name}}</p>`);
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: { items: Array.from({ length: 500 }, (_, i) => ({ name: `n${i}` })) },
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'invalid_variables', variables: ['items'] });
+		if (outcome.ok) throw new Error('expected refusal');
+		expect(outcome.detail).toContain('Send fewer entries');
+	});
+
+	it('refuses a value that is not a list for a List variable', async () => {
+		const t = newTest();
+		const templateId = await publishRepeated(t, '<p>{{item.name}}</p>');
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: { items: 'Tent' },
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'invalid_variables', variables: ['items'] });
 	});
 });
