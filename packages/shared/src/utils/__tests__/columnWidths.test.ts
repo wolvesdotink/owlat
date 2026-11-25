@@ -59,12 +59,12 @@ describe('isValidColumnWidths', () => {
 		expect(isValidColumnWidths([40, 60], 2)).toBe(true);
 		expect(isValidColumnWidths([20, 20, 20, 20, 20], 5)).toBe(true);
 		expect(isValidColumnWidths([10, 90], 2)).toBe(true);
+		expect(isValidColumnWidths([100], 1)).toBe(true);
 	});
 
 	it('rejects a length that does not match the column count', () => {
 		expect(isValidColumnWidths([50, 50], 3)).toBe(false);
 		expect(isValidColumnWidths([25, 25, 25, 25], 2)).toBe(false);
-		expect(isValidColumnWidths([100], 1)).toBe(false);
 	});
 
 	it('rejects a sum other than 100, fractions included', () => {

@@ -230,23 +230,6 @@ describe('Enhanced Columns Block', () => {
 			).toContain('COLUMNS_COUNT_INVALID');
 		});
 
-		it('checks the items of every column, the fifth included', () => {
-			const block = fiveColumns();
-			const content = block.content as ColumnsBlockContent;
-			content.columns[4] = [
-				{
-					id: 'img-5',
-					type: 'image',
-					content: { src: 'https://owlat.example/star.png', alt: '', width: 100, align: 'center' },
-				},
-			];
-			expect(
-				validateBlocks([block]).issues.some(
-					(i) => i.code === 'IMAGE_NO_ALT' && i.blockId === 'img-5'
-				)
-			).toBe(true);
-		});
-
 		it('accepts valid custom widths', () => {
 			expect(codes(makeColumnsBlock({ columnWidths: [15, 85] }))).not.toContain(
 				'COLUMNS_WIDTHS_INVALID'

@@ -249,6 +249,8 @@ export const updateColumnsContent = (
 	value: unknown
 ): ColumnsBlockContent => {
 	if (key === 'columnCount' && typeof value === 'number') {
+		// Re-selecting the current count keeps the row, custom widths included.
+		if (value === content.columnCount && content.columns.length === value) return { ...content };
 		return withColumnCount(content, value as ColumnCount);
 	}
 	if (key === 'ratio') {

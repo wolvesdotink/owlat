@@ -566,6 +566,12 @@ describe('column count and widths', () => {
 		expect(next.columnWidths).toBeUndefined();
 	});
 
+	it('re-selecting the current count keeps custom widths', () => {
+		const next = updateColumnsContent(twoColumns(), 'columnCount', 2);
+		expect(next.columnWidths).toEqual([15, 85]);
+		expect(next.columns).toHaveLength(2);
+	});
+
 	it('picking a ratio preset replaces custom widths', () => {
 		const next = updateColumnsContent(twoColumns(), 'ratio', 'left-wide');
 		expect(next.ratio).toBe('left-wide');

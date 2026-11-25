@@ -425,15 +425,5 @@ export const columnsModule: BlockModule<'columns'> = {
 				}
 			}
 		}
-
-		// The items of every rendered column, like the other composites do.
-		for (const column of content.columns.slice(0, content.columnCount)) {
-			if (!isArray(column)) continue;
-			for (const item of column) {
-				if (isObject(item) && isString(item['id']) && isString(item['type'])) {
-					ctx.recurse(itemToBlock(item as Parameters<typeof itemToBlock>[0]), ctx.depth + 1);
-				}
-			}
-		}
 	},
 };

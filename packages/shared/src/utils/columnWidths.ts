@@ -86,7 +86,7 @@ const presetWidths = (columnCount: ColumnCount, ratio: string): string[] => {
 export const isValidColumnWidths = (widths: unknown, columnCount: unknown): widths is number[] =>
 	Array.isArray(widths) &&
 	typeof columnCount === 'number' &&
-	columnCount >= 2 &&
+	columnCount >= 1 &&
 	columnCount <= MAX_COLUMN_COUNT &&
 	widths.length === columnCount &&
 	widths.every(
