@@ -159,7 +159,8 @@ class ResourceHttpTest {
             + "\"revision\":4,\"publishedAt\":null,\"createdAt\":\"2026-01-01T00:00:00.000Z\","
             + "\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"blocks\":[{\"id\":\"b1\",\"type\":\"text\","
             + "\"content\":{\"html\":\"<p>Hi</p>\",\"fontSize\":14}}],\"translations\":{},"
-            + "\"dataVariablesSchema\":{\"orderNumber\":\"string\"},\"showUnsubscribe\":false}";
+            + "\"dataVariablesSchema\":{\"orderNumber\":\"string\"},"
+            + "\"dataVariableExamples\":{\"orderNumber\":\"A-1001\"},\"showUnsubscribe\":false}";
 
     @Test
     void transactionalEmailUpsertSendsTheRevisionAsIfMatchAndWhilePublishedInTheQuery() throws IOException {
@@ -179,6 +180,7 @@ class ResourceHttpTest {
         JsonNode sent = JsonMapper.instance().readTree(body);
         assertEquals(14, sent.at("/blocks/0/content/fontSize").asInt());
         assertEquals("string", sent.at("/dataVariablesSchema/orderNumber").asText());
+        assertEquals("A-1001", sent.at("/dataVariableExamples/orderNumber").asText());
         assertTrue(sent.path("revision").isMissingNode());
     }
 

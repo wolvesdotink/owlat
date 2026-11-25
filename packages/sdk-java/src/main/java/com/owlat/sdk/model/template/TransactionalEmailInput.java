@@ -7,7 +7,9 @@ import java.util.Map;
  * The editable fields of a transactional email. A write replaces all of them:
  * a field left {@code null} takes its default (no variables, no translations,
  * {@code en}, no unsubscribe link). Fields the API does not carry (sender,
- * attachments, the text/plain override) keep their value.
+ * attachments, the text/plain override) keep their value, and so do the
+ * example values when {@link Builder#dataVariableExamples} is left
+ * {@code null}.
  */
 public class TransactionalEmailInput {
 
@@ -17,6 +19,7 @@ public class TransactionalEmailInput {
     private final List<Map<String, Object>> blocks;
     private final Map<String, EmailTranslation> translations;
     private final Map<String, String> dataVariablesSchema;
+    private final Map<String, Object> dataVariableExamples;
     private final String defaultLanguage;
     private final Boolean showUnsubscribe;
 
@@ -27,6 +30,7 @@ public class TransactionalEmailInput {
         this.blocks = builder.blocks;
         this.translations = builder.translations;
         this.dataVariablesSchema = builder.dataVariablesSchema;
+        this.dataVariableExamples = builder.dataVariableExamples;
         this.defaultLanguage = builder.defaultLanguage;
         this.showUnsubscribe = builder.showUnsubscribe;
     }
@@ -56,6 +60,10 @@ public class TransactionalEmailInput {
         return dataVariablesSchema;
     }
 
+    public Map<String, Object> getDataVariableExamples() {
+        return dataVariableExamples;
+    }
+
     public String getDefaultLanguage() {
         return defaultLanguage;
     }
@@ -75,6 +83,7 @@ public class TransactionalEmailInput {
         private List<Map<String, Object>> blocks = List.of();
         private Map<String, EmailTranslation> translations;
         private Map<String, String> dataVariablesSchema;
+        private Map<String, Object> dataVariableExamples;
         private String defaultLanguage;
         private Boolean showUnsubscribe;
 
@@ -103,9 +112,20 @@ public class TransactionalEmailInput {
             return this;
         }
 
-        /** Variable name to type: {@code string}, {@code number}, {@code boolean} or {@code date}. */
+        /** Variable name to type: {@code string}, {@code number}, {@code boolean}, {@code date} or {@code array}. */
         public Builder dataVariablesSchema(Map<String, String> dataVariablesSchema) {
             this.dataVariablesSchema = dataVariablesSchema;
+            return this;
+        }
+
+        /**
+         * Variable name to example value, each matching the variable's type: sample data for the
+         * editor preview and test sends, never a real recipient's and never used by a real send.
+         * Left {@code null}, the stored examples stay for the variables that keep their type; an
+         * empty map clears them.
+         */
+        public Builder dataVariableExamples(Map<String, Object> dataVariableExamples) {
+            this.dataVariableExamples = dataVariableExamples;
             return this;
         }
 

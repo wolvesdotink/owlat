@@ -137,6 +137,87 @@ describe('usePreview', () => {
 		expect(preview.generatedHtml.value).toContain('code Coupon code');
 	});
 
+	it("shows the branch a condition's example selects and a repeat's example rows", async () => {
+		const conditional = (
+			id: string,
+			html: string,
+			value: string,
+			operator: 'equals' | 'notEquals'
+		) =>
+			({
+				...textBlock(id, html),
+				content: {
+					...textBlock(id, html).content,
+					condition: { variable: 'isExpress', operator, value },
+				},
+			}) as EditorBlock;
+		const canvasBlocks = ref<EditorBlock[]>([
+			textBlock('a', 'Hi {{customerName}}'),
+			conditional('express', 'Arrives tomorrow', 'true', 'equals'),
+			conditional('standard', 'Arrives in five days', 'true', 'notEquals'),
+			{
+				...textBlock('line', '{{item.quantity}} x {{item.name}}'),
+				content: {
+					...textBlock('line', '').content,
+					html: '{{item.quantity}} x {{item.name}}',
+					repeat: { variable: 'items', itemAlias: 'item' },
+				},
+			} as EditorBlock,
+		]);
+		const variables = ref([
+			{ key: 'customerName', label: 'customerName', previewValue: 'Alex Example' },
+			{ key: 'isExpress', label: 'isExpress', previewValue: 'true' },
+			{
+				key: 'items',
+				label: 'items',
+				previewValue: JSON.stringify([
+					{ name: 'Notebook', quantity: 2 },
+					{ name: 'Pen', quantity: 5 },
+				]),
+			},
+		]);
+		const renderOptions = ref<Partial<PreviewRenderOptions>>({});
+		const preview = usePreview({
+			canvasBlocks,
+			theme: computed(() => defaultTheme),
+			variableType: computed<VariableType>(() => 'data'),
+			showMandatoryUnsubscribeFooter: computed(() => false),
+			renderOptions,
+			variables,
+		});
+		preview.togglePreviewMode();
+
+		const html = preview.generatedHtml.value;
+		expect(html).toContain('Hi Alex Example');
+		expect(html).toContain('Arrives tomorrow');
+		expect(html).not.toContain('Arrives in five days');
+		expect(html).toContain('2 x Notebook');
+		expect(html).toContain('5 x Pen');
+
+		// An example edited while the preview is open shows at once, and the
+		// Variable Values panel still overrides it.
+		variables.value = variables.value.map((v) =>
+			v.key === 'isExpress' ? { ...v, previewValue: 'false' } : v
+		);
+		await nextTick();
+		expect(preview.generatedHtml.value).toContain('Arrives in five days');
+		renderOptions.value = { variableValues: { customerName: 'Sam' } };
+		await nextTick();
+		expect(preview.generatedHtml.value).toContain('Hi Sam');
+	});
+
+	it('keeps the humanised name for a variable without an example', () => {
+		const preview = usePreview({
+			canvasBlocks: ref<EditorBlock[]>([textBlock('a', 'Order {{orderNumber}}')]),
+			theme: computed(() => defaultTheme),
+			variableType: computed<VariableType>(() => 'data'),
+			showMandatoryUnsubscribeFooter: computed(() => false),
+			variables: computed(() => [{ key: 'orderNumber', label: 'orderNumber' }]),
+		});
+		preview.togglePreviewMode();
+		expect(preview.generatedHtml.value).toContain('Order orderNumber');
+	});
+
 	it("renders the email's preview text as the preheader unless a render option sets one", async () => {
 		const canvasBlocks = ref<EditorBlock[]>([textBlock('a', 'Body')]);
 		const renderOptions = ref<Partial<PreviewRenderOptions>>({ variableValues: { name: 'Ada' } });

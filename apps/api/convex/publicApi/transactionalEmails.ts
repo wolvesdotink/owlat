@@ -27,7 +27,10 @@ import {
 	throwNotFound,
 } from '../_utils/errors';
 import { featureDisabledMessage, isFeatureEnabled } from '../lib/featureFlags';
-import { dataVariablesSchemaValidator } from '../lib/convexValidators';
+import {
+	dataVariableExamplesValidator,
+	dataVariablesSchemaValidator,
+} from '../lib/convexValidators';
 import { currentContentRevision } from '../lib/contentRevision';
 import { decodeStoredTranslations } from '../lib/emailJson';
 import { paginateClientCursor } from '../lib/pagination';
@@ -80,6 +83,7 @@ export function toTransactionalEmail(row: Doc<'transactionalEmails'>): Transacti
 		blocks: parseContentBlocks(row.content) as TransactionalEmail['blocks'],
 		translations,
 		dataVariablesSchema: { ...row.dataVariablesSchema },
+		dataVariableExamples: { ...row.dataVariableExamples },
 		showUnsubscribe: row.showUnsubscribe === true,
 	};
 }
@@ -157,6 +161,8 @@ const editableFields = {
 	translations: v.string(),
 	defaultLanguage: v.string(),
 	dataVariablesSchema: dataVariablesSchemaValidator,
+	/** Left out, the stored examples stay for the variables that keep their type. */
+	dataVariableExamples: v.optional(dataVariableExamplesValidator),
 	showUnsubscribe: v.boolean(),
 };
 
@@ -236,6 +242,9 @@ async function replaceEditableFields(
 			supportedLanguages: supportedLanguagesOf(fields),
 			defaultLanguage: fields.defaultLanguage,
 			dataVariablesSchema: fields.dataVariablesSchema,
+			...(fields.dataVariableExamples !== undefined && {
+				dataVariableExamples: fields.dataVariableExamples,
+			}),
 			showUnsubscribe: fields.showUnsubscribe,
 			linkedBlockIds: await linkedSavedBlocks(ctx, fields.content),
 			forceWhilePublished,

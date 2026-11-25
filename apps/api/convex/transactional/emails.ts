@@ -11,13 +11,17 @@ import {
 	throwInvalidState,
 	throwNotFound,
 } from '../_utils/errors';
-import { dataVariablesSchemaValidator } from '../lib/convexValidators';
+import {
+	dataVariableExamplesValidator,
+	dataVariablesSchemaValidator,
+} from '../lib/convexValidators';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import { brandedNewEmailContent } from '../workspaces/brandKit';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 import {
 	applyTransactionalEmailEdit,
+	examplesToStore,
 	publishTransactionalEmail,
 	unpublishTransactionalEmail,
 } from './editing';
@@ -340,12 +344,15 @@ export const remove = transactionalMutation({
 });
 
 /**
- * Update data variables schema
+ * Update data variables schema. `dataVariableExamples`, when given, replaces
+ * every variable's example; left out, the stored examples stay for the
+ * variables that keep their type.
  */
 export const updateSchema = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		dataVariablesSchema: dataVariablesSchemaValidator,
+		dataVariableExamples: v.optional(dataVariableExamplesValidator),
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session) => {
@@ -378,6 +385,11 @@ export const updateSchema = transactionalMutation({
 
 		await ctx.db.patch(args.id, {
 			dataVariablesSchema: args.dataVariablesSchema,
+			dataVariableExamples: examplesToStore(
+				args.dataVariablesSchema,
+				args.dataVariableExamples,
+				email.dataVariableExamples
+			),
 			updatedAt: Date.now(),
 		});
 

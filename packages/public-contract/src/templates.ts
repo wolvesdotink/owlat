@@ -8,7 +8,9 @@
  */
 
 import { z } from 'zod';
-import { requestBody, requiredString } from './common';
+import { MAX_DATA_VARIABLE_EXAMPLES_CHARS } from '@owlat/shared/dataVariableExamples';
+import { MAX_REPEAT_ITEMS } from '@owlat/shared/sendRegions';
+import { jsonPrimitiveSchema, requestBody, requiredString } from './common';
 import {
 	CONTENT_ISSUE_SEVERITIES,
 	TEMPLATE_VARIABLE_TYPES,
@@ -90,6 +92,28 @@ const emailTranslationInputSchema = z.object(
 	{ error: 'Each translation must be an object' }
 );
 
+const DATA_VARIABLE_EXAMPLES_SHAPE =
+	'dataVariableExamples must be an object of string, number or boolean values, or of lists of them or of objects of them';
+
+/**
+ * A variable's example value: a value a send could pass for it, without
+ * `null`. That it matches the variable's declared type, names a declared
+ * variable and fits the size cap is the server's check.
+ */
+const dataVariableExampleSchema = z.union(
+	[
+		z.string(),
+		z.number(),
+		z.boolean(),
+		z
+			.array(z.union([jsonPrimitiveSchema, z.record(z.string(), jsonPrimitiveSchema)]))
+			.meta({ maxItems: MAX_REPEAT_ITEMS }),
+	],
+	{ error: DATA_VARIABLE_EXAMPLES_SHAPE }
+);
+
+const dataVariableExamplesDescription = `Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most ${MAX_REPEAT_ITEMS} entries, each a plain value or a flat object of them. At most ${MAX_DATA_VARIABLE_EXAMPLES_CHARS / 1000} KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's.`;
+
 const languageCode = (message: string) =>
 	z.string({ error: message }).regex(LANGUAGE_CODE_PATTERN, { error: message });
 
@@ -125,6 +149,12 @@ const transactionalEmailInputShape = {
 			{ error: 'dataVariablesSchema must be an object of variable names and types' }
 		)
 		.optional(),
+	dataVariableExamples: z
+		.record(z.string(), dataVariableExampleSchema, { error: DATA_VARIABLE_EXAMPLES_SHAPE })
+		.optional()
+		.meta({
+			description: `${dataVariableExamplesDescription} Left out, the stored examples stay for the variables that keep their type; an empty object clears them.`,
+		}),
 	defaultLanguage: languageCode('defaultLanguage must be a language code such as en').optional(),
 	showUnsubscribe: z.boolean({ error: 'showUnsubscribe must be a boolean' }).optional(),
 };
@@ -176,7 +206,10 @@ export const transactionalEmailSchema = z.strictObject({
 		.meta({ description: 'The other languages, keyed by language code.' }),
 	dataVariablesSchema: z.record(z.string(), z.enum(TEMPLATE_VARIABLE_TYPES)).meta({
 		description:
-			'The data variables a send passes, by name, with their type: string, number, boolean or date. Later releases may add types.',
+			'The data variables a send passes, by name, with their type: string, number, boolean, date or array. Later releases may add types.',
+	}),
+	dataVariableExamples: z.record(z.string(), dataVariableExampleSchema).meta({
+		description: dataVariableExamplesDescription,
 	}),
 	showUnsubscribe: z.boolean(),
 });

@@ -70,6 +70,8 @@ export interface UsePreviewReturn {
 	plainText: Ref<string>;
 	/** The generated plain text WITHOUT preview variable substitution. */
 	plainTextSource: Ref<string>;
+	/** The values the preview fills variables with, examples included. */
+	previewValues: ComputedRef<Record<string, string>>;
 	/**
 	 * AMP HTML for the current content. Rendered only while `ampRequested` is
 	 * true (the AMP view or the export menu is open); otherwise it is the last
@@ -167,6 +169,17 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		return `${html}${footerHtml}`;
 	};
 
+	// What the preview fills tokens and decides conditions and repeats with: each
+	// variable's own preview value (a transactional email's example), and over
+	// it whatever the Variable Values panel sets.
+	const previewValues = computed<Record<string, string>>(() => {
+		const values: Record<string, string> = {};
+		for (const v of variables?.value ?? []) {
+			if (v.previewValue !== undefined) values[v.key] = v.previewValue;
+		}
+		return { ...values, ...renderOptions?.value?.variableValues };
+	});
+
 	/** Build merged render options for the renderer */
 	const buildRenderOptions = (darkMode = false): RenderOptions => {
 		const opts = renderOptions?.value ?? {};
@@ -184,7 +197,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		if (opts.fontUrls !== undefined) merged.fontUrls = opts.fontUrls;
 		if (opts.customCss !== undefined) merged.customCss = opts.customCss;
 		if (opts.inlineCss !== undefined) merged.inlineCss = opts.inlineCss;
-		if (opts.variableValues !== undefined) merged.variableValues = opts.variableValues;
+		if (Object.keys(previewValues.value).length > 0) merged.variableValues = previewValues.value;
 		if (opts.linkTransform !== undefined) merged.linkTransform = opts.linkTransform;
 		if (opts.targetClient !== undefined) merged.targetClient = opts.targetClient;
 		if (opts.minify !== undefined) merged.minify = opts.minify;
@@ -206,7 +219,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		const labels: Record<string, string> = {};
 		for (const v of variables?.value ?? []) labels[v.key] = v.label;
 		return fillPreviewVariables(content, {
-			values: renderOptions?.value?.variableValues ?? {},
+			values: previewValues.value,
 			labels,
 			escape,
 		});
@@ -379,6 +392,12 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		if (previewMode.value !== 'edit') regenerateHtml();
 	};
 
+	// An example value edited while the preview is open shows at once.
+	watch(previewValues, (next, previous) => {
+		if (previewMode.value === 'edit') return;
+		if (JSON.stringify(next) !== JSON.stringify(previous)) regenerate();
+	});
+
 	// Re-render when render options change while in preview mode
 	if (renderOptions) {
 		watch(
@@ -398,6 +417,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		isGeneratingHtml,
 		plainText,
 		plainTextSource,
+		previewValues,
 		ampHtml,
 		ampRequested,
 		renderWarnings,

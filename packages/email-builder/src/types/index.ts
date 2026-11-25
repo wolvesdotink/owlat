@@ -74,4 +74,5 @@ export type {
 	BrandBlockKind,
 	RemoteBlockMark,
 	BuilderCollabFocus,
+	CreatedVariable,
 } from './editor';

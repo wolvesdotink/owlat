@@ -24,7 +24,11 @@ export {
 export type { EditorShortcut, EditorShortcutGroup, HistoryState } from './composables';
 
 // Dialogs
-export { UnsavedChangesDialog, KeyboardShortcutsDialog } from './components/dialogs';
+export {
+	UnsavedChangesDialog,
+	KeyboardShortcutsDialog,
+	VariableExampleField,
+} from './components/dialogs';
 
 // Types
 export type {
@@ -70,6 +74,7 @@ export type {
 	EmailBuilderHandlers,
 	EmailBuilderProps,
 	EmailBuilderEmits,
+	CreatedVariable,
 	PreviewDevice,
 	PreviewMode,
 	SlashCommand,

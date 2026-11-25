@@ -4,7 +4,6 @@ import {
 	UnsavedChangesDialog,
 	useFocusMode,
 	parseStoredBlocks,
-	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
@@ -52,58 +51,14 @@ const { run: publishEmail } = useBackendOperation(api.transactional.emails.publi
 const { run: unpublishEmail } = useBackendOperation(api.transactional.emails.unpublish, {
 	label: () => t('dashboard.send.transactional.detail.edit.operations.unpublish'),
 });
-const { run: updateSchema } = useBackendOperation(api.transactional.emails.updateSchema, {
-	label: () => t('dashboard.send.transactional.detail.edit.operations.saveVariable'),
-});
-const { showToast } = useToast();
 
 const testSender = useResolvedTransactionalSender(emailId);
 
-// Data variables from schema
-interface DataVariableInfo {
-	key: string;
-	type: 'string' | 'number' | 'boolean' | 'date' | 'array';
-}
-
-const dataVariables = ref<DataVariableInfo[]>([]);
-const dataVariableKeyRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/;
-const buildDataVariablesSchema = (
-	vars: DataVariableInfo[]
-): Record<string, DataVariableInfo['type']> =>
-	Object.fromEntries(vars.map((variable) => [variable.key, variable.type]));
-
-// Initialize data variables from email schema
-watch(
-	email,
-	(newEmail) => {
-		if (newEmail && newEmail.dataVariablesSchema) {
-			try {
-				const rawSchema = newEmail.dataVariablesSchema;
-				const schema = (
-					typeof rawSchema === 'string' ? JSON.parse(rawSchema) : rawSchema
-				) as Record<string, string>;
-				dataVariables.value = Object.entries(schema).map(([key, type]) => ({
-					key,
-					type: type as DataVariableInfo['type'],
-				}));
-			} catch {
-				dataVariables.value = [];
-			}
-		}
-	},
-	{ immediate: true }
-);
-
-// Convert data variables to unified Variable interface
-const variables = computed<Variable[]>(() => {
-	return dataVariables.value.map((v) => ({
-		key: v.key,
-		label: v.key,
-		type: v.type,
-		group: t('dashboard.send.transactional.detail.edit.variableGroup'),
-		isBuiltIn: false,
-	}));
-});
+const {
+	dataVariables,
+	variables,
+	createVariable: handleCreateVariable,
+} = useTransactionalDataVariables(emailId, email);
 
 // Publishing state (publish/unpublish lifecycle)
 const isPublishing = ref(false);
@@ -282,34 +237,6 @@ const handleBack = () => {
 // Translations handler
 const handleTranslations = () => {
 	router.push(`/dashboard/send/transactional/${emailId.value}/translations`);
-};
-
-const handleCreateVariable = async (variable: { key: string; type?: string }) => {
-	const key = variable.key.trim();
-	const type = (variable.type ?? 'string') as DataVariableInfo['type'];
-
-	if (!dataVariableKeyRegex.test(key)) {
-		showToast(t('dashboard.send.transactional.detail.edit.toasts.invalidVariableName'), 'error');
-		return;
-	}
-
-	if (dataVariables.value.some((existing) => existing.key === key)) {
-		showToast(t('dashboard.send.transactional.detail.edit.toasts.duplicateVariable'), 'error');
-		return;
-	}
-
-	const nextVariables = [...dataVariables.value, { key, type }];
-	dataVariables.value = nextVariables;
-
-	const result = await updateSchema({
-		id: emailId.value,
-		dataVariablesSchema: buildDataVariablesSchema(nextVariables),
-	});
-	if (!result.ok) {
-		// Roll back the optimistic add; the module has toasted the failure.
-		dataVariables.value = dataVariables.value.filter((existing) => existing.key !== key);
-		return;
-	}
 };
 </script>
 

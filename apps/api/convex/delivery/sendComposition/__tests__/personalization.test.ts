@@ -5,6 +5,8 @@ import { composeAutomation } from '../automation';
 import { composeCampaign } from '../campaign';
 import { personalize, personalizeBody } from '../personalization';
 import { composeTransactional } from '../transactional';
+import { htmlToPlainText } from '@owlat/mail-message/text/htmlToPlainText';
+import { exampleAsPreviewText } from '@owlat/shared/dataVariableExamples';
 
 describe('personalize — basic variable replacement', () => {
 	it('replaces a single variable with its value', () => {
@@ -437,6 +439,71 @@ describe('personalizeBody — conditions and repeats a send resolves', () => {
 		expect(personalizeBody(body, { name: '<A>' }, { escape: 'html' })).toBe(
 			personalize(body, { name: '<A>' }, { escape: 'html' })
 		);
+	});
+});
+
+describe('the editor preview and a send agree on the same example data', () => {
+	const blocks = [
+		{ id: 'hi', type: 'text', content: { html: '<p>Hi {{customerName}}</p>' } },
+		{
+			id: 'express',
+			type: 'text',
+			content: {
+				html: '<p>Arrives tomorrow</p>',
+				condition: { variable: 'isExpress', operator: 'equals', value: 'true' },
+			},
+		},
+		{
+			id: 'standard',
+			type: 'text',
+			content: {
+				html: '<p>Arrives in five days</p>',
+				condition: { variable: 'isExpress', operator: 'notEquals', value: 'true' },
+			},
+		},
+		{
+			id: 'line',
+			type: 'text',
+			content: {
+				html: '<p>{{item.quantity}} x {{item.name}}</p>',
+				repeat: { variable: 'items', itemAlias: 'item' },
+			},
+		},
+	] as unknown as EditorBlock[];
+
+	it.each([true, false])('with isExpress %s', (isExpress) => {
+		// The examples as stored, and as a request would send the same data.
+		const examples = {
+			customerName: 'Alex',
+			isExpress,
+			items: [
+				{ name: 'Notebook', quantity: 2 },
+				{ name: 'Pen', quantity: 5 },
+			],
+		};
+		// The preview renders from blocks with every value as text, then fills
+		// the tokens left in the HTML.
+		const previewValues = Object.fromEntries(
+			Object.entries(examples).map(([name, value]) => [name, exampleAsPreviewText(value)])
+		);
+		const preview = personalize(
+			renderEmailHtml(blocks, { variableType: 'data', variableValues: previewValues }),
+			previewValues,
+			{ escape: 'html' }
+		);
+		const sent = composeTransactional({
+			kind: 'transactional',
+			template: {
+				subject: '',
+				htmlContent: renderEmailHtml(blocks, { variableType: 'data', sendTimeBlockLogic: true }),
+			},
+			dataVariables: examples,
+		}).html;
+
+		const text = (html: string) => htmlToPlainText(html).replace(/\s+/g, ' ').trim();
+		expect(text(preview)).toBe(text(sent));
+		expect(text(sent)).toContain(isExpress ? 'Arrives tomorrow' : 'Arrives in five days');
+		expect(text(sent)).toContain('2 x Notebook 5 x Pen');
 	});
 });
 

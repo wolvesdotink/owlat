@@ -2,6 +2,10 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
+import {
+	exampleAsPreviewText,
+	type DataVariableExampleValue,
+} from '@owlat/shared/dataVariableExamples';
 import { stableRowKey } from '~/utils/stableRowKey';
 import {
 	CircleCheckIcon,
@@ -20,7 +24,12 @@ interface Props {
 	subject: string;
 	templateId?: Id<'emailTemplates'> | null;
 	variables?: Array<{ key: string; label?: string }>;
-	dataVariableSchema?: Array<{ key: string; type: string }>;
+	/**
+	 * A transactional email's data variables. Each starts at its example value,
+	 * the sample data the editor preview shows, so the test reads like a real
+	 * email; one without an example starts empty.
+	 */
+	dataVariableSchema?: Array<{ key: string; type: string; example?: DataVariableExampleValue }>;
 	/**
 	 * The sender the email itself goes out from, when the caller resolves one
 	 * (a transactional email's template, transactional or default sender), so
@@ -207,10 +216,9 @@ watch(
 				lastName: 'User',
 				email: '',
 			};
-			// Initialize data variable values with empty strings
 			const vars: Record<string, string> = {};
 			for (const v of props.dataVariableSchema) {
-				vars[v.key] = '';
+				vars[v.key] = v.example !== undefined ? exampleAsPreviewText(v.example) : '';
 			}
 			dataVariableValues.value = vars;
 			sendResult.value = null;
