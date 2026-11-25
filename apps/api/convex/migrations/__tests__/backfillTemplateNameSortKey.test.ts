@@ -1,0 +1,112 @@
+import { convexTest } from 'convex-test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import { internal } from '../../_generated/api';
+import { modules } from '../../__tests__/testModules';
+import { createTestEmailTemplate } from '../../__tests__/factories';
+import { PAGE_SIZE } from '../0077_backfill_template_name_sort_key';
+
+const MIGRATION = '0077_backfill_template_name_sort_key';
+const migration = internal.migrations[MIGRATION];
+
+beforeEach(() => {
+	vi.useFakeTimers();
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+describe('0077_backfill_template_name_sort_key', () => {
+	it('fills the key on every older row over several pages, deleted ones too', async () => {
+		const t = convexTest(schema, modules);
+		const count = PAGE_SIZE + 5;
+		const ids = await t.run(async (ctx) => {
+			const out = [];
+			for (let i = 0; i < count; i++) {
+				out.push(
+					await ctx.db.insert(
+						'emailTemplates',
+						createTestEmailTemplate({
+							name: `  Élan ${i}`,
+							...(i === 0 ? { deletedAt: 1, deletedBy: 'user-1' } : {}),
+						})
+					)
+				);
+			}
+			return out;
+		});
+		const current = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ name: 'Current', nameSortKey: 'current' })
+			)
+		);
+
+		await t.mutation(migration.run, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await t.run(async (ctx) => {
+			for (const [i, id] of ids.entries()) {
+				expect((await ctx.db.get(id))?.nameSortKey).toBe(`elan ${i}`);
+			}
+			const run = await ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
+				.unique();
+			expect(run).toMatchObject({ status: 'completed', changedCount: count });
+			expect((await ctx.db.get(current))?.nameSortKey).toBe('current');
+		});
+
+		expect(await t.mutation(migration.run, {})).toMatchObject({ started: false });
+	});
+
+	it('is started by its cron on an install that never ran it, and left alone once done', async () => {
+		const t = convexTest(schema, modules);
+		const id = await t.run((ctx) =>
+			ctx.db.insert('emailTemplates', createTestEmailTemplate({ name: 'Older' }))
+		);
+
+		expect(await t.mutation(migration.ensure, {})).toMatchObject({ started: true });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect((await t.run((ctx) => ctx.db.get(id)))?.nameSortKey).toBe('older');
+		expect(await t.mutation(migration.ensure, {})).toMatchObject({ started: false });
+	});
+
+	it('leaves a moving walk to its chain and resumes a stalled one from its cursor', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < PAGE_SIZE + 1; i++) {
+				await ctx.db.insert('emailTemplates', createTestEmailTemplate({ name: `T ${i}` }));
+			}
+		});
+		const ledger = () =>
+			t.run((ctx) =>
+				ctx.db
+					.query('migrationRuns')
+					.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
+					.unique()
+			);
+		// One page runs, then its chain dies: the next page is never run.
+		const begun = await t.mutation(migration.run, {});
+		await t.mutation(migration.processPage, { cursor: null, generation: begun.generation! });
+		const cursor = (await ledger())?.cursor;
+		expect(cursor).toBeTruthy();
+
+		expect(await t.mutation(migration.ensure, {})).toMatchObject({ started: false });
+
+		vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+		const resumed = await t.mutation(migration.ensure, {});
+		expect(resumed).toMatchObject({ started: true });
+		expect((await ledger())?.cursor).toBe(cursor);
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		// Two pages in all: the resumed walk did not start over.
+		expect(await ledger()).toMatchObject({
+			status: 'completed',
+			changedCount: PAGE_SIZE + 1,
+			scannedCount: PAGE_SIZE + 1,
+			pageCount: 2,
+		});
+	});
+});

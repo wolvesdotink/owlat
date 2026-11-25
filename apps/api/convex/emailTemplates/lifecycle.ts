@@ -30,6 +30,7 @@ import { applyUsageCountDelta } from '../emailBlocks/module';
 import { softDeleteTemplate } from './deletion';
 import { getLive } from '../lib/softDelete';
 import { buildSearchableText } from '../lib/queryHelpers';
+import { templateNameSortKey } from './listing';
 import { recordListingCounter } from '../lib/listingCounters';
 import { duplicateEmailFields } from '../lib/publishableEmail';
 import { loadEmailTheme, renderForWrite } from '../lib/publishableEmailRender';
@@ -318,6 +319,7 @@ export async function insertEmailTemplate(
 		contentBlockVersion: CURRENT_CONTENT_BLOCK_VERSION,
 		rendererVersion: CURRENT_RENDERER_VERSION,
 		searchableText,
+		nameSortKey: templateNameSortKey(name),
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -416,6 +418,7 @@ export const duplicate = internalMutation({
 			name: newName,
 			status: 'draft',
 			searchableText,
+			nameSortKey: templateNameSortKey(newName),
 			createdAt: now,
 			updatedAt: now,
 		});
