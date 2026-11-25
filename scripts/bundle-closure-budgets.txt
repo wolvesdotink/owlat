@@ -259,7 +259,9 @@ deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-marketing.en.json
 deferred 12 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.de.json
 deferred 11 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.en.json
 deferred 30 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.de.json
-# Copy for every preferences page, which has no route boundary to cut along.
+# Copy for every preferences page. Each page is one route of its own, and the
+# pages share the mailbox, notification and readiness copy, so cutting one off
+# would carry that shared copy in both chunks.
 deferred 28 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.en.json
 deferred 16 ../node_modules/.cache/owlat-i18n/areas/dashboard-send-transactional.de.json
 deferred 15 ../node_modules/.cache/owlat-i18n/areas/dashboard-send-transactional.en.json

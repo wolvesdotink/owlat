@@ -25,6 +25,8 @@ const isOpen = defineModel<boolean>('open', { default: false });
 // empty, and a chunk that cannot be fetched shows the modal's error line.
 const loadConfigureStep = () => import('./integrationImport/ConfigureStep.vue');
 const IntegrationImportConfigureStep = defineAsyncComponent(loadConfigureStep);
+/** Counts openings, so a pick still loading when the modal closes cannot touch the next one. */
+let opening = 0;
 
 type IntegrationImportStep = 'select' | 'configure' | 'importing' | 'complete';
 type IntegrationType = 'mailchimp' | 'stripe' | 'mandrill' | null;
@@ -102,6 +104,7 @@ watch(importProgress, (p) => {
 });
 
 watch(isOpen, (newValue) => {
+	opening += 1;
 	if (!newValue) return;
 	reset();
 	// A failed early fetch is retried, and reported, by the provider pick.
@@ -134,9 +137,13 @@ const close = () => {
 
 const selectIntegration = async (id: IntegrationType) => {
 	error.value = '';
-	try {
-		await loadConfigureStep();
-	} catch {
+	const pickedIn = opening;
+	const loaded = await loadConfigureStep().then(
+		() => true,
+		() => false
+	);
+	if (pickedIn !== opening) return;
+	if (!loaded) {
 		error.value = t('shared.operationError.network');
 		return;
 	}

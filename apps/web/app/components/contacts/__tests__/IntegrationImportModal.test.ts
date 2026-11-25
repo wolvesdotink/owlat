@@ -147,6 +147,33 @@ describe('IntegrationImportModal — choosing a provider', () => {
 		expect(wrapper.text()).not.toContain('Mailchimp API key is required');
 	});
 
+	it('drops a pick still loading when the modal is closed and opened again', async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		vi.doMock('../integrationImport/ConfigureStep.vue', async (importOriginal) => {
+			await gate;
+			return importOriginal();
+		});
+		try {
+			const wrapper = await mountModal();
+			await wrapper
+				.findAll('button')
+				.find((b) => b.text().includes('Mailchimp'))!
+				.trigger('click');
+			await wrapper.setProps({ open: false });
+			await wrapper.setProps({ open: true });
+			release();
+			await vi.dynamicImportSettled();
+			await flushPromises();
+
+			expect(wrapper.text()).not.toContain('Configure Mailchimp');
+			expect(wrapper.text()).toContain('Stripe');
+		} finally {
+			release();
+			vi.doUnmock('../integrationImport/ConfigureStep.vue');
+		}
+	});
+
 	it('stays on the provider list with an error when the form cannot be fetched', async () => {
 		// Offline from the start: the fetch on open fails as well as the pick's.
 		vi.doMock('../integrationImport/ConfigureStep.vue', () => {
