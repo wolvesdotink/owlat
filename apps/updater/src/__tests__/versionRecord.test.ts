@@ -49,53 +49,24 @@ describe('syncVersionRecord, at startup', () => {
 		expect(record()).toBe('version=0.6.24\nrecorded_at=earlier\n');
 	});
 
-	it('keeps VERSION, restart after restart, while an update stopped after promoting its release', async () => {
-		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
-		writeFileSync(
-			join(OWLAT_DIR, '.owlat-last-rollout.json'),
-			JSON.stringify({
-				targetVersion: '0.6.24',
-				startedAt: 1,
-				phase: 'done',
-				committed: true,
-				outcome: 'interrupted',
-			})
-		);
-		expect(await syncVersionRecord()).toBeNull();
-		expect(await syncVersionRecord()).toBeNull();
-		expect(record()).toBe('version=0.4.19\n');
-	});
-
-	it('keeps VERSION after an update that failed between moving the pin and `up`', async () => {
-		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
-		writeFileSync(
-			join(OWLAT_DIR, '.owlat-last-rollout.json'),
-			JSON.stringify({
-				targetVersion: '0.6.24',
-				startedAt: 1,
-				phase: 'done',
-				committed: true,
-				outcome: 'failed',
-			})
-		);
-		expect(await syncVersionRecord()).toBeNull();
-		expect(record()).toBe('version=0.4.19\n');
-	});
-
-	it('writes VERSION after an update that finished, as the hand-over leaves it', async () => {
-		writeFileSync(
-			join(OWLAT_DIR, '.owlat-last-rollout.json'),
-			JSON.stringify({
-				targetVersion: '0.6.24',
-				startedAt: 1,
-				phase: 'done',
-				committed: true,
-				outcome: 'healthy',
-			})
-		);
-		expect(await syncVersionRecord()).toMatchObject({ ok: true });
-		expect(record()).toMatch(/^version=0\.6\.24$/m);
-	});
+	it.each(['interrupted', 'partially-applied', 'failed', 'healthy'])(
+		'names the pinned release after an update that ended %s',
+		async (outcome) => {
+			writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+			writeFileSync(
+				join(OWLAT_DIR, '.owlat-last-rollout.json'),
+				JSON.stringify({
+					targetVersion: '0.6.24',
+					startedAt: 1,
+					phase: 'done',
+					committed: true,
+					outcome,
+				})
+			);
+			expect(await syncVersionRecord()).toMatchObject({ ok: true });
+			expect(record()).toMatch(/^version=0\.6\.24$/m);
+		}
+	);
 
 	it('writes nothing for a dev stack or without .env', async () => {
 		writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=dev\n');

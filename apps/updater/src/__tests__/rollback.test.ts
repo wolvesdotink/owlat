@@ -971,6 +971,28 @@ describe('a rollback that restored the data but did not start the release', () =
 		expect((await post('/rollback', { snapshot })).status).toBe(409);
 	});
 
+	it('names the restored release in VERSION when it resumes', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		let failUp = true;
+		overrides.push((cmd) =>
+			failUp && cmd.includes(' up -d --remove-orphans')
+				? fail('error during connect: EOF')
+				: undefined
+		);
+		expect((await post('/rollback', { snapshot })).status).toBe(500);
+		expect(journal()).toMatchObject({ state: 'starting' });
+		// As a first attempt leaves it when it could not write the file.
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.17\n');
+
+		failUp = false;
+		expect((await post('/rollback', { snapshot })).status).toBe(200);
+
+		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
+		expect(record).toMatch(/^version=0\.4\.16$/m);
+		expect(record).toMatch(/^applied_by=rollback$/m);
+	});
+
 	it('stays resumable when the restored release fails its readiness check', async () => {
 		await update();
 		const snapshot = journal()['id'];

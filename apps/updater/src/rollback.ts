@@ -267,10 +267,6 @@ async function restoreAndStart(
 		fail('rollback-restore', reason);
 		return result('partial', `${reason}. The data is restored; convex and redis are stopped.`);
 	}
-	// The restored `.env` pins the snapshot's release, so VERSION goes back with
-	// it, for the automatic rollback and `owlat rollback` alike.
-	const recorded = await recordPinnedVersion('rollback');
-	if (recorded && !recorded.ok) console.error('[rollback]', recorded.stderr);
 	current = markSnapshot(current, 'starting');
 	const removed = current.absent.map((file) => `removed ${file}, which it did not have`);
 	steps.push({
@@ -302,6 +298,12 @@ async function startRestored(
 		summary,
 		warnings,
 	});
+
+	// The restored `.env` pins the snapshot's release, so VERSION goes back with
+	// it: for the automatic rollback, `owlat rollback`, and a rollback resumed
+	// here after the configuration was restored by an earlier attempt.
+	const recorded = await recordPinnedVersion('rollback');
+	if (recorded && !recorded.ok) console.error('[rollback]', recorded.stderr);
 
 	// Read after the configuration is back, so it names the restored files.
 	const compose = composeArgvIn(hostDir);
