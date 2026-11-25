@@ -1,7 +1,7 @@
 /**
  * `bun run dev:stack`: a complete local Owlat for this checkout.
  *
- *   bun run dev:stack [up] [--no-seed]   start (or reattach to) the stack
+ *   bun run dev:stack [up] [--no-seed] [--no-web]   start (or reattach to) the stack
  *   bun run dev:stack down [--volumes]   stop this checkout's containers
  *   bun run dev:stack status             ports and container state
  *   bun run dev:stack ports              the resolved ports only
@@ -9,7 +9,7 @@
  *
  * `up` starts the Convex backend and Redis in a Compose project of their own,
  * pushes the functions, seeds demo data, then runs the Convex watcher and
- * Nuxt in the foreground until Ctrl-C. The containers keep running after
+ * Nuxt (unless `--no-web`) in the foreground until Ctrl-C. The containers keep running after
  * Ctrl-C so the next start is quick; `down` stops them and keeps the data,
  * `down --volumes` deletes it. Ports derive from the checkout path
  * (scripts/dev-stack/config.ts); OWLAT_PORT_OFFSET overrides them.
@@ -128,7 +128,7 @@ function cliEnv(adminKey: string): NodeJS.ProcessEnv {
 	return selfHostedCliEnv(process.env, config.urls.convex, adminKey);
 }
 
-async function up(seed: boolean): Promise<number> {
+async function up(seed: boolean, web: boolean): Promise<number> {
 	const secrets = loadOrCreateSecrets(paths.secretsFile);
 	writeComposeEnv();
 	let adminKey = '';
@@ -167,7 +167,7 @@ async function up(seed: boolean): Promise<number> {
 				env: cliEnv(adminKey),
 			}),
 		seed: () => run(process.execPath, [join(root, 'scripts', 'dev-seed.ts')], { env: process.env }),
-		runForeground: () => {
+		runForeground: (withWeb) => {
 			const stopWatching = watchStage(paths.apiDir, paths.stageApi, (result) => {
 				if (result instanceof Error) console.error(`[stage] sync failed: ${result.message}`);
 				else if (result.copied + result.removed > 0) {
@@ -183,19 +183,23 @@ async function up(seed: boolean): Promise<number> {
 						cwd: paths.stageApi,
 						env: cliEnv(adminKey),
 					},
-					{
-						name: 'web',
-						command: process.execPath,
-						args: ['run', 'dev'],
-						cwd: join(root, 'apps', 'web'),
-						env: { ...process.env, ...webEnv(config), ...webSecretEnv(secrets) },
-					},
+					...(withWeb
+						? [
+								{
+									name: 'web',
+									command: process.execPath,
+									args: ['run', 'dev'],
+									cwd: join(root, 'apps', 'web'),
+									env: { ...process.env, ...webEnv(config), ...webSecretEnv(secrets) },
+								},
+							]
+						: []),
 				],
 				stopWatching
 			);
 		},
 	};
-	return runUp(config, secrets, { seed }, ops);
+	return runUp(config, secrets, { seed, web }, ops);
 }
 
 async function down(volumes: boolean): Promise<number> {
@@ -246,7 +250,7 @@ async function main(argv: string[]): Promise<number> {
 		case 'logs':
 			return logs(args.service, flags.has('--follow'));
 		default:
-			return up(!flags.has('--no-seed'));
+			return up(!flags.has('--no-seed'), !flags.has('--no-web'));
 	}
 }
 

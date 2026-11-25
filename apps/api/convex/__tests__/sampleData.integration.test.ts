@@ -285,6 +285,7 @@ describe('sample data — status and removal', () => {
 			topics: await ctx.db.query('topics').collect(),
 			campaigns: await ctx.db.query('campaigns').collect(),
 			sends: await ctx.db.query('emailSends').collect(),
+			campaignStatShards: await ctx.db.query('campaignStatShards').collect(),
 			domains: await ctx.db.query('domains').collect(),
 			automations: await ctx.db.query('automations').collect(),
 		}));

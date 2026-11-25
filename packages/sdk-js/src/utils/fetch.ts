@@ -19,6 +19,11 @@ export interface FetchOptions {
 	 * at most once per key, which makes a POST safe to replay.
 	 */
 	idempotencyKey?: string;
+	/**
+	 * Sent as the `If-Match` header: the revision the request was built on. The
+	 * server refuses the request when the resource has moved on since.
+	 */
+	ifMatch?: string;
 }
 
 /** Longest key the API accepts. */
@@ -281,6 +286,7 @@ export function createHttpClient(
 			if (options.idempotencyKey !== undefined) {
 				headers['Idempotency-Key'] = options.idempotencyKey;
 			}
+			if (options.ifMatch !== undefined) headers['If-Match'] = options.ifMatch;
 
 			const fetchOptions: RequestInit = {
 				method: options.method,
@@ -435,7 +441,13 @@ export function createHttpClient(
 	return {
 		get: <T>(path: string, timeout?: number) => request<T>(path, { method: 'GET', timeout }),
 
-		post: <T>(path: string, body?: unknown, timeout?: number, requestOptions?: RequestOptions) =>
+		post: <T>(
+			path: string,
+			body?: unknown,
+			timeout?: number,
+			requestOptions?: RequestOptions,
+			ifMatch?: string
+		) =>
 			request<T>(path, {
 				method: 'POST',
 				body,
@@ -443,10 +455,16 @@ export function createHttpClient(
 				...(requestOptions?.idempotencyKey !== undefined
 					? { idempotencyKey: requestOptions.idempotencyKey }
 					: {}),
+				...(ifMatch !== undefined ? { ifMatch } : {}),
 			}),
 
-		put: <T>(path: string, body?: unknown, timeout?: number) =>
-			request<T>(path, { method: 'PUT', body, timeout }),
+		put: <T>(path: string, body?: unknown, timeout?: number, ifMatch?: string) =>
+			request<T>(path, {
+				method: 'PUT',
+				body,
+				timeout,
+				...(ifMatch !== undefined ? { ifMatch } : {}),
+			}),
 
 		delete: <T>(path: string, timeout?: number) => request<T>(path, { method: 'DELETE', timeout }),
 	};

@@ -1,12 +1,8 @@
 /**
  * The sort menu and status badge shared by the marketing and transactional
- * template lists.
- *
- * Both lists used to carry their own six-entry sort table under their own i18n
- * namespace, and their own `getStatusBadge` (one returning a resolved label,
- * the other a message key). One table and one badge now; the data layers still
- * differ on purpose: marketing sorts the loaded page client-side through
- * `sortTemplateRows`, transactional passes `sortBy`/`sortOrder` to its query.
+ * template lists. Both pass the option's `sortBy`/`sortOrder` to their query:
+ * a paginated list sorted in the browser would only order the rows loaded so
+ * far.
  *
  * Every `label` here is an i18n message key, resolved with `t()` where it
  * renders — the tables are module scope, where no `t` exists.
@@ -62,27 +58,6 @@ export const TEMPLATE_SORT_OPTIONS: readonly TemplateSortOption[] = [
 		sortOrder: 'desc',
 	},
 ];
-
-interface SortableTemplateRow {
-	name: string;
-	createdAt: number;
-	updatedAt: number;
-}
-
-/** A sorted copy of `rows`; the input is left untouched. */
-export function sortTemplateRows<T extends SortableTemplateRow>(
-	rows: readonly T[],
-	sort: Pick<TemplateSortOption, 'sortBy' | 'sortOrder'>
-): T[] {
-	const { sortBy, sortOrder } = sort;
-	return [...rows].sort((a, b) => {
-		let cmp: number;
-		if (sortBy === 'name') cmp = a.name.localeCompare(b.name);
-		else if (sortBy === 'createdAt') cmp = a.createdAt - b.createdAt;
-		else cmp = a.updatedAt - b.updatedAt;
-		return sortOrder === 'desc' ? -cmp : cmp;
-	});
-}
 
 /** Marketing templates are draft or published; transactional ones can also await review. */
 export type TemplateStatus = 'draft' | 'published' | 'pending_review';

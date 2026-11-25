@@ -145,19 +145,33 @@ export interface BlockTypeContentMap {
  * without needing to know the specific block type.
  */
 export interface CommonBlockProperties {
+	/** Space inside the block's border, in px. */
 	paddingTop?: number;
+	/** Space inside the block's border, in px. */
 	paddingRight?: number;
+	/** Space inside the block's border, in px. */
 	paddingBottom?: number;
+	/** Space inside the block's border, in px. */
 	paddingLeft?: number;
+	/** Editor state: whether the four paddings are edited as one. The render ignores it. */
 	paddingLinked?: boolean;
+	/** Space outside the block, in px. */
 	marginTop?: number;
+	/** Space outside the block, in px. */
 	marginRight?: number;
+	/** Space outside the block, in px. */
 	marginBottom?: number;
+	/** Space outside the block, in px. */
 	marginLeft?: number;
+	/** Background of the block (CSS color). */
 	backgroundColor?: string;
+	/** Background of the section around a button (CSS color). */
 	blockBackgroundColor?: string;
+	/** Corner radius in px. */
 	borderRadius?: number;
+	/** Border width in px. */
 	borderWidth?: number;
+	/** Border color (CSS color). */
 	borderColor?: string;
 	borderStyle?: BorderStyle;
 	darkBackgroundColor?: string;

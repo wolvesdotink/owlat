@@ -1878,19 +1878,21 @@ show_summary() {
   echo ""
   echo -e "  ${BOLD}Next Steps${RESET}"
   echo ""
-  echo -e "  ${GREEN}1.${RESET} Start the Convex backend:   ${BOLD}bun run dev:api${RESET}"
-  echo -e "  ${GREEN}2.${RESET} Start the web frontend:     ${BOLD}bun run dev:web${RESET}"
-  echo -e "  ${GREEN}3.${RESET} Log in with your admin account at ${BOLD}${SITE_URL}${RESET}"
+  # `convex dev` from apps/api cannot push to the deployment configured above:
+  # it bundles the test helpers under convex/__tests__, which import node:fs.
+  # dev:stack pushes from a stage without them, to a backend of its own.
+  echo -e "  ${GREEN}1.${RESET} Run Owlat for this checkout:  ${BOLD}bun run dev:stack${RESET}"
+  echo -e "     ${DIM}A Convex backend and Redis in Docker, the functions pushed, demo data seeded, Nuxt.${RESET}"
+  echo -e "  ${GREEN}2.${RESET} Sign in at the web URL it prints as ${BOLD}dev@example.com${RESET} / ${BOLD}devpassword12345${RESET}"
+  echo ""
+  echo -e "  ${DIM}The Convex Cloud deployment set up above cannot take a push from this checkout:${RESET}"
+  echo -e "  ${DIM}docs/operations/development.md explains why.${RESET}"
 
   if [[ "$EMAIL_PROVIDER" == "mta" ]]; then
     echo ""
-    echo -e "  ${YELLOW}MTA Setup:${RESET}"
-    echo -e "  ${GREEN}4.${RESET} Configure MTA env:          ${BOLD}cp apps/mta/.env.example apps/mta/.env${RESET}"
-    echo -e "  ${GREEN}5.${RESET} Start the mail server:      ${BOLD}cd apps/mta && docker compose up${RESET}"
+    echo -e "  ${YELLOW}MTA:${RESET} dev:stack does not start the mail server."
   fi
 
-  echo ""
-  echo -e "  ${DIM}Or start everything at once:  ${BOLD}bun run dev${RESET}"
   echo ""
   echo -e "  ${DIM}Documentation: https://docs.owlat.app${RESET}"
   echo ""

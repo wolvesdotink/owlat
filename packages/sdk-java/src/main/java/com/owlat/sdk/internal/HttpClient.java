@@ -98,11 +98,21 @@ public class HttpClient {
     }
 
     public <T> T get(String path, TypeReference<T> typeRef) {
-        return request(HttpMethod.GET, path, null, typeRef, null);
+        return request(HttpMethod.GET, path, null, typeRef, null, null);
     }
 
     public <T> T post(String path, Object body, TypeReference<T> typeRef) {
-        return request(HttpMethod.POST, path, body, typeRef, null);
+        return request(HttpMethod.POST, path, body, typeRef, null, null);
+    }
+
+    /**
+     * A {@code POST} or {@code PUT} that sends {@code ifMatch} as the
+     * {@code If-Match} header when it is not null: the revision the request was
+     * built on, which the server refuses once the resource has moved on.
+     */
+    public <T> T conditional(HttpMethod method, String path, Object body, TypeReference<T> typeRef,
+                             String ifMatch) {
+        return request(method, path, body, typeRef, null, ifMatch);
     }
 
     /**
@@ -112,19 +122,19 @@ public class HttpClient {
      */
     public <T> T post(String path, Object body, TypeReference<T> typeRef, RequestOptions options) {
         return request(HttpMethod.POST, path, body, typeRef,
-                options != null ? options.getIdempotencyKey() : null);
+                options != null ? options.getIdempotencyKey() : null, null);
     }
 
     public <T> T put(String path, Object body, TypeReference<T> typeRef) {
-        return request(HttpMethod.PUT, path, body, typeRef, null);
+        return request(HttpMethod.PUT, path, body, typeRef, null, null);
     }
 
     public <T> T delete(String path, TypeReference<T> typeRef) {
-        return request(HttpMethod.DELETE, path, null, typeRef, null);
+        return request(HttpMethod.DELETE, path, null, typeRef, null, null);
     }
 
     private <T> T request(HttpMethod method, String path, Object body, TypeReference<T> typeRef,
-                          String idempotencyKey) {
+                          String idempotencyKey, String ifMatch) {
         String url = baseUrl + path;
         OwlatException lastError = null;
         boolean replaySafe = IDEMPOTENT_METHODS.contains(method) || idempotencyKey != null;
@@ -149,6 +159,9 @@ public class HttpClient {
                         .header("Content-Type", "application/json");
                 if (idempotencyKey != null) {
                     requestBuilder.header("Idempotency-Key", idempotencyKey);
+                }
+                if (ifMatch != null) {
+                    requestBuilder.header("If-Match", ifMatch);
                 }
 
                 if (json != null) {
