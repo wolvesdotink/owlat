@@ -1,0 +1,20 @@
+[
+	{
+		"slug": "promo-ada-failed",
+		"automation": "promo-on-signup",
+		"contact": "ada",
+		"outcome": "failed",
+		"startedMinutesAgo": 1500,
+		"failureReason": "no_delivery_provider",
+		"errorMessage": "No delivery provider configured"
+	},
+	{
+		"slug": "promo-grace-waiting",
+		"automation": "promo-on-signup",
+		"contact": "grace",
+		"outcome": "waiting",
+		"startedMinutesAgo": 5,
+		"waitingFor": "no_delivery_provider",
+		"errorMessage": "No delivery provider configured"
+	}
+]

@@ -1,0 +1,10 @@
+[
+	{
+		"slug": "connected-dev",
+		"owner": "dev@example.com",
+		"address": "dev.demo@example.net",
+		"imapHost": "imap.example.net",
+		"smtpHost": "smtp.example.net",
+		"lastSyncMinutesAgo": 3
+	}
+]
