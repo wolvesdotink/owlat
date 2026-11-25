@@ -55,6 +55,7 @@ import {
 	defaultSendingPools,
 	persistComposeProfiles,
 	resolveComposeVersionPin,
+	recordInstalledVersion,
 	resolveSourceRevision,
 	verifyMonorepo,
 } from './quickstartStack';
@@ -270,6 +271,11 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	await checkpoint.complete('compose-up');
 
 	const envAfterCompose = await readEnv(envPath);
+	// What runs, for whoever reads this directory later: the source tree stays
+	// at this release while updates move the stack on.
+	await recordInstalledVersion(opts.owlatDir, envAfterCompose).catch((e: unknown) =>
+		reporter.log(`Could not write VERSION: ${(e as Error).message}`, 'stderr')
+	);
 	if (
 		composeProfilesUnion.includes('mta') &&
 		!(await verifyMtaIdentity(envAfterCompose, reporter))

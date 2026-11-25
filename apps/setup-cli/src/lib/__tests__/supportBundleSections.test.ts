@@ -91,7 +91,7 @@ describe('projectDoctorReport', () => {
 		command: 'doctor',
 		generatedAt: '2026-10-24T10:00:00.000Z',
 		ok: false,
-		summary: { total: 2, passed: 1, failed: 1 },
+		summary: { total: 2, passed: 1, failed: 1, warnings: 0 },
 		activeFeatures: ['campaigns'],
 		checks: [
 			{

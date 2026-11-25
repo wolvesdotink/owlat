@@ -20,6 +20,9 @@
  *       OWLAT_VERSION. Compose pins images to `${OWLAT_VERSION:-dev}`, so
  *       advancing `.env` without recreating the containers leaves the version
  *       the product REPORTS diverged from the one it RUNS.
+ *   5d. VERSION: the install directory's VERSION file names the release `.env`
+ *       pins, and its git checkout is that release. Warnings only: the stack
+ *       runs either way, and updates leave the checkout where it was.
  *
  * Reports findings as a checklist, or with `--json` as one redacted
  * {@link DoctorReport} document on stdout; non-zero exit on any failure in
@@ -52,6 +55,7 @@ import {
 } from '../lib/doctorReport';
 import { doctorText, envValue, trusted } from '../lib/doctorText';
 import { evaluateAcmeSidecar } from '../lib/acmeSidecar';
+import { evaluateSourceCheckout, evaluateVersionRecord } from '../lib/installCheckout';
 import {
 	evaluateSendPath,
 	evaluateSiteUrl,
@@ -268,6 +272,14 @@ export async function collectDoctorReport(
 			report.record({ check: 'version.drift', subject: finding.service, ...finding });
 		}
 	}
+
+	// The checkout an update leaves behind, against the release that runs. Read
+	// from the files alone, so it reports with Docker down too.
+	const configured = env['OWLAT_VERSION']?.trim() ?? '';
+	const record = await evaluateVersionRecord(owlatDir, configured);
+	if (record) report.record(record);
+	const source = await evaluateSourceCheckout(owlatDir, configured);
+	if (source) report.record(source);
 
 	const activeFeatures = Object.entries(resolved)
 		.filter(([, enabled]) => enabled)

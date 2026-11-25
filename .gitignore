@@ -29,6 +29,8 @@ dist/
 # The updater's record of the last in-app update (served on its /health).
 .owlat-last-rollout.json
 .owlat-last-rollout.json.tmp
+# The release a self-hosted install runs (installer and updater write it).
+/VERSION
 
 # Secrets / keys (must never be committed)
 *.key

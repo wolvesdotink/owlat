@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runDoctor, type DoctorIo } from '../doctorRun';
@@ -68,6 +68,10 @@ interface Fixture {
 	systemSenderDns?: string;
 	/** Values from this fixture's `.env` that must appear in neither output. */
 	secrets?: string[];
+	/** The install directory as a git checkout: `.git/HEAD`, `packed-refs`, loose tags. */
+	checkout?: { head: string; packedRefs?: string; looseTags?: Record<string, string> };
+	/** The install directory's VERSION file. */
+	versionRecord?: string;
 }
 
 const healthyMta = {
@@ -533,6 +537,20 @@ const FIXTURES: Record<string, Fixture> = {
 	},
 };
 
+/** Commits and tag objects of a checkout, as `git clone --depth 1 --branch` leaves them. */
+const OLD_COMMIT = 'a'.repeat(40);
+const NEW_COMMIT = 'b'.repeat(40);
+const TAG_OBJECT = 'c'.repeat(40);
+const packedTag = (tag: string, commit: string) =>
+	`# pack-refs with: peeled fully-peeled sorted \n${TAG_OBJECT} refs/tags/${tag}\n^${commit}\n`;
+/** Installed at v0.4.19; `.env` (the healthy fixture's) runs 0.6.15. */
+FIXTURES['staleCheckout'] = {
+	...FIXTURES['healthy']!,
+	checkout: { head: OLD_COMMIT, packedRefs: packedTag('v0.4.19', OLD_COMMIT) },
+	// Left by a manual update from 0.6.14.
+	versionRecord: 'version=0.6.14\ntag=v0.6.14\n',
+};
+
 const SECRETS = [MTA_KEY, URL_PASSWORD, RESEND_KEY];
 const TEXT_PREFIXES = ['', 'SEND PATH: ', 'CONTAINERS: ', 'VERSION: '];
 const NOW = new Date('2026-10-19T08:00:00.000Z');
@@ -550,6 +568,19 @@ function install(fixture: Fixture): void {
 	writeFileSync(join(dir, '.env'), `${fixture.env}\n`);
 	if (fixture.flags !== undefined) writeFileSync(join(dir, '.owlat-flags.json'), fixture.flags);
 	if (fixture.override) writeFileSync(join(dir, 'docker-compose.override.yml'), 'services: {}\n');
+	if (fixture.versionRecord !== undefined) {
+		writeFileSync(join(dir, 'VERSION'), fixture.versionRecord);
+	}
+	if (fixture.checkout) {
+		mkdirSync(join(dir, '.git', 'refs', 'tags'), { recursive: true });
+		writeFileSync(join(dir, '.git', 'HEAD'), `${fixture.checkout.head}\n`);
+		if (fixture.checkout.packedRefs !== undefined) {
+			writeFileSync(join(dir, '.git', 'packed-refs'), fixture.checkout.packedRefs);
+		}
+		for (const [tag, sha] of Object.entries(fixture.checkout.looseTags ?? {})) {
+			writeFileSync(join(dir, '.git', 'refs', 'tags', tag), `${sha}\n`);
+		}
+	}
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -586,12 +617,12 @@ async function runBoth(fixture: Fixture) {
 	return { text, json, report: JSON.parse(json.stdout) as DoctorReport };
 }
 
-/** The ✓/✗ checklist rows of the text output, as [passed, line-without-mark]. */
-function checklist(stdout: string): Array<[boolean, string]> {
+/** The ✓/✗/! checklist rows of the text output, as [passed, line-without-mark, mark]. */
+function checklist(stdout: string): Array<[boolean, string, string]> {
 	return stripAnsi(stdout)
 		.split('\n')
-		.filter((line) => line.startsWith('✓ ') || line.startsWith('✗ '))
-		.map((line) => [line.startsWith('✓'), line.slice(2)]);
+		.filter((line) => ['✓ ', '✗ ', '! '].some((mark) => line.startsWith(mark)))
+		.map((line) => [line.startsWith('✓'), line.slice(2), line[0]!]);
 }
 
 describe('doctor --json — text/JSON parity', () => {
@@ -603,8 +634,9 @@ describe('doctor --json — text/JSON parity', () => {
 		const rows = checklist(text.stdout);
 		expect(report.checks).toHaveLength(rows.length);
 		for (const [index, check] of report.checks.entries()) {
-			const [passed, line] = rows[index]!;
+			const [passed, line, mark] = rows[index]!;
 			expect(check.status === 'pass').toBe(passed);
+			expect(mark === '!').toBe(!passed && check.severity === 'warning');
 			// The text line is the JSON message behind the component's old prefix.
 			expect(line.endsWith(check.message)).toBe(true);
 			expect(TEXT_PREFIXES).toContain(line.slice(0, line.length - check.message.length));
@@ -618,7 +650,8 @@ describe('doctor --json — text/JSON parity', () => {
 		expect(report.summary).toEqual({
 			total: rows.length,
 			passed: rows.filter(([passed]) => passed).length,
-			failed: rows.filter(([passed]) => !passed).length,
+			failed: rows.filter(([, , mark]) => mark === '✗').length,
+			warnings: rows.filter(([, , mark]) => mark === '!').length,
 		});
 		expect(report.schemaVersion).toBe(DOCTOR_REPORT_SCHEMA_VERSION);
 		expect(report.generatedAt).toBe(NOW.toISOString());
@@ -881,6 +914,101 @@ describe('doctor --json — report contents', () => {
 				'(Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?). ' +
 				'Check that Docker is running, and run this check as `owlat doctor`, which gives it the Docker socket.'
 		);
+	});
+
+	describe('the checkout in the install directory', () => {
+		const sourceCheck = (report: DoctorReport) =>
+			report.checks.find((check) => check.id === 'version.source');
+
+		it('warns, without failing the run, when the checkout is an older release than the one that runs', async () => {
+			const { text, report } = await runBoth(FIXTURES['staleCheckout']!);
+
+			expect(text.code).toBe(0);
+			expect(report.ok).toBe(true);
+			expect(report.summary.warnings).toBe(2);
+			expect(sourceCheck(report)).toMatchObject({
+				status: 'fail',
+				severity: 'warning',
+				remediation: 'update_checkout',
+			});
+			expect(sourceCheck(report)?.message).toContain(
+				'The source tree in the install directory is v0.4.19, but v0.6.15 runs'
+			);
+			expect(sourceCheck(report)?.message).toContain(
+				'https://github.com/wolvesdotink/owlat/tree/v0.6.15'
+			);
+			expect(stripAnsi(text.stdout)).toContain('! VERSION: The source tree');
+			expect(stripAnsi(text.stdout)).toContain('with 2 warning(s) above');
+		});
+
+		it('warns when VERSION names another release than .env pins', async () => {
+			const { report } = await runBoth(FIXTURES['staleCheckout']!);
+			const record = report.checks.find((check) => check.id === 'version.record');
+			expect(record).toMatchObject({ status: 'fail', severity: 'warning' });
+			expect(record?.message).toContain('names 0.6.14, but .env pins 0.6.15');
+		});
+
+		it('passes a VERSION that names the release .env pins', async () => {
+			const { report } = await runBoth({
+				...FIXTURES['healthy']!,
+				versionRecord: 'version=0.6.15\ntag=v0.6.15\n',
+			});
+			expect(report.checks.find((check) => check.id === 'version.record')?.status).toBe('pass');
+		});
+
+		it('passes when the checkout is the release that runs', async () => {
+			const { report } = await runBoth({
+				...FIXTURES['healthy']!,
+				checkout: { head: NEW_COMMIT, packedRefs: packedTag('v0.6.15', NEW_COMMIT) },
+			});
+			expect(sourceCheck(report)).toMatchObject({ status: 'pass' });
+			expect(sourceCheck(report)?.message).toBe(
+				'The source tree in the install directory is v0.6.15, the release that runs'
+			);
+		});
+
+		it('names the commit of a checkout that carries no release tag', async () => {
+			const { report } = await runBoth({
+				...FIXTURES['healthy']!,
+				checkout: { head: NEW_COMMIT, packedRefs: packedTag('v0.6.15', OLD_COMMIT) },
+			});
+			expect(sourceCheck(report)?.status).toBe('fail');
+			expect(sourceCheck(report)?.message).toContain(
+				`is commit ${NEW_COMMIT.slice(0, 12)}, but v0.6.15 runs`
+			);
+		});
+
+		it('does not warn about a checkout moved to a tag whose commit it cannot read', async () => {
+			// `git fetch origin tag v0.6.15 && git checkout v0.6.15` on the shallow
+			// v0.4.19 clone: a loose ref to an annotated tag object in a pack.
+			const { report } = await runBoth({
+				...FIXTURES['healthy']!,
+				checkout: {
+					head: NEW_COMMIT,
+					packedRefs: packedTag('v0.4.19', OLD_COMMIT),
+					looseTags: { 'v0.6.15': TAG_OBJECT },
+				},
+			});
+			expect(sourceCheck(report)?.status).toBe('pass');
+			expect(sourceCheck(report)?.message).toContain('cannot match to a release');
+		});
+
+		it('reads a lightweight tag that holds the checked-out commit', async () => {
+			const { report } = await runBoth({
+				...FIXTURES['healthy']!,
+				checkout: { head: NEW_COMMIT, looseTags: { 'v0.6.15': NEW_COMMIT } },
+			});
+			expect(sourceCheck(report)?.status).toBe('pass');
+		});
+
+		it('says nothing about an install directory that is not a checkout, or a dev stack', async () => {
+			expect(sourceCheck((await runBoth(FIXTURES['healthy']!)).report)).toBeUndefined();
+			const dev = await runBoth({
+				...FIXTURES['staleCheckout']!,
+				env: FIXTURES['healthy']!.env.replace('OWLAT_VERSION=0.6.15', 'OWLAT_VERSION=dev'),
+			});
+			expect(sourceCheck(dev.report)).toBeUndefined();
+		});
 	});
 
 	it('reads a flag file with an unknown key and a plugin override as valid', async () => {

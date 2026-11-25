@@ -20,7 +20,8 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { handleUpdate } from './update.js';
-import { handleRollback, handleSnapshotInfo, unfinishedRollback } from './rollback.js';
+import { unfinishedRollback } from './rollback.js';
+import { handleRollback, handleSnapshotInfo } from './rollbackRoutes.js';
 import { handleApplyProfiles } from './applyProfiles.js';
 import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';

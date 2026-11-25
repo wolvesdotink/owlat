@@ -534,6 +534,27 @@ updater_request() {
 	docker compose exec -T updater node -e "$UPDATER_REQUEST_JS" "$@"
 }
 
+# The release `.env` pins, and a warning when the checkout here is another one.
+# Updates replace docker-compose.yml and .env, not the checkout, so its source
+# and these scripts can be older than what runs. On stderr, so `status`'s own
+# output stays parseable.
+print_install_version() {
+	local version tag head tag_commit at
+	version="$(sed -n 's/^OWLAT_VERSION=//p' .env 2>/dev/null | tail -1 | tr -d "\"'")"
+	[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || return 0
+	tag="v${version}"
+	printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Owlat ${tag} runs here (OWLAT_VERSION in .env)." >&2
+	[[ -d .git ]] && command -v git >/dev/null 2>&1 || return 0
+	# The checkout belongs to whoever installed; `owlat` may run as root.
+	head="$(git -c safe.directory="$PWD" rev-parse -q --verify HEAD 2>/dev/null)" || return 0
+	tag_commit="$(git -c safe.directory="$PWD" rev-parse -q --verify "refs/tags/${tag}^{commit}" 2>/dev/null)" || tag_commit=""
+	[[ "$head" == "$tag_commit" ]] && return 0
+	at="$(git -c safe.directory="$PWD" describe --tags --exact-match HEAD 2>/dev/null)" || at="commit ${head:0:12}"
+	printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} The source tree in $OWLAT_DIR is ${at}, not ${tag}: updates do not move it." \
+		"       The running source: https://github.com/wolvesdotink/owlat/tree/${tag}" \
+		"       To move the checkout: git fetch --depth 1 origin tag ${tag} && git checkout ${tag}" >&2
+}
+
 # ── Subcommands ───────────────────────────────────────────────────────────────
 cmd="${1:-help}"
 shift || true
@@ -943,6 +964,7 @@ case "$cmd" in
 		exec docker compose restart "$@"
 		;;
 	status|ps)
+		print_install_version
 		exec docker compose ps "$@"
 		;;
 	logs)

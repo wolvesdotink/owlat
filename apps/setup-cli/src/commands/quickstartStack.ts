@@ -8,7 +8,8 @@ import pc from 'picocolors';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { mergeEnv, readEnv, writeEnv } from '../lib/env';
+import { isReleaseVersion, writeVersionRecord } from '@owlat/shared/installVersionRecord';
+import { mergeEnv, readEnv, writeEnv, type EnvMap } from '../lib/env';
 import { progressSpinner, type Reporter } from '../lib/progress';
 import {
 	applyOutboundIpDefaults,
@@ -109,6 +110,18 @@ export async function defaultSendingPools(
 		interactive,
 		emit: (line, stream) => reporter.log(line, stream),
 	});
+}
+
+/**
+ * Write the install directory's VERSION file for the release `.env` pins, once
+ * the stack is up on it. A stack on `dev` runs this very source tree, so it has
+ * no release to name and gets no file. Returns whether one was written.
+ */
+export async function recordInstalledVersion(owlatDir: string, env: EnvMap): Promise<boolean> {
+	const version = env['OWLAT_VERSION']?.trim() ?? '';
+	if (!isReleaseVersion(version)) return false;
+	await writeVersionRecord(owlatDir, { version, appliedAt: new Date(), appliedBy: 'installer' });
+	return true;
 }
 
 export async function resolveSourceRevision(

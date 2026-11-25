@@ -160,6 +160,7 @@ beforeEach(() => {
 	rmSync(SNAPSHOT_DIR, { recursive: true, force: true });
 	rmSync(RECORD, { force: true });
 	rmSync(OVERRIDE, { recursive: true, force: true });
+	rmSync(join(OWLAT_DIR, 'VERSION'), { force: true });
 	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), OLD_COMPOSE);
 	writeFileSync(join(OWLAT_DIR, '.env'), OLD_ENV, { mode: 0o600 });
 });
@@ -621,6 +622,21 @@ describe('owlat rollback (GET /snapshot, POST /rollback)', () => {
 
 		const again = await post('/rollback', { snapshot: info.snapshot.id });
 		expect(again.status).toBe(409);
+	});
+
+	it('names the restored release in VERSION', async () => {
+		await update();
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.17$/m);
+		const info = (await (await fetch(`${base}/snapshot`, { headers: AUTH })).json()) as {
+			snapshot: { id: string };
+		};
+
+		const res = await post('/rollback', { snapshot: info.snapshot.id });
+
+		expect(res.status).toBe(200);
+		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
+		expect(record).toMatch(/^version=0\.4\.16$/m);
+		expect(record).toMatch(/^applied_by=rollback$/m);
 	});
 
 	it('answers that there is nothing to restore before any update', async () => {
