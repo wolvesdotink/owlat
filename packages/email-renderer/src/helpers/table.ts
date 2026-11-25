@@ -20,6 +20,13 @@ import { escapeAttr, escapeCss } from '../sanitize';
 export { getColumnWidths };
 
 /**
+ * Marks a surface that paints its own background and has no dark colours to
+ * replace it. Such a background stays light in dark mode, so the dark styles
+ * in `styles.ts` leave the text colours on it as they are in light mode.
+ */
+export const OWN_BACKGROUND_CLASS = 'owlat-own-bg';
+
+/**
  * Get CSS classes for responsive visibility, dark mode overrides, and custom CSS class.
  */
 const getBlockClasses = (block: EditorBlock): string[] => {
@@ -113,6 +120,13 @@ export const wrapSection = (
 	}
 
 	const tableStyleAttr = tableStyles.length > 0 ? ` style="${tableStyles.join(';')}"` : '';
+	// A block with a dark background or text colour is restyled in dark mode,
+	// so only a block with neither keeps its own colours. A full-width block
+	// paints its colour but not its gradient.
+	const paintsBackground = isFullWidth ? !!bgColor : !!(bgColor || gradientCss);
+	if (paintsBackground && !c.darkBackgroundColor && !c.darkTextColor) {
+		classes.push(OWN_BACKGROUND_CLASS);
+	}
 	// With a margin cell around the section, hiding on one viewport hides that
 	// cell, so the margin goes with the block. Every other class stays on the
 	// table that carries the background.
@@ -127,7 +141,8 @@ export const wrapSection = (
 	let section: string;
 	if (isFullWidth) {
 		// Full-width: outer table at 100% width with background, inner content at baseWidth
-		const outerBg = bgColor ? ` style="background-color:${bgColor}"` : '';
+		const outerStyles = `${darkModeVars}${bgColor ? `background-color:${bgColor}` : ''}`;
+		const outerBg = outerStyles ? ` style="${outerStyles}"` : '';
 		// Inside a margin cell the content is narrower than the base width, so
 		// a fixed-width inner table would overflow the margin.
 		const innerWidth = margin ? '100%' : `${px(ctx.baseWidth, 0)}`;
@@ -192,10 +207,11 @@ export const wrapNestedItem = (
 		tableStyles.push(SEPARATE_BORDERS);
 	}
 	const tableStyleAttr = tableStyles.length > 0 ? ` style="${tableStyles.join(';')}"` : '';
+	const classAttr = bgColor ? ` class="${OWN_BACKGROUND_CLASS}"` : '';
 	const cellStyle = shell.cellStyle
 		? `padding:${getNestedItemPadding(content)};${shell.cellStyle}`
 		: `padding:${getNestedItemPadding(content)}`;
-	const item = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${tableStyleAttr}><tr><td${shell.cellAttrs ?? ''} style="${cellStyle}">${innerHtml}</td></tr></table>`;
+	const item = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${classAttr}${tableStyleAttr}><tr><td${shell.cellAttrs ?? ''} style="${cellStyle}">${innerHtml}</td></tr></table>`;
 
 	const margin = getSectionMargin(content);
 	if (!margin) return item;

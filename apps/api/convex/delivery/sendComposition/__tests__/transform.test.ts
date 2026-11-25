@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { transformHtml, type TransformConfig } from '../transform';
+import { footerText } from '../footer';
 
 // transformHtml now HMAC-signs tracked links with UNSUBSCRIBE_SECRET (binding
 // the redirect target to its emailSendId to defeat open redirects). Provide a
@@ -555,24 +556,39 @@ describe('transformHtml — footer sender address and language', () => {
 		expect(result.indexOf('12345 Example City')).toBeLessThan(result.indexOf('Unsubscribe'));
 	});
 
-	it('labels the links in German for a German body, and in English otherwise', () => {
-		const german = transformHtml('<body></body>', { ...urls, footerLanguage: 'de-AT' });
-		expect(german).toContain('>Einstellungen verwalten</a>');
-		expect(german).toContain('>Abmelden</a>');
-		expect(german).not.toContain('Unsubscribe');
-		const french = transformHtml('<body></body>', { ...urls, footerLanguage: 'fr' });
-		expect(french).toContain('>Manage Preferences</a>');
-		expect(french).toContain('>Unsubscribe</a>');
-	});
+	const ENGLISH = ['Manage Preferences', 'Unsubscribe', 'View in browser'] as const;
 
-	it('labels the view-in-browser link in the language of the body', () => {
-		const viewInBrowserUrl = 'https://app.example/archive?token=a';
-		const german = transformHtml('<body></body>', { viewInBrowserUrl, footerLanguage: 'de' });
-		expect(german).toContain('>Im Browser ansehen</a>');
-		expect(german).not.toContain('View in browser');
-		const french = transformHtml('<body></body>', { viewInBrowserUrl, footerLanguage: 'fr' });
-		expect(french).toContain('>View in browser</a>');
-	});
+	it.each([
+		['en', ENGLISH],
+		['de-AT', ['Einstellungen verwalten', 'Abmelden', 'Im Browser ansehen']],
+		['fr', ['Gérer mes préférences', 'Se désabonner', 'Voir dans le navigateur']],
+		['fr-CA', ['Gérer mes préférences', 'Se désabonner', 'Voir dans le navigateur']],
+		['es', ['Gestionar preferencias', 'Darse de baja', 'Ver en el navegador']],
+		['it', ['Gestisci preferenze', 'Annulla iscrizione', 'Visualizza nel browser']],
+		['NL', ['Voorkeuren beheren', 'Uitschrijven', 'Bekijk in browser']],
+		['pt_BR', ['Alterar preferências', 'Cancelar inscrição', 'Ver no navegador']],
+		['pl', ENGLISH],
+		['constructor', ENGLISH],
+		[undefined, ENGLISH],
+	] as const)(
+		'labels the links of a %s body in its language, in html and text/plain',
+		(footerLanguage, [managePreferences, unsubscribe, viewInBrowser]) => {
+			const html = transformHtml('<body></body>', {
+				...urls,
+				viewInBrowserUrl: 'https://app.example/archive?token=a',
+				...(footerLanguage !== undefined ? { footerLanguage } : {}),
+			});
+			expect(html).toContain(`>${managePreferences}</a>`);
+			expect(html).toContain(`>${unsubscribe}</a>`);
+			expect(html).toContain(`>${viewInBrowser}</a>`);
+			if (managePreferences !== ENGLISH[0]) expect(html).not.toContain('Unsubscribe');
+
+			const text = footerText({ ...urls, language: footerLanguage });
+			expect(text).toBe(
+				`${managePreferences}: ${urls.preferenceUrl}\n${unsubscribe}: ${urls.unsubscribeUrl}`
+			);
+		}
+	);
 });
 
 describe('transformHtml — the instance’s own subscription links', () => {

@@ -1855,6 +1855,8 @@ import type * as providers_domainIdentity from "../providers/domainIdentity.js";
 import type * as providers_feedback from "../providers/feedback.js";
 import type * as providers_feedbackStatus from "../providers/feedbackStatus.js";
 import type * as publicApi_blockSchemaHttp from "../publicApi/blockSchemaHttp.js";
+import type * as publicApi_brandKit from "../publicApi/brandKit.js";
+import type * as publicApi_brandKitHttp from "../publicApi/brandKitHttp.js";
 import type * as publicApi_domainCheck from "../publicApi/domainCheck.js";
 import type * as publicApi_domainCheckHttp from "../publicApi/domainCheckHttp.js";
 import type * as publicApi_domains from "../publicApi/domains.js";
@@ -4060,6 +4062,8 @@ declare const fullApi: ApiFromModules<{
 	"providers/feedbackStatus": typeof providers_feedbackStatus;
 }> & ApiFromModules<{
 	"publicApi/blockSchemaHttp": typeof publicApi_blockSchemaHttp;
+	"publicApi/brandKit": typeof publicApi_brandKit;
+	"publicApi/brandKitHttp": typeof publicApi_brandKitHttp;
 	"publicApi/domainCheck": typeof publicApi_domainCheck;
 	"publicApi/domainCheckHttp": typeof publicApi_domainCheckHttp;
 	"publicApi/domains": typeof publicApi_domains;

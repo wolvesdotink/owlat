@@ -19,7 +19,7 @@ import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
 import { escapeCss, escapeCssUrl } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
-import { SEPARATE_BORDERS } from '../../helpers/table';
+import { OWN_BACKGROUND_CLASS, SEPARATE_BORDERS } from '../../helpers/table';
 import { px } from '../../helpers/padding';
 import {
 	checkShape,
@@ -116,8 +116,9 @@ const renderNested = (
 	const innerTableStyle = [bgCss, gradientCss, bgImageCss, borderCss, radiusCss]
 		.filter(Boolean)
 		.join('');
+	const classAttr = bgCss || gradientCss || bgImageCss ? ` class="${OWN_BACKGROUND_CLASS}"` : '';
 	parts.push(
-		`<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${innerTableStyle ? ` style="${innerTableStyle}"` : ''}>`
+		`<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${classAttr}${innerTableStyle ? ` style="${innerTableStyle}"` : ''}>`
 	);
 	parts.push(`<tr><td style="${padding}">${childHtml}</td></tr>`);
 	parts.push('</table>');

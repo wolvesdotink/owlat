@@ -26,5 +26,10 @@
  *      its HTML and text once each, between region markers the send resolves
  *      against the request's data (`sendTimeBlockLogic`), instead of being
  *      decided without data.
+ *   6  Dark mode leaves the text colours of a surface with its own background
+ *      (a block without dark colours, a nested container, column or item, or
+ *      an inline highlight) as they are, gives `darkTextColor` to the
+ *      elements inside its block, and keeps button labels out of the dark
+ *      link colour. A full-width block carries its dark colour variables.
  */
-export const EMAIL_RENDERER_VERSION = 5;
+export const EMAIL_RENDERER_VERSION = 6;
