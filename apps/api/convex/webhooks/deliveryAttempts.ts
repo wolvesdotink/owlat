@@ -16,6 +16,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { CURRENT_WEBHOOK_PAYLOAD_VERSION, MAX_WEBHOOK_ATTEMPTS } from '../lib/constants';
 import { isFeatureEnabled } from '../lib/featureFlags';
+import { isEventAllowedOverUrl } from './urlPolicy';
 
 type DeliveryLog = Doc<'webhookDeliveryLogs'>;
 
@@ -142,6 +143,8 @@ export async function enqueueSubscribedDeliveries(
 	const deliveries: Array<{ webhookId: Id<'webhooks'>; logId: Id<'webhookDeliveryLogs'> }> = [];
 	for (const webhook of webhooks) {
 		if (!(webhook.events as readonly string[]).includes(event)) continue;
+		// A URL stored before the event needed https; the Center names it.
+		if (!isEventAllowedOverUrl(event, webhook.url)) continue;
 		const logId = await enqueueWebhookDelivery(ctx, { webhookId: webhook._id, event, payload });
 		deliveries.push({ webhookId: webhook._id, logId });
 	}

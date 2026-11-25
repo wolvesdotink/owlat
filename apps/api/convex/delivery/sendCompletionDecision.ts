@@ -101,7 +101,8 @@ const WORKER_RESULT_MALFORMED_MESSAGE =
 
 /**
  * How each pre-dispatch refusal is recorded. A blocklist hit keeps its original
- * code; a contact that unsubscribed from everything or was deleted gets its own,
+ * code; a contact that unsubscribed from everything, left the automation's
+ * topic or was deleted gets its own,
  * so the Send's audit trail says why it did not go out.
  */
 const SUPPRESSED_SEND_FAILURE = {
@@ -114,6 +115,10 @@ const SUPPRESSED_SEND_FAILURE = {
 		code: 'RECIPIENT_UNSUBSCRIBED',
 	},
 	contact_deleted: { message: 'Contact deleted before dispatch', code: 'CONTACT_DELETED' },
+	topic_unsubscribed: {
+		message: "Contact left the automation's topic before dispatch",
+		code: 'RECIPIENT_LEFT_TOPIC',
+	},
 } as const satisfies Record<
 	'blocklist' | MarketingIneligibility,
 	{ message: string; code: string }

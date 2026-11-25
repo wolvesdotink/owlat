@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { sendingHoldStatusValidator } from '../lib/validators/deliverability';
 import { marketingNoticeKindValidator } from '../lib/validators/marketingNotifications';
 
 /**
@@ -43,6 +44,10 @@ export const marketingNotificationTables = {
 		automationId: v.optional(v.id('automations')),
 		domainId: v.optional(v.id('domains')),
 		alertId: v.optional(v.id('deliverabilityRegressionAlerts')),
+		// Sending stopped: the alert record that counts this notice's channels,
+		// and the status sending stopped on (absent on older rows: suspended).
+		sendingHoldAlertId: v.optional(v.id('sendingHoldAlerts')),
+		holdStatus: v.optional(sendingHoldStatusValidator),
 		// Postmaster mail: the Team Inbox thread it landed in.
 		threadId: v.optional(v.id('conversationThreads')),
 		// The campaign, automation or domain name; the destination provider for
