@@ -28,6 +28,7 @@ import type { Id } from '../_generated/dataModel';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { parseContentBlocks } from '../emailBlocks/consumers';
 import { mergeTranslationWithContent, parseTranslations } from '../lib/emailTranslations';
+import { itemTextKey } from '../emailTemplates/translationMerge';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 
 // Stub the workpool — the component isn't wired into convexTest and the
@@ -771,6 +772,54 @@ describe('Saved block module — propagation keeps linked copies translated', ()
 			'<p>Rechtliches</p>',
 			'<p>Hallo</p>',
 		]);
+	});
+
+	it('a linked list keeps the translation of each item when the saved block reorders them', async () => {
+		const t = convexTest(schema, modules);
+		const list = (id: string, items: string[]): Node => ({
+			id,
+			type: 'list',
+			content: { items, listType: 'bullet' },
+		});
+		const blockId = await t.run((ctx) =>
+			ctx.db.insert('emailBlocks', {
+				name: 'Footer',
+				content: savedContent([list('s-list', ['Hello', 'Bye'])]),
+				usageCount: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+		const templateId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					content: buildTemplateContent([linked(list('c-list', ['Hello', 'Bye']), blockId, 'g1')]),
+					linkedBlockIds: [blockId],
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: {
+							subject: 'Hallo',
+							blocks: {
+								'c-list': {
+									texts: { [itemTextKey('Hello')]: 'Hallo', [itemTextKey('Bye')]: 'Tschüss' },
+								},
+							},
+						},
+					}),
+				})
+			)
+		);
+
+		await editFooter(t, blockId, [list('s-list', ['Bye', 'New', 'Hello'])]);
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		const overlay = parseTranslations(row!.translations)['de']?.blocks ?? {};
+		const [merged] = JSON.parse(
+			mergeTranslationWithContent(JSON.stringify(parseContentBlocks(row!.content)), overlay)
+		) as Node[];
+		expect(merged!.content['items']).toEqual(['Tschüss', 'New', 'Hallo']);
 	});
 
 	it('the same saved block linked twice keeps unique ids and a translation per copy', async () => {

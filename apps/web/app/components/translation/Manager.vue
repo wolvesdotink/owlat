@@ -2,7 +2,12 @@
 import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
-import { translationBlockRows, type TranslatableRow } from '~/utils/translationRows';
+import {
+	sharedContentKinds,
+	translationBlockRows,
+	translationProgress,
+	type TranslatableRow,
+} from '~/utils/translationRows';
 import { budgetCopyKeyOfError } from '~/utils/aiBudget';
 import {
 	buildLanguageAdd,
@@ -22,6 +27,8 @@ import {
 	type TranslationEmailType,
 } from '~/composables/translation/useTranslationEmail';
 import TranslationTable from './Table.vue';
+import TranslationSharedNotice from './SharedNotice.vue';
+import { translateBatches } from '~/utils/translateBatches';
 import { ArrowLeftIcon, CircleWarningIcon, GlobeIcon } from '@coolicons/vue';
 
 type EmailType = TranslationEmailType;
@@ -131,6 +138,8 @@ const getLanguageInfo = (code: string) => {
 const languageLabel = (code: string) => t(getLanguageInfo(code).label);
 const languageNativeLabel = (code: string) => t(getLanguageInfo(code).nativeLabel);
 
+const contentBlocks = computed(() => (email.value ? parseStoredBlocks(email.value.content) : []));
+
 // Extract translatable rows from email content
 const translatableRows = computed((): TranslatableRow[] => {
 	if (!email.value) return [];
@@ -156,16 +165,28 @@ const translatableRows = computed((): TranslatableRow[] => {
 	}
 
 	// Content blocks, at every depth; unreadable content contributes no rows.
-	rows.push(...translationBlockRows(parseStoredBlocks(email.value.content), t));
+	rows.push(...translationBlockRows(contentBlocks.value, t));
 
 	return rows;
 });
+
+// What the table cannot translate, named so nobody expects it to change.
+const sharedKinds = computed(() => sharedContentKinds(contentBlocks.value));
 
 // The overlay value a row edits.
 const fieldOf = (row: TranslatableRow): TranslationField => {
 	if (row.fieldType === 'subject') return { kind: 'subject' };
 	if (row.fieldType === 'previewText') return { kind: 'previewText' };
-	return { kind: 'block', blockId: row.blockId ?? row.id, property: row.fieldType };
+	const blockId = row.blockId ?? row.id;
+	if (row.fieldType === 'itemText' || row.fieldType === 'sectionTitle') {
+		return {
+			kind: 'blockEntry',
+			blockId,
+			map: row.fieldType === 'itemText' ? 'texts' : 'sectionTitles',
+			key: row.entryKey ?? '',
+		};
+	}
+	return { kind: 'block', blockId, property: row.fieldType };
 };
 
 const cellOf = (row: TranslatableRow, language: string): TranslationCell => ({
@@ -181,6 +202,9 @@ const getTranslationValue = (row: TranslatableRow, language: string): string => 
 	}
 	return valueOf(cellOf(row, language));
 };
+
+const progressOf = (language: string) =>
+	translationProgress(translatableRows.value, (row) => getTranslationValue(row, language));
 
 // Add a new language
 const addLanguage = async (langCode: string) => {
@@ -245,16 +269,21 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 			return;
 		}
 
-		// Call AI translation action via Convex
-		const result = await requireConvex().action(api.emailTemplates.translate.translateBatch, {
-			items: itemsToTranslate,
-			sourceLanguage: languageLabel(defaultLanguage.value),
-			targetLanguage: languageLabel(targetLanguage),
-		});
+		// Call AI translation action via Convex, in batches the action accepts:
+		// a long table has more rows than one call takes.
+		const translations: { id: string; translatedText: string }[] = [];
+		for (const batch of translateBatches(itemsToTranslate)) {
+			const result = await requireConvex().action(api.emailTemplates.translate.translateBatch, {
+				items: batch,
+				sourceLanguage: languageLabel(defaultLanguage.value),
+				targetLanguage: languageLabel(targetLanguage),
+			});
+			translations.push(...result.translations);
+		}
 
 		// Apply the translations as one write. A failed write keeps every
 		// generated value as a draft in its cell, to retry or discard.
-		const entries = result.translations.flatMap((item) => {
+		const entries = translations.flatMap((item) => {
 			const row = translatableRows.value.find((r) => r.id === item.id);
 			return row ? [{ cell: cellOf(row, targetLanguage), value: item.translatedText }] : [];
 		});
@@ -262,7 +291,7 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 
 		showToast(
 			t('components.translation.manager.autoTranslated', {
-				count: result.translations.length,
+				count: translations.length,
 				language: languageLabel(targetLanguage),
 			})
 		);
@@ -394,6 +423,7 @@ const handleBack = () => {
 					:native-label-of="languageNativeLabel"
 					:cell-value="getTranslationValue"
 					:cell-status="(row, lang) => statusOf(cellOf(row, lang))"
+					:progress-of="progressOf"
 					@auto-translate="autoTranslateColumn"
 					@remove-language="removeLanguage"
 					@add-language="addLanguage"
@@ -402,6 +432,9 @@ const handleBack = () => {
 					@discard="(row, lang) => discardCell(cellOf(row, lang))"
 					@edit="(row, lang, text) => setOpenEdit(cellOf(row, lang), text)"
 				/>
+
+				<!-- What every language shares -->
+				<TranslationSharedNotice v-if="translatableRows.length > 0" :kinds="sharedKinds" />
 
 				<!-- Info Card -->
 				<div class="mt-6 p-4 rounded-xl surface-3">

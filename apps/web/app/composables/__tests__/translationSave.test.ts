@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
 	buildLanguageAdd,
 	buildTranslationUpdate,
+	readOverlayField,
 	translationBaseOf,
 	type TranslationBase,
 } from '../translationSave';
 import type { RenderOptions } from '../useEmailHtmlRendering';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
+import { itemTextKey } from '@owlat/api/translationMerge';
 
 /**
  * The translation table's write: the overlay text and the HTML
@@ -189,5 +191,53 @@ describe('translationBaseOf', () => {
 				contentRevision: 12,
 			}).revision
 		).toBe(12);
+	});
+});
+
+describe('item text cells', () => {
+	const listContent = JSON.stringify([
+		{
+			id: 'l1',
+			type: 'list',
+			content: { items: ['Free shipping', 'Returns'], listType: 'bullet' },
+		},
+	]);
+
+	it('writes a list item into the overlay entry the merge reads, keeping the others', () => {
+		const listBase = base({
+			content: listContent,
+			translations: {
+				de: {
+					subject: 'Betreff',
+					blocks: { l1: { texts: { [itemTextKey('Returns')]: 'Rückgabe' } } },
+				},
+			},
+		});
+		const field = {
+			kind: 'blockEntry' as const,
+			blockId: 'l1',
+			map: 'texts' as const,
+			key: itemTextKey('Free shipping'),
+		};
+		const payload = buildTranslationUpdate(
+			listBase,
+			'de',
+			[{ field, value: 'Kostenloser Versand' }],
+			renderOptions
+		);
+		expect(JSON.parse(payload.blocks)).toEqual({
+			l1: {
+				texts: {
+					[itemTextKey('Returns')]: 'Rückgabe',
+					[itemTextKey('Free shipping')]: 'Kostenloser Versand',
+				},
+			},
+		});
+		expect(payload.htmlContent).toContain('Kostenloser Versand');
+		expect(payload.htmlContent).toContain('Rückgabe');
+		expect(readOverlayField(listBase.translations['de'], field)).toBe('');
+		expect(listBase.translations['de']!.blocks!['l1']!.texts).toEqual({
+			[itemTextKey('Returns')]: 'Rückgabe',
+		});
 	});
 });
