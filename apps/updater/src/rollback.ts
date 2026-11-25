@@ -6,37 +6,27 @@
  * ready rolls back on its own (update.ts). Once a release has been confirmed
  * ready nothing rolls back automatically, but the snapshot is kept and the
  * operator can still ask for it with `owlat rollback`, which reaches
- * `POST /rollback` here. Both run the same restore, so the manual path is the
- * one the automatic path has already exercised.
+ * `POST /rollback` (rollbackRoutes.ts). Both run the same restore, so the manual
+ * path is the one the automatic path has already exercised.
  *
  * A restore discards everything written since the snapshot: mail received,
  * contacts added, sends recorded. That is why it never runs once a release
  * has been confirmed ready without the operator naming the snapshot.
  */
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { errorMessage } from '@owlat/shared';
-import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
-import { exec, json, OWLAT_DIR } from './http.js';
-import { readJsonBody } from './jsonBody.js';
-import { asRecord } from './requestBodies.js';
-import {
-	composeArgvIn,
-	oneLine,
-	scheduleUpdaterRecreateSafely,
-	servicesToRecreate,
-} from './rollout.js';
+import { exec, OWLAT_DIR } from './http.js';
+import { composeArgvIn, oneLine, servicesToRecreate } from './rollout.js';
 import { verifyReadiness } from './readiness.js';
+import { recordPinnedVersion } from './versionRecord.js';
 import { removeUpdateContainers, resolveInstallation } from './deployRun.js';
-import { isRateLimited } from './security.js';
 import {
 	COPY_TIMEOUT_MS,
 	helperPlumbing,
 	helperRun,
 	inspectContainers,
-	isSnapshotId,
 	markSnapshot,
 	mountsSource,
 	readSnapshot,
@@ -188,6 +178,8 @@ async function restoreAndStart(
 			stdout: `The data and configuration of snapshot ${snapshot.id} were already restored; starting the release they belong to again.`,
 			stderr: '',
 		});
+		// The earlier attempt may have stopped before it wrote VERSION.
+		await recordRestoredVersion();
 		return startRestored(snapshot, hostDir, preExisting, steps);
 	}
 
@@ -273,10 +265,14 @@ async function restoreAndStart(
 		// since) would otherwise keep configuring the restored release.
 		for (const file of current.absent) await rm(join(OWLAT_DIR, file), { force: true });
 	} catch (err) {
+		// `.env` may be back already; VERSION follows whichever one is there.
+		await recordRestoredVersion();
 		const reason = `restoring the configuration failed: ${errorMessage(err)}`;
 		fail('rollback-restore', reason);
 		return result('partial', `${reason}. The data is restored; convex and redis are stopped.`);
 	}
+	// Before the journal write, which can throw: `.env` is restored either way.
+	await recordRestoredVersion();
 	current = markSnapshot(current, 'starting');
 	const removed = current.absent.map((file) => `removed ${file}, which it did not have`);
 	steps.push({
@@ -288,6 +284,16 @@ async function restoreAndStart(
 		stderr: '',
 	});
 	return startRestored(current, hostDir, preExisting, steps);
+}
+
+/**
+ * The restored `.env` pins the snapshot's release, so VERSION goes back with
+ * it, for the automatic rollback and `owlat rollback` alike. Logged, never
+ * fatal.
+ */
+async function recordRestoredVersion(): Promise<void> {
+	const recorded = await recordPinnedVersion('rollback');
+	if (recorded && !recorded.ok) console.error('[rollback]', recorded.stderr);
 }
 
 /**
@@ -351,10 +357,10 @@ async function startRestored(
 	return result(readiness.summary, true, warnings);
 }
 
-const when = (snapshot: Snapshot) => new Date(snapshot.takenAt).toISOString();
+export const when = (snapshot: Snapshot) => new Date(snapshot.takenAt).toISOString();
 
 /** What a snapshot holds, in the words the operator confirms a restore with. */
-function describeSnapshot(snapshot: Snapshot): string {
+export function describeSnapshot(snapshot: Snapshot): string {
 	const update = snapshot.targetVersion
 		? `the update from ${snapshot.fromVersion ?? 'an unknown release'} to ${snapshot.targetVersion}`
 		: 'an update';
@@ -427,74 +433,4 @@ export function rollbackAnswer(
 		`(${snapshot.id}), but ${rollback.summary} Check \`docker compose ps\` on the host; ` +
 		'`owlat rollback` starts that release again without copying the data back. No update can start until it has.'
 	);
-}
-
-/** `GET /snapshot`: the snapshot `owlat rollback` would restore, if any. */
-export function handleSnapshotInfo(res: ServerResponse) {
-	if (isRateLimited('snapshot', 20, 60_000)) {
-		return json(res, 429, { error: 'Too many snapshot requests.' });
-	}
-	const snapshot = readSnapshot();
-	if (!snapshot || snapshot.state === 'capturing') {
-		return json(res, 200, { snapshot: null, description: 'There is no snapshot to roll back to.' });
-	}
-	const { id, takenAt, state, fromVersion, targetVersion } = snapshot;
-	return json(res, 200, {
-		snapshot: { id, takenAt, state, fromVersion, targetVersion },
-		description: describeSnapshot(snapshot),
-	});
-}
-
-/**
- * `POST /rollback {"snapshot": "<id>"}`: restore the kept snapshot on the
- * operator's word. The id has to match the snapshot on disk, so a restore is
- * only ever of the snapshot the operator was shown.
- */
-export async function handleRollback(req: IncomingMessage, res: ServerResponse) {
-	if (isRateLimited('rollback', 2, 60_000)) {
-		return json(res, 429, { error: 'Too many rollback requests. Try again later.' });
-	}
-	const body = await readJsonBody(req, res, parserDecoder(asRecord, '$: expected object'), {
-		emptyBody: {},
-	});
-	if (!body) return;
-	const requested = body['snapshot'];
-
-	const snapshot = readSnapshot();
-	if (!snapshot || snapshot.state === 'capturing') {
-		return json(res, 404, { error: 'There is no snapshot to roll back to.' });
-	}
-	if (!isSnapshotId(requested) || requested !== snapshot.id) {
-		return json(res, 400, {
-			error: `Name the snapshot to restore: ${describeSnapshot(snapshot)}`,
-			snapshot: { id: snapshot.id },
-		});
-	}
-	if (snapshot.state === 'restored') {
-		return json(res, 409, {
-			error: `The stack already runs on snapshot ${snapshot.id}; restoring it again would discard what was written since.`,
-		});
-	}
-
-	console.error(
-		snapshot.state === 'starting'
-			? `[rollback] starting the release restored from snapshot ${snapshot.id} on the operator's request`
-			: `[rollback] restoring snapshot ${snapshot.id} on the operator's request`
-	);
-	const rollback = await rollBack(snapshot);
-	const steps = [...rollback.steps];
-	// The updater itself follows the release it restored, like after an update.
-	if (rollback.ok) steps.push(await scheduleUpdaterRecreateSafely());
-	const description = rollback.ok
-		? `Rolled back to snapshot ${snapshot.id}: the stack runs the release and data from ${when(snapshot)} again. ${rollback.summary}`
-		: rollbackAnswer(snapshot, 'The rollback did not complete.', rollback);
-	if (!rollback.ok) console.error('[rollback]', description);
-	json(res, rollback.ok ? 200 : 500, {
-		success: rollback.ok,
-		rollout: rollback.ok ? 'rolled-back' : 'failed',
-		description,
-		...(rollback.ok ? {} : { error: description }),
-		warnings: rollback.warnings,
-		steps,
-	});
 }

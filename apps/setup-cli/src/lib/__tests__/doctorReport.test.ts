@@ -42,6 +42,8 @@ describe('doctor report — stable ids', () => {
 			  "mta.egress_address",
 			  "env.acme",
 			  "compose.docker",
+			  "version.source",
+			  "version.record",
 			]
 		`);
 	});
@@ -101,6 +103,24 @@ describe('doctor report — text rendering', () => {
 		expect(stripAnsi(renderDoctorCheckLine(check({ component: 'version' })))).toBe(
 			'✓ VERSION: message'
 		);
+		expect(
+			stripAnsi(
+				renderDoctorCheckLine(check({ component: 'version', status: 'fail', severity: 'warning' }))
+			)
+		).toBe('! VERSION: message');
+	});
+
+	it('records a failed warning without failing the run', () => {
+		const builder = new DoctorReportBuilder();
+		builder.record({ check: 'env.file', ok: true, message: doctorText`a` });
+		builder.record({ check: 'version.source', ok: false, message: doctorText`b` });
+		const report = builder.build(['campaigns'], new Date(0));
+		expect(report.ok).toBe(true);
+		expect(report.checks[1]).toMatchObject({ status: 'fail', severity: 'warning' });
+		expect(report.summary).toEqual({ total: 2, passed: 1, failed: 0, warnings: 1 });
+		expect(stripAnsi(renderDoctorSummary(report))).toBe(
+			'All checks passed with 1 warning(s) above. Active features: campaigns'
+		);
 	});
 
 	it('summarises the run', () => {
@@ -112,7 +132,7 @@ describe('doctor report — text rendering', () => {
 		);
 		builder.record({ check: 'compose.cli', ok: false, message: doctorText`b` });
 		const failing = builder.build([], new Date(0));
-		expect(failing.summary).toEqual({ total: 2, passed: 1, failed: 1 });
+		expect(failing.summary).toEqual({ total: 2, passed: 1, failed: 1, warnings: 0 });
 		expect(stripAnsi(renderDoctorSummary(failing))).toBe(
 			'1 check(s) failed. Run `owlat-setup config` to fix.'
 		);

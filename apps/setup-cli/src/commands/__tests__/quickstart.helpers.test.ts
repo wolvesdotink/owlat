@@ -9,7 +9,12 @@ import {
 	dnsInstructions,
 	formatSummary,
 } from '../quickstartPrompts.js';
-import { resolveComposeVersionPin, composeImageSource, composeUpArgs } from '../quickstartStack.js';
+import {
+	resolveComposeVersionPin,
+	composeImageSource,
+	composeUpArgs,
+	recordInstalledVersion,
+} from '../quickstartStack.js';
 import { checkOutboundPort25, outboundPort25Warning } from '../quickstartOutbound.js';
 import type { MtaHealthBody } from '../doctor.js';
 import { doctorText } from '../../lib/doctorText.js';
@@ -59,6 +64,29 @@ describe('resolveComposeVersionPin', () => {
 
 		// and the literal `:dev` sentinel never lands in the file
 		expect(await readFile(envPath, 'utf-8')).not.toMatch(/OWLAT_VERSION=dev/);
+	});
+});
+
+describe('recordInstalledVersion', () => {
+	it('writes VERSION for the release the stack came up on', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'owlat-version-record-'));
+
+		expect(await recordInstalledVersion(dir, { OWLAT_VERSION: '0.4.19' })).toBe(true);
+
+		const record = await readFile(join(dir, 'VERSION'), 'utf-8');
+		expect(record).toMatch(/^version=0\.4\.19$/m);
+		expect(record).toMatch(/^tag=v0\.4\.19$/m);
+		expect(record).toMatch(/^applied_by=installer$/m);
+		expect(record).toContain('can be older than the code that runs');
+	});
+
+	it('writes nothing for a stack built from this source tree, which has no release tag', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'owlat-version-record-'));
+
+		expect(await recordInstalledVersion(dir, { OWLAT_VERSION: 'dev' })).toBe(false);
+		expect(await recordInstalledVersion(dir, {})).toBe(false);
+
+		await expect(readFile(join(dir, 'VERSION'), 'utf-8')).rejects.toThrow();
 	});
 });
 

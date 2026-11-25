@@ -53,6 +53,8 @@ export const DOCTOR_CHECK_IDS = [
 	'mta.egress_address',
 	'env.acme',
 	'compose.docker',
+	'version.source',
+	'version.record',
 ] as const;
 
 export type DoctorCheckId = (typeof DOCTOR_CHECK_IDS)[number];
@@ -61,11 +63,10 @@ export type DoctorCheckId = (typeof DOCTOR_CHECK_IDS)[number];
 export type DoctorComponent = 'config' | 'send_path' | 'mta' | 'compose' | 'containers' | 'version';
 
 /**
- * What a failure of the check means. Every check doctor runs today fails the
- * exit code, so this is always `error`; a non-blocking check would be added as
- * a new value.
+ * What a failure of the check means: an `error` fails the run and its exit
+ * code, a `warning` is reported and leaves both alone.
  */
-export type DoctorSeverity = 'error';
+export type DoctorSeverity = 'error' | 'warning';
 
 /** A stable, machine-readable pointer to the fix for a failed check. */
 export type DoctorRemediation =
@@ -85,11 +86,13 @@ export type DoctorRemediation =
 	| 'install_docker_compose'
 	| 'connect_docker'
 	| 'inspect_container'
-	| 'recreate_containers';
+	| 'recreate_containers'
+	| 'update_checkout'
+	| 'fix_version_record';
 
 const CHECK_META: Record<
 	DoctorCheckId,
-	{ component: DoctorComponent; remediation: DoctorRemediation }
+	{ component: DoctorComponent; remediation: DoctorRemediation; severity?: DoctorSeverity }
 > = {
 	'env.file': { component: 'config', remediation: 'run_setup' },
 	'flags.state': { component: 'config', remediation: 'run_setup' },
@@ -116,6 +119,14 @@ const CHECK_META: Record<
 	'compose.docker': { component: 'compose', remediation: 'connect_docker' },
 	'containers.health': { component: 'containers', remediation: 'inspect_container' },
 	'version.drift': { component: 'version', remediation: 'recreate_containers' },
+	// The stack runs fine on a checkout older than its release; only whoever
+	// reads the source is misled.
+	'version.source': { component: 'version', remediation: 'update_checkout', severity: 'warning' },
+	'version.record': {
+		component: 'version',
+		remediation: 'fix_version_record',
+		severity: 'warning',
+	},
 };
 
 /** The checklist prefix each component has always printed with. */
@@ -157,7 +168,8 @@ export interface DoctorReport {
 	command: 'doctor';
 	generatedAt: string;
 	ok: boolean;
-	summary: { total: number; passed: number; failed: number };
+	/** `failed` counts failed errors, `warnings` failed warnings; only `failed` makes `ok` false. */
+	summary: { total: number; passed: number; failed: number; warnings: number };
 	activeFeatures: string[];
 	checks: DoctorCheck[];
 }
@@ -190,7 +202,7 @@ export class DoctorReportBuilder {
 			...(finding.subject !== undefined ? { subject: finding.subject } : {}),
 			component: meta.component,
 			status: finding.ok ? 'pass' : 'fail',
-			severity: 'error',
+			severity: meta.severity ?? 'error',
 			message: this.codeOwnedOnly ? finding.message.codeOwned() : this.redact(finding.message),
 			...(finding.ok ? {} : { remediation: meta.remediation }),
 		};
@@ -199,13 +211,20 @@ export class DoctorReportBuilder {
 	}
 
 	build(activeFeatures: string[], generatedAt: Date): DoctorReport {
-		const failed = this.checks.filter((check) => check.status === 'fail').length;
+		const failing = this.checks.filter((check) => check.status === 'fail');
+		const failed = failing.filter((check) => check.severity === 'error').length;
+		const warnings = failing.length - failed;
 		return {
 			schemaVersion: DOCTOR_REPORT_SCHEMA_VERSION,
 			command: 'doctor',
 			generatedAt: generatedAt.toISOString(),
 			ok: failed === 0,
-			summary: { total: this.checks.length, passed: this.checks.length - failed, failed },
+			summary: {
+				total: this.checks.length,
+				passed: this.checks.length - failing.length,
+				failed,
+				warnings,
+			},
 			activeFeatures,
 			checks: [...this.checks],
 		};
@@ -214,13 +233,20 @@ export class DoctorReportBuilder {
 
 /** One checklist line, exactly as doctor has always printed it. */
 export function renderDoctorCheckLine(check: DoctorCheck): string {
-	const mark = check.status === 'pass' ? pc.green('✓') : pc.red('✗');
+	const mark =
+		check.status === 'pass'
+			? pc.green('✓')
+			: check.severity === 'warning'
+				? pc.yellow('!')
+				: pc.red('✗');
 	return `${mark} ${TEXT_PREFIX[check.component]}${check.message}`;
 }
 
 /** The closing line of the checklist. */
 export function renderDoctorSummary(report: DoctorReport): string {
+	const warned =
+		report.summary.warnings > 0 ? ` with ${report.summary.warnings} warning(s) above` : '';
 	return report.ok
-		? pc.green(`All checks passed. Active features: ${report.activeFeatures.join(', ')}`)
+		? pc.green(`All checks passed${warned}. Active features: ${report.activeFeatures.join(', ')}`)
 		: pc.red(`${report.summary.failed} check(s) failed. Run \`owlat-setup config\` to fix.`);
 }

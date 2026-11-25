@@ -182,6 +182,10 @@
 			"types": "./src/ownerOnlyFile.ts",
 			"import": "./src/ownerOnlyFile.ts"
 		},
+		"./installVersionRecord": {
+			"types": "./src/installVersionRecord.ts",
+			"import": "./src/installVersionRecord.ts"
+		},
 		"./containerHealth": {
 			"types": "./src/containerHealth.ts",
 			"import": "./src/containerHealth.ts"

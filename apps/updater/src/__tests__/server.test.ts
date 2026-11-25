@@ -104,6 +104,7 @@ beforeEach(() => {
 		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
 	);
 	rmSync(join(OWLAT_DIR, '.owlat-update-snapshot'), { recursive: true, force: true });
+	rmSync(join(OWLAT_DIR, 'VERSION'), { force: true });
 	// The snapshot an update takes before its deploy needs the compose file.
 	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {}\n');
 });
@@ -534,6 +535,7 @@ describe('POST /update', () => {
 			'convex-deploy',
 			'write-compose',
 			'pin-version',
+			'version-record',
 			'up',
 			'readiness',
 			'self-update',
@@ -652,6 +654,7 @@ describe('POST /update', () => {
 			'convex-deploy',
 			'write-compose',
 			'pin-version',
+			'version-record',
 			'up',
 			'readiness',
 			'self-update',
@@ -675,6 +678,94 @@ describe('POST /update', () => {
 		const res = await post('/update', { composeTemplate: template });
 		expect(res.status).toBe(200);
 		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain('OWLAT_VERSION=1.2.3');
+	});
+
+	/**
+	 * The install directory is the checkout of the release first installed, and
+	 * an update does not move it. `VERSION` is what tells whoever reads the tree
+	 * which release actually runs.
+	 */
+	it('writes VERSION for the applied release on an install that never had one', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.19\n');
+		const template = [
+			'services:',
+			'  web:',
+			`    image: ghcr.io/wolvesdotink/web:0.6.24@sha256:${'a'.repeat(64)}`,
+			'',
+		].join('\n');
+
+		const res = await post('/update', { composeTemplate: template });
+
+		expect(res.status).toBe(200);
+		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
+		expect(record).toMatch(/^version=0\.6\.24$/m);
+		expect(record).toMatch(/^tag=v0\.6\.24$/m);
+		expect(record).toMatch(/^recorded_at=\d{4}-\d{2}-\d{2}T[\d:.]+Z$/m);
+		expect(record).toMatch(/^applied_by=updater$/m);
+		expect(record).toContain('can be older than the code that runs');
+	});
+
+	it('rewrites the VERSION an earlier release left', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\ntag=v0.4.19\n');
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:0.6.24', ''].join(
+			'\n'
+		);
+
+		const res = await post('/update', { composeTemplate: template });
+
+		expect(res.status).toBe(200);
+		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
+		expect(record).toMatch(/^version=0\.6\.24$/m);
+		expect(record).not.toContain('0.4.19');
+	});
+
+	it('names the release .env still pins when moving the pin failed', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.19\n');
+		// The snapshot copies `.env` owner-only too; without it, the pin is the write.
+		withoutSnapshot();
+		writeOwnerOnlyFileSpy.mockRejectedValueOnce(new Error('Refusing to write .env'));
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:0.6.24', ''].join(
+			'\n'
+		);
+
+		const res = await post('/update', { composeTemplate: template });
+
+		const json = (await res.json()) as { steps?: Array<{ step: string; ok?: boolean }> };
+		expect(json.steps?.find((s) => s.step === 'pin-version')?.ok).toBe(false);
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.19$/m);
+	});
+
+	it('names the release .env pins when recreating the containers fails with no snapshot', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.19\n');
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+		withoutSnapshot();
+		commandMock.mockImplementation(
+			dockerFailing((cmd) => cmd.includes(' up -d'), 'error during connect: EOF')
+		);
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:0.6.24', ''].join(
+			'\n'
+		);
+
+		const res = await post('/update', { composeTemplate: template });
+
+		expect(res.status).toBe(500);
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain('OWLAT_VERSION=0.6.24');
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.6\.24$/m);
+	});
+
+	it('leaves VERSION alone when the update stops before the release is applied', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+		commandMock.mockImplementation(
+			dockerFailing((cmd) => cmd.includes('pull'), 'Error response from daemon: manifest unknown')
+		);
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:0.6.24', ''].join(
+			'\n'
+		);
+
+		const res = await post('/update', { composeTemplate: template });
+
+		expect(res.status).toBe(500);
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toBe('version=0.4.19\n');
 	});
 
 	it.skipIf(process.platform === 'win32')(

@@ -19,6 +19,7 @@ import {
 import { verifyReadiness } from './readiness.js';
 import { markSnapshot, type Snapshot } from './snapshot.js';
 import { rollBack, rollbackAnswer } from './rollback.js';
+import { recordPinnedVersion } from './versionRecord.js';
 import { writeLastRollout, type LastRollout, type RolloutOutcome } from './rolloutState.js';
 
 interface UpdateAnswer {
@@ -160,6 +161,13 @@ export async function applyRelease(
 		if (version) {
 			steps.push({ step: 'pin-version', ...(await pinConfiguredVersion(version)) });
 		}
+
+		// Step 7b: Name the release `.env` now pins in the install directory's
+		// VERSION file. Here and not after `up`, so every way the rollout can end
+		// from this point leaves the two in line; a rollback writes it again with
+		// the `.env` it restores. Reported, never fatal: the stack runs either way.
+		const recorded = await recordPinnedVersion('updater');
+		if (recorded) steps.push(recorded);
 	}
 
 	// Step 8: Apply — recreate changed containers now that the schema is live.

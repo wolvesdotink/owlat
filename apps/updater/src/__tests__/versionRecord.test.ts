@@ -1,0 +1,92 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+
+const OWLAT_DIR = mkdtempSync(join(tmpdir(), 'owlat-version-record-'));
+process.env['OWLAT_DIR'] = OWLAT_DIR;
+const { syncVersionRecord } = await import('../versionRecord.js');
+
+const record = () => readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
+
+beforeEach(() => {
+	rmSync(join(OWLAT_DIR, 'VERSION'), { force: true });
+	rmSync(join(OWLAT_DIR, '.owlat-last-rollout.json'), { force: true });
+	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.6.24\n');
+});
+afterAll(() => rmSync(OWLAT_DIR, { recursive: true, force: true }));
+
+/**
+ * The first update of an install that predates VERSION is applied by the
+ * previous release's updater, which never writes the file; the updater it
+ * hands over to writes it when it starts.
+ */
+describe('syncVersionRecord, at startup', () => {
+	it('writes VERSION for the release .env pins on an install that has none', async () => {
+		expect(await syncVersionRecord()).toMatchObject({ step: 'version-record', ok: true });
+		expect(record()).toMatch(/^version=0\.6\.24$/m);
+		expect(record()).toMatch(/^tag=v0\.6\.24$/m);
+	});
+
+	it('rewrites a VERSION that names another release', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+		await syncVersionRecord();
+		expect(record()).toMatch(/^version=0\.6\.24$/m);
+	});
+
+	it('reads .env as compose does: the last assignment, without its comment', async () => {
+		writeFileSync(
+			join(OWLAT_DIR, '.env'),
+			'OWLAT_VERSION=0.4.19\nOWLAT_VERSION=0.6.24 # pinned by the updater\n'
+		);
+		await syncVersionRecord();
+		expect(record()).toMatch(/^version=0\.6\.24$/m);
+	});
+
+	it('leaves a VERSION that already names the pinned release alone', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\nrecorded_at=earlier\n');
+		expect(await syncVersionRecord()).toBeNull();
+		expect(record()).toBe('version=0.6.24\nrecorded_at=earlier\n');
+	});
+
+	it.each(['interrupted', 'partially-applied', 'failed', 'healthy'])(
+		'names the pinned release after an update that ended %s',
+		async (outcome) => {
+			writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+			writeFileSync(
+				join(OWLAT_DIR, '.owlat-last-rollout.json'),
+				JSON.stringify({
+					targetVersion: '0.6.24',
+					startedAt: 1,
+					phase: 'done',
+					committed: true,
+					outcome,
+				})
+			);
+			expect(await syncVersionRecord()).toMatchObject({ ok: true });
+			expect(record()).toMatch(/^version=0\.6\.24$/m);
+		}
+	);
+
+	it('removes a VERSION that names a release when .env pins none', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\n');
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
+		expect(await syncVersionRecord()).toMatchObject({ step: 'version-record', ok: true });
+		expect(() => record()).toThrow();
+	});
+
+	it('keeps VERSION while .env is missing', async () => {
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\n');
+		rmSync(join(OWLAT_DIR, '.env'));
+		expect(await syncVersionRecord()).toBeNull();
+		expect(record()).toBe('version=0.6.24\n');
+	});
+
+	it('writes nothing for a dev stack or without .env', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=dev\n');
+		expect(await syncVersionRecord()).toBeNull();
+		rmSync(join(OWLAT_DIR, '.env'));
+		expect(await syncVersionRecord()).toBeNull();
+		expect(() => record()).toThrow();
+	});
+});

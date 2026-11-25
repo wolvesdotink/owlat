@@ -160,6 +160,7 @@ beforeEach(() => {
 	rmSync(SNAPSHOT_DIR, { recursive: true, force: true });
 	rmSync(RECORD, { force: true });
 	rmSync(OVERRIDE, { recursive: true, force: true });
+	rmSync(join(OWLAT_DIR, 'VERSION'), { force: true });
 	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), OLD_COMPOSE);
 	writeFileSync(join(OWLAT_DIR, '.env'), OLD_ENV, { mode: 0o600 });
 });
@@ -406,6 +407,7 @@ describe('the automatic rollback', () => {
 		).toBeLessThan(indexOf(isRestore));
 		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(OLD_COMPOSE);
 		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe(OLD_ENV);
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.16$/m);
 		expect(json.steps.map((s) => s.step).slice(-3)).toEqual([
 			'rollback-restore',
 			'rollback-up',
@@ -621,6 +623,64 @@ describe('owlat rollback (GET /snapshot, POST /rollback)', () => {
 
 		const again = await post('/rollback', { snapshot: info.snapshot.id });
 		expect(again.status).toBe(409);
+	});
+
+	it('names the restored release in VERSION', async () => {
+		await update();
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.17$/m);
+		const info = (await (await fetch(`${base}/snapshot`, { headers: AUTH })).json()) as {
+			snapshot: { id: string };
+		};
+
+		const res = await post('/rollback', { snapshot: info.snapshot.id });
+
+		expect(res.status).toBe(200);
+		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
+		expect(record).toMatch(/^version=0\.4\.16$/m);
+		expect(record).toMatch(/^applied_by=rollback$/m);
+	});
+
+	it('removes VERSION when the restored .env pins no release', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n', { mode: 0o600 });
+		await update();
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.17$/m);
+		const snapshot = journal()['id'];
+
+		expect((await post('/rollback', { snapshot })).status).toBe(200);
+
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe('FOO=bar\n');
+		expect(existsSync(join(OWLAT_DIR, 'VERSION'))).toBe(false);
+	});
+
+	it('names the restored release in VERSION when a file added since cannot be removed', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		// A directory where the override would be: removing it as a file fails.
+		mkdirSync(OVERRIDE);
+
+		try {
+			expect((await post('/rollback', { snapshot })).status).toBe(500);
+			expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe(OLD_ENV);
+			expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.16$/m);
+		} finally {
+			rmSync(OVERRIDE, { recursive: true, force: true });
+		}
+	});
+
+	it('names the restored pin in VERSION, read as compose reads .env', async () => {
+		// The snapshot's own version comes from a stricter parser that misses a
+		// pin with a comment after it.
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16 # pinned\n', {
+			mode: 0o600,
+		});
+		await update();
+		const info = (await (await fetch(`${base}/snapshot`, { headers: AUTH })).json()) as {
+			snapshot: { id: string };
+		};
+
+		await post('/rollback', { snapshot: info.snapshot.id });
+
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.16$/m);
 	});
 
 	it('answers that there is nothing to restore before any update', async () => {
@@ -936,6 +996,28 @@ describe('a rollback that restored the data but did not start the release', () =
 		expect(commandLines().filter(isRestore)).toHaveLength(2);
 		expect(journal()).toMatchObject({ state: 'restored' });
 		expect((await post('/rollback', { snapshot })).status).toBe(409);
+	});
+
+	it('names the restored release in VERSION when it resumes', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		let failUp = true;
+		overrides.push((cmd) =>
+			failUp && cmd.includes(' up -d --remove-orphans')
+				? fail('error during connect: EOF')
+				: undefined
+		);
+		expect((await post('/rollback', { snapshot })).status).toBe(500);
+		expect(journal()).toMatchObject({ state: 'starting' });
+		// As a first attempt leaves it when it could not write the file.
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.17\n');
+
+		failUp = false;
+		expect((await post('/rollback', { snapshot })).status).toBe(200);
+
+		const record = readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8');
+		expect(record).toMatch(/^version=0\.4\.16$/m);
+		expect(record).toMatch(/^applied_by=rollback$/m);
 	});
 
 	it('stays resumable when the restored release fails its readiness check', async () => {
