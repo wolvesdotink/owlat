@@ -367,12 +367,13 @@ export const templateTables = {
 		// oldest first.
 		.index('by_kind_data_variables_redacted', ['kind', 'dataVariablesRedactedAt'])
 		// The public send list (`transactional/sendList.ts`): live sends of one
-		// kind, newest first, alone or by recipient or status. `deletedAt` leads
-		// with the kind so an erased send never takes a place in a page, and each
-		// filter is one range, so a page reads no row it then drops.
+		// kind, newest first, alone or by recipient, status or both. `deletedAt`
+		// leads with the kind so an erased send never takes a place in a page, and
+		// each filter is one range, so a page reads no row it then drops.
 		.index('by_kind_deleted', ['kind', 'deletedAt'])
 		.index('by_kind_deleted_email', ['kind', 'deletedAt', 'email'])
 		.index('by_kind_deleted_status', ['kind', 'deletedAt', 'status'])
+		.index('by_kind_deleted_email_status', ['kind', 'deletedAt', 'email', 'status'])
 		.index('by_contact', ['contactId'])
 		.index('by_provider_message_id', ['providerMessageId'])
 		// Answers "does this inbound message already have a send?" as a point

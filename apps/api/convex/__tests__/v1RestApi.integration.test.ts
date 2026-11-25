@@ -1563,6 +1563,81 @@ describe('GET /api/v1/transactional (listTransactionalSends → transactional:se
 		expect(await listedIds(res)).toEqual([failedLater, failed]);
 	});
 
+	it('filters by recipient and status at once, a page at a time', async () => {
+		const t = setupTest();
+		const bounced: string[] = [];
+		for (let i = 0; i < 5; i++) {
+			bounced.push(await seedSendAt(t, T0 - (10 - 2 * i) * MINUTE, { status: 'bounced' }));
+			// Ada's other sends and someone else's bounce sit between hers.
+			await seedSendAt(t, T0 - (9 - 2 * i) * MINUTE, { status: 'delivered' });
+			await seedSendAt(t, T0 - (9 - 2 * i) * MINUTE + 1, {
+				email: 'grace@example.com',
+				status: 'bounced',
+			});
+		}
+		const key = await seedKey(t, ['transactional:send']);
+		const filter = { ...WINDOW, email: 'Ada@Example.com', status: 'bounced', limit: '2' };
+
+		const seen: string[] = [];
+		let cursor: string | null = null;
+		let pages = 0;
+		do {
+			const res = await listSends(t, key, cursor ? { ...filter, cursor } : filter);
+			await expectContractSuccess('listTransactionalSends', res);
+			const body = await res.json();
+			for (const send of body.data as Array<{ sendId: string; email: string; status: string }>) {
+				expect(send).toMatchObject({ email: 'ada@example.com', status: 'bounced' });
+				seen.push(send.sendId);
+			}
+			cursor = body.pagination.cursor;
+			pages += 1;
+		} while (cursor !== null);
+
+		expect(pages).toBe(3);
+		expect(seen).toEqual([...bounced].reverse());
+	});
+
+	it('keeps the window when both filters are given', async () => {
+		const t = setupTest();
+		await seedSendAt(t, T0 - MINUTE - 1, { status: 'failed' });
+		const inside = await seedSendAt(t, T0 - MINUTE, { status: 'failed' });
+		await seedSendAt(t, T0 + MINUTE, { status: 'failed' });
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await listSends(t, key, {
+			email: 'ada@example.com',
+			status: 'failed',
+			since: new Date(T0 - MINUTE).toISOString(),
+			until: new Date(T0 + MINUTE).toISOString(),
+		});
+		expect(await listedIds(res)).toEqual([inside]);
+	});
+
+	it.each([
+		['the address alone', { email: 'ada@example.com' }],
+		['the status alone', { status: 'bounced' }],
+		['another status', { email: 'ada@example.com', status: 'failed' }],
+		['another address', { email: 'grace@example.com', status: 'bounced' }],
+	])('refuses a cursor for both filters sent with %s', async (_label, other) => {
+		const t = setupTest();
+		await seedSendAt(t, T0, { status: 'bounced' });
+		await seedSendAt(t, T0 + MINUTE, { status: 'bounced' });
+		const key = await seedKey(t, ['transactional:send']);
+		const both = { ...WINDOW, email: 'ada@example.com', status: 'bounced', limit: '1' };
+		const first = await (await listSends(t, key, both)).json();
+		expect(first.pagination.isDone).toBe(false);
+		const res = await listSends(t, key, {
+			...WINDOW,
+			limit: '1',
+			...other,
+			cursor: first.pagination.cursor,
+		});
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toMatchObject({
+			category: 'invalid_input',
+			data: { field: 'cursor' },
+		});
+	});
+
 	it('filters by when the send was queued: since is inclusive, until is not', async () => {
 		const t = setupTest();
 		await seedSendAt(t, T0 - MINUTE - 1);
@@ -1651,7 +1726,6 @@ describe('GET /api/v1/transactional (listTransactionalSends → transactional:se
 		['an until that is no timestamp', { until: '2026-13-45' }, 'until'],
 		['an unknown status', { status: 'lost' }, 'status'],
 		['a malformed address', { email: 'not-an-address' }, 'email'],
-		['an address and a status at once', { email: 'ada@example.com', status: 'failed' }, 'status'],
 		['a cursor this route did not issue', { cursor: 'not-a-cursor' }, 'cursor'],
 		['a non-positive limit', { limit: '0' }, 'limit'],
 		[

@@ -6,8 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Filters and page of {@code transactional().list()}. Filter by email or by
- * status, not both. The window is when the sends were queued: {@code until}
+ * Filters and page of {@code transactional().list()}. Filter by email, by
+ * status, or by both. The window is when the sends were queued: {@code until}
  * defaults to now and {@code since} to 30 days before it, and it can be at
  * most 30 days long.
  */

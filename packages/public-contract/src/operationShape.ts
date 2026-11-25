@@ -103,12 +103,12 @@ export const SEND_LIST_FILTERS: readonly QueryParameter[] = [
 	{
 		name: 'email',
 		description:
-			'Only sends to this recipient address, matched exactly after trimming and lowercasing. Cannot be combined with `status`.',
+			'Only sends to this recipient address, matched exactly after trimming and lowercasing. Can be combined with `status`.',
 		schema: { type: 'string', format: 'email' },
 	},
 	{
 		name: 'status',
-		description: 'Only sends in this delivery state. Cannot be combined with `email`.',
+		description: 'Only sends in this delivery state. Can be combined with `email`.',
 		schema: { type: 'string', enum: [...TRANSACTIONAL_SEND_STATUSES] },
 	},
 	{

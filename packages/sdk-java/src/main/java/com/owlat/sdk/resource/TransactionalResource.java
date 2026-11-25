@@ -63,7 +63,7 @@ public class TransactionalResource extends BaseResource {
 
     /**
      * List the sends this API created, newest first, each as {@link #get}
-     * answers it: the sends to one address, or the sends in one state, within a
+     * answers it: the sends to one address, in one state, or both, within a
      * window of at most 30 days. Needs the {@code transactional:send} scope.
      *
      * <p>Pass the {@code cursor} from the previous response's
@@ -72,8 +72,8 @@ public class TransactionalResource extends BaseResource {
      * {@link com.owlat.sdk.model.CursorPaginationMeta#isDone()} is true.
      *
      * @throws com.owlat.sdk.exception.ValidationException if a filter is
-     *         malformed, email and status are combined, the window is over 30
-     *         days, or the cursor belongs to other filters
+     *         malformed, the window is over 30 days, or the cursor belongs to
+     *         other filters
      */
     public CursorPaginatedResponse<TransactionalSendStatus> list(ListTransactionalSendsParams params) {
         String path = BASE_PATH + (params == null ? "" : params.toQueryString());

@@ -247,7 +247,7 @@ export const PUBLIC_OPERATIONS = [
 		method: 'GET',
 		path: '/api/v1/transactional',
 		tag: 'Transactional',
-		summary: `List the transactional sends, newest first, each with its delivery status, filtered by recipient or by status, within a window of at most ${SEND_LIST_MAX_WINDOW_DAYS} days. Needs the same scope as sending.`,
+		summary: `List the transactional sends, newest first, each with its delivery status, filtered by recipient, by status or both, within a window of at most ${SEND_LIST_MAX_WINDOW_DAYS} days. Needs the same scope as sending.`,
 		scope: 'transactional:send',
 		pathParameters: [],
 		queryParameters: [PAGE_LIMIT, PAGE_CURSOR, ...SEND_LIST_FILTERS],
