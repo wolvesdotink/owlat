@@ -96,7 +96,7 @@ describe('owlat status', () => {
 		expect(result.code).toBe(0);
 		expect(result.stdout).toContain('NAME  SERVICE  STATUS');
 		expect(result.stdout).not.toContain('v0.6.24');
-		expect(result.stderr).toContain('Owlat v0.6.24 runs here');
+		expect(result.stderr).toContain('Owlat v0.6.24 is configured here');
 		expect(result.stderr).toContain(`The source tree in ${dir} is v0.4.19, not v0.6.24`);
 		expect(result.stderr).toContain('https://github.com/wolvesdotink/owlat/tree/v0.6.24');
 	});
@@ -107,7 +107,7 @@ describe('owlat status', () => {
 
 		const result = await status();
 
-		expect(result.stderr).toContain('Owlat v0.6.24 runs here');
+		expect(result.stderr).toContain('Owlat v0.6.24 is configured here');
 		expect(result.stderr).not.toContain('[warn]');
 	});
 

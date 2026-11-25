@@ -30,11 +30,11 @@ const metrics = startNodeMetrics({
 // A rollout the previous process never finished is settled before anything
 // else is served: its record says so in words, and a template it had only
 // staged is removed.
-await reconcileInterruptedUpdate();
+const interrupted = await reconcileInterruptedUpdate();
 
-// After the rollout is settled, so `.env` says what the host is configured to
-// run. Logged, never fatal.
-const versionRecord = await syncVersionRecord();
+// After a rollout that finished, `.env` pins the release that runs. Logged,
+// never fatal.
+const versionRecord = interrupted ? null : await syncVersionRecord();
 if (versionRecord?.ok) log(versionRecord.stdout);
 else if (versionRecord) log('could not write VERSION:', versionRecord.stderr);
 

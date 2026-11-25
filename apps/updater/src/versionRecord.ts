@@ -5,7 +5,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
-import { parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
+import { readEnvFile, type EnvMap } from '@owlat/shared/setupEnv';
 import {
 	isReleaseVersion,
 	parseVersionRecordVersion,
@@ -39,11 +39,13 @@ export async function recordRunningVersion(
  * names another. Run once at startup: the updater is recreated after every
  * update, and on the first update of an install that predates VERSION it is
  * the previous release's updater that applies it, which never writes the
- * file. Nothing to do on a `dev` stack or an unreadable `.env`.
+ * file. Not after an interrupted rollout (the caller skips it then): `.env`
+ * may pin a release whose containers were never recreated. Nothing to do on a
+ * `dev` stack or an unreadable `.env`.
  */
 export async function syncVersionRecord(): Promise<Step | null> {
-	const env = await readFile(join(OWLAT_DIR, '.env'), 'utf-8').catch(() => '');
-	const pinned = parseConfiguredVersionFromEnv(env) ?? '';
+	const env = await readEnvFile(join(OWLAT_DIR, '.env')).catch(() => ({}) as EnvMap);
+	const pinned = env['OWLAT_VERSION']?.trim() ?? '';
 	if (!isReleaseVersion(pinned)) return null;
 	const record = await readFile(join(OWLAT_DIR, VERSION_RECORD_FILE), 'utf-8').catch(() => null);
 	if (record !== null && parseVersionRecordVersion(record) === pinned) return null;

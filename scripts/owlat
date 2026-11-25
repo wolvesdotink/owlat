@@ -544,7 +544,7 @@ print_install_version() {
 	version="$(sed -n 's/^OWLAT_VERSION=//p' .env 2>/dev/null | tail -1 | tr -d "\"'")"
 	[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || return 0
 	tag="v${version}"
-	printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Owlat ${tag} runs here (OWLAT_VERSION in .env)." >&2
+	printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Owlat ${tag} is configured here (OWLAT_VERSION in .env)." >&2
 	[[ -d .git ]] && command -v git >/dev/null 2>&1 || return 0
 	# The checkout belongs to whoever installed; `owlat` may run as root.
 	head="$(git -c safe.directory="$PWD" rev-parse -q --verify HEAD 2>/dev/null)" || return 0

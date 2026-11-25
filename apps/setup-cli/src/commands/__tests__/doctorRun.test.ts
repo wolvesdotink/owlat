@@ -932,7 +932,7 @@ describe('doctor --json — report contents', () => {
 				remediation: 'update_checkout',
 			});
 			expect(sourceCheck(report)?.message).toContain(
-				'The source tree in the install directory is v0.4.19, but v0.6.15 runs'
+				'The source tree in the install directory is v0.4.19, but .env pins v0.6.15'
 			);
 			expect(sourceCheck(report)?.message).toContain(
 				'https://github.com/wolvesdotink/owlat/tree/v0.6.15'
@@ -963,7 +963,7 @@ describe('doctor --json — report contents', () => {
 			});
 			expect(sourceCheck(report)).toMatchObject({ status: 'pass' });
 			expect(sourceCheck(report)?.message).toBe(
-				'The source tree in the install directory is v0.6.15, the release that runs'
+				'The source tree in the install directory is v0.6.15, the release .env pins'
 			);
 		});
 
@@ -974,7 +974,7 @@ describe('doctor --json — report contents', () => {
 			});
 			expect(sourceCheck(report)?.status).toBe('fail');
 			expect(sourceCheck(report)?.message).toContain(
-				`is commit ${NEW_COMMIT.slice(0, 12)}, but v0.6.15 runs`
+				`is commit ${NEW_COMMIT.slice(0, 12)}, but .env pins v0.6.15`
 			);
 		});
 

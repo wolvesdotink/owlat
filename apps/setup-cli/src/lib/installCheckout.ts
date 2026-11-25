@@ -165,14 +165,14 @@ export async function evaluateSourceCheckout(
 		return {
 			check: 'version.source',
 			ok: true,
-			message: doctorText`The source tree in the install directory is ${tag}, the release that runs`,
+			message: doctorText`The source tree in the install directory is ${tag}, the release .env pins`,
 		};
 	}
 	if (comparison.kind === 'unknown') {
 		return {
 			check: 'version.source',
 			ok: true,
-			message: doctorText`${tag} runs; the source tree in the install directory is at commit ${commit}, which doctor cannot match to a release`,
+			message: doctorText`.env pins ${tag}; the source tree in the install directory is at commit ${commit}, which doctor cannot match to a release`,
 		};
 	}
 	const releaseTags = comparison.at.filter((name) => RELEASE_TAG.test(name));
@@ -180,7 +180,7 @@ export async function evaluateSourceCheckout(
 	return {
 		check: 'version.source',
 		ok: false,
-		message: doctorText`The source tree in the install directory is ${at}, but ${tag} runs: updates replace docker-compose.yml and .env, not the checkout. Read the running source at https://github.com/wolvesdotink/owlat/tree/${tag}.`,
+		message: doctorText`The source tree in the install directory is ${at}, but .env pins ${tag}: updates replace docker-compose.yml and .env, not the checkout. Read the source of ${tag} at https://github.com/wolvesdotink/owlat/tree/${tag}.`,
 	};
 }
 
@@ -207,6 +207,6 @@ export async function evaluateVersionRecord(
 	return {
 		check: 'version.record',
 		ok: false,
-		message: doctorText`VERSION in the install directory names ${recorded ?? 'no version'}, but .env pins ${configuredVersion}. Updates through the app or \`owlat upgrade\` rewrite it; after a manual update, set its version= and tag= lines to the release that runs.`,
+		message: doctorText`VERSION in the install directory names ${recorded ?? 'no version'}, but .env pins ${configuredVersion}. The updater rewrites it when it starts; after a manual update, run \`docker compose restart updater\` in the install directory.`,
 	};
 }

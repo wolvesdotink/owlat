@@ -33,6 +33,15 @@ describe('syncVersionRecord, at startup', () => {
 		expect(record()).toMatch(/^version=0\.6\.24$/m);
 	});
 
+	it('reads .env as compose does: the last assignment, without its comment', async () => {
+		writeFileSync(
+			join(OWLAT_DIR, '.env'),
+			'OWLAT_VERSION=0.4.19\nOWLAT_VERSION=0.6.24 # pinned by the updater\n'
+		);
+		await syncVersionRecord();
+		expect(record()).toMatch(/^version=0\.6\.24$/m);
+	});
+
 	it('leaves a VERSION that already names the pinned release alone', async () => {
 		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.6.24\napplied_at=earlier\n');
 		expect(await syncVersionRecord()).toBeNull();
