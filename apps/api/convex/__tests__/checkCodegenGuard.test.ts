@@ -120,4 +120,18 @@ describe('Convex codegen guard', () => {
 			})
 		);
 	});
+
+	it('rejects a fullApi path with no module behind it', () => {
+		const { source, declaration } = fixture(
+			chunked('delivery/example').replace(
+				"\t'delivery/example': typeof delivery_example;",
+				"\t'delivery/example': typeof delivery_example;\n\tunshippedProbe: typeof delivery_example;"
+			)
+		);
+		expect(() => runGuard(source, declaration)).toThrow(
+			expect.objectContaining({
+				stdout: expect.stringContaining('maps a path that is not a Convex module: unshippedProbe'),
+			})
+		);
+	});
 });

@@ -96,6 +96,16 @@ done < <(
 		<(sed -nE "s#^import type \\* as [A-Za-z0-9_]+ from ['\"]\\.\\./(.+)\\.js['\"];?\$#\\1#p" "$GEN" |
 			LC_ALL=C sort -u)
 )
+while IFS= read -r key; do
+	echo "  _generated/api.d.ts maps a path that is not a Convex module: $key"
+	extra=$((extra + 1))
+done < <(
+	LC_ALL=C comm -13 \
+		<(printf '%s\n' ${expected[@]+"${expected[@]}"} | LC_ALL=C sort -u) \
+		<(sed -n '/^declare const fullApi: ApiFromModules<{/,/^}>;/p' "$GEN" |
+			sed -nE "s#^[[:space:]]*['\"]?([A-Za-z0-9_\$/.-]+)['\"]?[[:space:]]*:[[:space:]]*typeof .*#\\1#p" |
+			LC_ALL=C sort -u)
+)
 
 if [ "$missing" -gt 0 ] || [ "$extra" -gt 0 ]; then
 	echo "FAIL: _generated/api.d.ts does not list the Convex modules in convex/."
