@@ -93,6 +93,9 @@ async function runNotesOf(
 // text or a plugin's reason, already clamped and stripped at the plugin seam.
 // A running run whose email step waits for the sending setup joins `waiting`,
 // the same pair plus when the wait gives up (null on every other run).
+// A run that skipped an email step because the contact may no longer get it
+// carries `emailSkip` from the row; `emailSkipTopicName` names the topic the
+// contact left (null when the topic was deleted since, or for another reason).
 export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -141,13 +144,15 @@ export const getAutomationRuns = automationsQuery({
 
 		const enrichedRuns = await Promise.all(
 			paginatedRuns.map(async (run) => {
-				const [contact, notes] = await Promise.all([
+				const [contact, notes, skipTopic] = await Promise.all([
 					getLiveContact(ctx, run.contactId),
 					runNotesOf(ctx.db, run),
+					run.emailSkip?.topicId ? ctx.db.get(run.emailSkip.topicId) : null,
 				]);
 				return {
 					...run,
 					...notes,
+					emailSkipTopicName: skipTopic?.name ?? null,
 					contact: contact
 						? {
 								_id: contact._id,

@@ -783,6 +783,18 @@
 						"topicPlaceholder": "Thema auswählen..."
 					}
 				}
+			},
+			"mailTopic": {
+				"deleted": "Dieses Thema wurde gelöscht, deshalb sendet diese Automation keine E-Mails mehr. Wähle ein anderes Thema oder Kein Thema.",
+				"deletedOption": "Gelöschtes Thema",
+				"hintWithTopic": "Kontakte, die dieses Thema verlassen, bekommen keine E-Mails dieser Automation mehr. Die übrigen Schritte laufen für sie weiter.",
+				"hintWithoutTopic": "Ohne Thema stoppt nur eine Abmeldung von allen E-Mails die E-Mails dieser Automation.",
+				"label": "Thema",
+				"none": "Kein Thema",
+				"operation": "Thema der Automation ändern",
+				"sameAsTrigger": "Wie der Auslöser: {name}",
+				"sameAsTriggerUnnamed": "Wie der Auslöser",
+				"saved": "Thema gespeichert"
 			}
 		},
 		"autonomy": {
@@ -12006,12 +12018,19 @@
 						"loadError": "Schritt-Trichter konnte nicht geladen werden"
 					},
 					"loading": "Automation wird geladen …",
+					"mailTopic": "Thema: {name}",
+					"mailTopicDeleted": "Thema gelöscht",
 					"notFoundDescription": "Diese Automation wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
 					"notFoundTitle": "Automation nicht gefunden",
 					"pageTitle": "Automationsdetails — Owlat",
 					"runs": {
 						"cancelled": "Abgebrochen",
 						"completed": "Abgeschlossen",
+						"emailSkip": {
+							"leftDeletedTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht mehr für das Thema der Automation angemeldet.",
+							"leftTopic": "E-Mails übersprungen: Dieser Kontakt hat das Thema {name} verlassen.",
+							"unsubscribed": "E-Mails übersprungen: Dieser Kontakt hat sich von allen E-Mails abgemeldet."
+						},
 						"emptyDescription": "Kontakte erscheinen hier, sobald die Automation ausgelöst wird",
 						"emptyFiltered": "Keine Durchläufe für diesen Filter",
 						"emptyTitle": "Noch keine Kontakte in dieser Automation",

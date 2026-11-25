@@ -223,6 +223,20 @@ const handleToggleStatus = async () => {
 								<component :is="getTriggerDisplay(automation.triggerType).icon" class="w-4 h-4" />
 								{{ t(getTriggerDisplay(automation.triggerType).label) }}
 							</div>
+							<div
+								v-if="automation.mailTopic"
+								class="flex items-center gap-1.5"
+								data-testid="automation-mail-topic"
+							>
+								<MailIcon class="w-4 h-4" />
+								{{
+									automation.mailTopic.topic
+										? t('dashboard.automations.detail.index.mailTopic', {
+												name: automation.mailTopic.topic.name,
+											})
+										: t('dashboard.automations.detail.index.mailTopicDeleted')
+								}}
+							</div>
 							<div class="flex items-center gap-1.5">
 								<ClockIcon class="w-4 h-4" />
 								{{

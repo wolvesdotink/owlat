@@ -783,6 +783,18 @@
 						"topicPlaceholder": "Select a topic..."
 					}
 				}
+			},
+			"mailTopic": {
+				"deleted": "This topic was deleted, so this automation sends no more emails. Choose another topic or No topic.",
+				"deletedOption": "Deleted topic",
+				"hintWithTopic": "Contacts who leave this topic stop getting this automation's emails. Its other steps still run for them.",
+				"hintWithoutTopic": "Without a topic, only an unsubscribe from all emails stops this automation's emails.",
+				"label": "Topic",
+				"none": "No topic",
+				"operation": "Change the automation's topic",
+				"sameAsTrigger": "Same as the trigger: {name}",
+				"sameAsTriggerUnnamed": "Same as the trigger",
+				"saved": "Topic saved"
 			}
 		},
 		"autonomy": {
@@ -12006,12 +12018,19 @@
 						"loadError": "Couldn't load the step funnel"
 					},
 					"loading": "Loading automation...",
+					"mailTopic": "Topic: {name}",
+					"mailTopicDeleted": "Topic deleted",
 					"notFoundDescription": "This automation may have been deleted or you don't have access to it.",
 					"notFoundTitle": "Automation not found",
 					"pageTitle": "Automation details — Owlat",
 					"runs": {
 						"cancelled": "Cancelled",
 						"completed": "Completed",
+						"emailSkip": {
+							"leftDeletedTopic": "Emails skipped: this contact is no longer subscribed to the automation's topic.",
+							"leftTopic": "Emails skipped: this contact left the topic {name}.",
+							"unsubscribed": "Emails skipped: this contact unsubscribed from all emails."
+						},
 						"emptyDescription": "Contacts will appear here when the automation is triggered",
 						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",

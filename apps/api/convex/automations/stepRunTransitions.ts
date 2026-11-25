@@ -14,6 +14,7 @@ import { recordAutomationRunFailure } from './lifecycle';
 import { bumpAutomationStats } from './statShards';
 import { recordAutomationHealth } from './health';
 import type {
+	AutomationEmailSkipReason,
 	AutomationRunEndReason,
 	AutomationStepFailureReason,
 } from '../lib/validators/automations';
@@ -287,16 +288,34 @@ export function completeSentStepAndAdvance(
 	return endStepAndAdvance(ctx, stepRun, 'completed', { emailSendId });
 }
 
+const EMAIL_SKIP_MESSAGE: Record<AutomationEmailSkipReason, string> = {
+	contact_unsubscribed: 'Contact unsubscribed from marketing; email step skipped',
+	topic_unsubscribed:
+		"Contact is no longer subscribed to the automation's topic; email step skipped",
+};
+
 /**
- * Skip an email step for a contact who unsubscribed from marketing, and move
- * the run on: an unsubscribe stops the mail, not the automation's other steps.
+ * Skip an email step for a contact who may no longer get this mail (they
+ * unsubscribed from all marketing, or left the automation's topic), record why
+ * on the run, and move the run on: an unsubscribe stops the mail, not the
+ * automation's other steps.
  */
-export function skipUnsubscribedStepAndAdvance(
+export async function skipIneligibleEmailStepAndAdvance(
 	ctx: MutationCtx,
-	stepRun: Doc<'automationStepRuns'>
+	stepRun: Doc<'automationStepRuns'>,
+	skip: { reason: AutomationEmailSkipReason; topicId?: Id<'topics'> }
 ): Promise<EnterStepResult | { kind: 'run_ended' }> {
-	return endStepAndAdvance(ctx, stepRun, 'skipped', {
-		errorMessage: 'Contact unsubscribed from marketing; email step skipped',
+	const run = await ctx.db.get(stepRun.automationRunId);
+	if (run?.status === 'running' && !isTerminalStepRunStatus(stepRun.status)) {
+		await ctx.db.patch(run._id, {
+			emailSkip: {
+				reason: skip.reason,
+				...(skip.topicId !== undefined ? { topicId: skip.topicId } : {}),
+			},
+		});
+	}
+	return await endStepAndAdvance(ctx, stepRun, 'skipped', {
+		errorMessage: EMAIL_SKIP_MESSAGE[skip.reason],
 	});
 }
 
