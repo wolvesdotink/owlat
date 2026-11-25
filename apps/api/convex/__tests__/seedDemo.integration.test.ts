@@ -144,8 +144,15 @@ describe('demo seed — unhealthy states', () => {
 			statsFailed: failed.length,
 		});
 
-		const bouncedContact = await t.run((ctx) => ctx.db.get(bounced[0]!.contactId));
-		expect(bouncedContact?.softBounceCount).toBe(1);
+		// The stats columns are a cache of the shards; the rollup cron keeps them.
+		await t.mutation(internal.campaigns.statShards.rollupSentCampaignStats, {});
+		const rolledUp = await t.run((ctx) => ctx.db.get(campaign._id));
+		expect(rolledUp).toMatchObject({
+			statsSent: campaign.statsSent,
+			statsDelivered: campaign.statsDelivered,
+			statsBounced: campaign.statsBounced,
+			statsFailed: campaign.statsFailed,
+		});
 	});
 
 	it('seeds a failed and a waiting automation run with matching counters and health', async () => {
@@ -170,12 +177,12 @@ describe('demo seed — unhealthy states', () => {
 			state.stepRuns.find((s) => s.automationRunId === run._id)!;
 		expect(stepRunOf(failedRun)).toMatchObject({
 			status: 'failed',
-			failureReason: 'no_delivery_provider',
-			errorMessage: 'No delivery provider configured',
+			failureReason: 'no_default_sender',
+			errorMessage: expect.stringContaining('Email sender not configured'),
 		});
 		expect(stepRunOf(waitingRun)).toMatchObject({
 			status: 'pending',
-			waitingFor: 'no_delivery_provider',
+			waitingFor: 'no_default_sender',
 			waitingUntil: NOW + 24 * 60 * 60 * 1000,
 			waitingCheckedAt: NOW,
 		});
@@ -201,6 +208,10 @@ describe('demo seed — unhealthy states', () => {
 		});
 		expect(account).toMatchObject({ status: 'connected', imapHost: 'imap.example.net' });
 		expect(account.secretCiphertext).toBeUndefined();
+		// The mail-sync worker is never handed it, so it never tries to connect.
+		expect(
+			await t.query(internal.mail.external.accounts.listConnectableAccounts, {})
+		).not.toContainEqual(expect.objectContaining({ accountId: account._id }));
 	});
 
 	it('gives the same rows when seeded twice, and again after a reset', async () => {
@@ -222,6 +233,12 @@ describe('demo seed — unhealthy states', () => {
 			return live.filter((a) => a === null).length;
 		});
 		expect(orphans).toBe(0);
+		const shards = await t.run(async (ctx) => {
+			const rows = await ctx.db.query('campaignStatShards').collect();
+			const live = await Promise.all(rows.map((r) => ctx.db.get(r.campaignId)));
+			return { total: rows.length, orphaned: live.filter((c) => c === null).length };
+		});
+		expect(shards).toEqual({ total: 1, orphaned: 0 });
 	});
 });
 

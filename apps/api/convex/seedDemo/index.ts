@@ -14,9 +14,8 @@
  * BetterAuth component rows, which cannot carry the tag — it dedupes by email
  * instead and is only wiped by the full `POST /dev/reset`.
  *
- * Automation runs and their counter shards carry no tag either; a reset
- * removes them with the seeded automation they belong to
- * ({@link removeSeededAutomationRuns}).
+ * Automation runs and the stat shards of campaigns and automations carry no
+ * tag either; a reset removes them with the seeded row they belong to.
  */
 
 import { v } from 'convex/values';
@@ -25,7 +24,13 @@ import { recordTableRowCounters } from '../lib/rowCounters';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { deleteAutomationRun } from '../automations/runDeletion';
-import { applyLoaders, isRemovableSeedRow, SEEDED_TABLES, type SeedSummary } from './pipeline';
+import {
+	applyLoaders,
+	deleteCampaignStatShards,
+	isRemovableSeedRow,
+	SEEDED_TABLES,
+	type SeedSummary,
+} from './pipeline';
 
 export type { SeedSummary } from './pipeline';
 
@@ -45,6 +50,9 @@ export const runSeedDemo = internalMutation({
 				let removed = 0;
 				for (const row of rows) {
 					if (isRemovableSeedRow(row)) {
+						if (table === 'campaigns') {
+							await deleteCampaignStatShards(ctx, row._id as Id<'campaigns'>);
+						}
 						await ctx.db.delete(row._id);
 						await recordTableRowCounters(ctx, table, row, null);
 						removed++;

@@ -11,9 +11,11 @@
  * reducers (`reduceFailed`, `reduceBounced`), so it carries exactly the error
  * code, bounce class and receiver reply the report groups by. Their effects are
  * not run: they would fire `email.failed` / `email.bounced` at the seeded
- * webhook, write reputation events and schedule campaign completion. The two
- * effects a page reads back are applied inline instead: the campaign counters
- * (with the rest of the stats) and the contact's soft-bounce count.
+ * webhook, write reputation events and schedule campaign completion. The
+ * campaign counters they would bump are written with the rest of the stats.
+ * The contact's soft-bounce count is left alone: on a real install the
+ * sample campaign can reach the operator's own contacts through a topic of
+ * the same name, and removing the sample data would not take it back.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -78,6 +80,20 @@ async function load(ctx: MutationCtx, rawRecords: unknown[], refs: SeedRefs): Pr
 		const sentAt =
 			rec.sentDaysAgo !== undefined ? now - rec.sentDaysAgo * 24 * 60 * 60 * 1000 : undefined;
 
+		// Every seeded bounce is soft (see seedEmailSends).
+		const counters = rec.stats
+			? {
+					statsSent: rec.stats.sent,
+					statsDelivered: rec.stats.delivered,
+					statsOpened: rec.stats.opened,
+					statsClicked: rec.stats.clicked,
+					statsBounced: rec.stats.bounced,
+					statsSoftBounced: rec.stats.bounced,
+					statsHardBounced: 0,
+					statsFailed: rec.stats.failed ?? 0,
+				}
+			: {};
+
 		const campaignId = await ctx.db.insert('campaigns', {
 			name: rec.name,
 			emailTemplateId: templateId,
@@ -87,19 +103,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[], refs: SeedRefs): Pr
 			fromEmail: rec.fromEmail,
 			audience: { kind: 'topic', topicId },
 			sentAt,
-			statsSent: rec.stats?.sent,
-			statsDelivered: rec.stats?.delivered,
-			statsOpened: rec.stats?.opened,
-			statsClicked: rec.stats?.clicked,
-			statsBounced: rec.stats?.bounced,
-			...(rec.stats
-				? {
-						// Every seeded bounce is soft (see seedEmailSends).
-						statsSoftBounced: rec.stats.bounced,
-						statsHardBounced: 0,
-						statsFailed: rec.stats.failed ?? 0,
-					}
-				: {}),
+			...counters,
 			// Demo opens and clicks are generated, not fetched: label them as
 			// filtered so the report does not warn about pre-cutover automated ones.
 			...(rec.stats
@@ -117,6 +121,12 @@ async function load(ctx: MutationCtx, rawRecords: unknown[], refs: SeedRefs): Pr
 			updatedAt: now,
 		});
 		await recordListingCounter(ctx, 'campaignStatus', null, { status: rec.status });
+		// The campaign's stats columns are a cache the rollup cron rewrites from
+		// the shards (`campaigns/statShards.ts`), so the counts live in a shard
+		// too, or the first rollup would zero them.
+		if (rec.stats) {
+			await ctx.db.insert('campaignStatShards', { campaignId, shardKey: 0, ...counters });
+		}
 		ids[rec.slug] = campaignId;
 		inserted++;
 
@@ -218,10 +228,6 @@ async function seedEmailSends(
 						contact
 					);
 		await ctx.db.patch(sendId, patch);
-		// The soft-bounce effect's write: one more bounce towards suppress-after-N.
-		if (isBounced) {
-			await ctx.db.patch(contact._id, { softBounceCount: (contact.softBounceCount ?? 0) + 1 });
-		}
 	}
 }
 

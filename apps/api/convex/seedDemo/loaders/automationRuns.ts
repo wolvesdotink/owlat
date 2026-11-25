@@ -12,9 +12,11 @@
  * What is skipped is the step action itself (the intake), which would try to
  * send.
  *
- * A waiting step is live: the re-check cron runs it again every few minutes,
- * and on a stack with no delivery provider it waits again, which is the state
- * the fixture claims. Its wait gives up a day after seeding, like any other.
+ * A waiting step is live: the re-check cron runs it again every few minutes.
+ * The fixture names the first fault a fresh dev stack has (no default sender,
+ * which the email step checks before the delivery provider), so the re-check
+ * finds the same reason and waits again. Its wait gives up a day after
+ * seeding, like any other.
  *
  * DEV ONLY (not in `SAMPLE_DATA_MODULES`): a waiting step on a real install
  * would send a demo email the moment the operator's sending setup works.

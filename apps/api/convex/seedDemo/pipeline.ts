@@ -17,7 +17,7 @@
  */
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import type { TableNames } from '../_generated/dataModel';
+import type { Id, TableNames } from '../_generated/dataModel';
 
 import accountsFixture from './fixtures/accounts.json';
 import topicsFixture from './fixtures/topics.json';
@@ -140,6 +140,22 @@ export interface SeedSummary {
 	inserted: Record<string, number>;
 	skipped: Record<string, number>;
 	deleted?: Record<string, number>;
+}
+
+/**
+ * Delete a seeded campaign's stat shards. Shard rows carry no `seedTag`, so
+ * every sweep that deletes a seeded campaign calls this first; a shard left
+ * behind would point at a campaign that no longer exists.
+ */
+export async function deleteCampaignStatShards(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>
+): Promise<void> {
+	const shards = await ctx.db
+		.query('campaignStatShards')
+		.withIndex('by_campaign_and_shard', (q) => q.eq('campaignId', campaignId))
+		.collect(); // bounded: at most one row per shard
+	for (const shard of shards) await ctx.db.delete(shard._id);
 }
 
 export function isRemovableSeedRow(row: unknown): boolean {

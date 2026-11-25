@@ -5,8 +5,8 @@
 		"contact": "ada",
 		"outcome": "failed",
 		"startedMinutesAgo": 1500,
-		"failureReason": "no_delivery_provider",
-		"errorMessage": "No delivery provider configured"
+		"failureReason": "no_default_sender",
+		"errorMessage": "Email sender not configured. Please set a default sender email in organization settings."
 	},
 	{
 		"slug": "promo-grace-waiting",
@@ -14,7 +14,7 @@
 		"contact": "grace",
 		"outcome": "waiting",
 		"startedMinutesAgo": 5,
-		"waitingFor": "no_delivery_provider",
-		"errorMessage": "No delivery provider configured"
+		"waitingFor": "no_default_sender",
+		"errorMessage": "Email sender not configured. Please set a default sender email in organization settings."
 	}
 ]

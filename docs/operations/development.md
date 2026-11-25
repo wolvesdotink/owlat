@@ -198,21 +198,23 @@ panel shows, so a UI pull request does not have to add the rows by hand:
   receiver soft-bounced (mailbox full), next to delivered, opened and clicked
   ones. The campaign's counters agree with its sends.
 - **Automation runs.** "Promo on signup" has a run whose email step failed and
-  a run whose email step is waiting for the sending setup (no delivery
-  provider), so its runs panel and the automations list's last-7-days column
-  show both. The waiting step is live: the re-check cron runs it again every
-  few minutes, and its wait gives up a day after seeding, when it fails like
-  any other. `--reset` reseeds both.
+  a run whose email step is waiting for the sending setup (no default
+  sender, the first fault a fresh stack has), so its runs panel and the
+  automations list's last-7-days column show both. The waiting step is live:
+  the re-check cron runs it again every few minutes, and its wait gives up a
+  day after seeding, when it fails like any other. `--reset` reseeds both.
 - **A connected mailbox.** The owner has `dev.demo@example.net`, an external
-  (IMAP/SMTP) mailbox shown as connected. It holds no credential and its hosts
-  are on example domains: `dev:stack` does not start mail-sync, and a mail-sync
-  started by hand stops on it without retrying.
+  (IMAP/SMTP) mailbox shown as connected. It holds no credential, its hosts
+  are on example domains, and mail-sync is never handed it.
+
+A fresh stack has Automations and the Email client off: turn them on under
+Settings > Features to see the runs panel and the Postbox.
 
 A suspended instance is a switch rather than seed data, because it blocks
 sending in every capture:
 
 ```sh
-bun run dev:seed --suspend  # suspend sending (the Deliverability Center's held state)
+bun run dev:seed --suspend  # suspend sending: Delivery health and the home banner show it
 bun run dev:seed --resume   # allow sending again
 ```
 
