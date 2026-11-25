@@ -33,6 +33,7 @@ import { internalMutation } from '../lib/writeFence';
 import type { Id, TableNames } from '../_generated/dataModel';
 import {
 	applyLoaders,
+	deleteCampaignStatShards,
 	isRemovableSeedRow,
 	pageSeedTaggedIds,
 	SAMPLE_DATA_MODULES,
@@ -134,6 +135,10 @@ async function deleteSeededRow(
 			decrementCount: false,
 		});
 		return;
+	}
+
+	if (table === 'campaigns') {
+		await deleteCampaignStatShards(ctx, id as Id<'campaigns'>);
 	}
 
 	if (table === 'topics') {

@@ -39,7 +39,8 @@ export const coeditFieldValidator = v.union(
 	v.literal('subject'),
 	v.literal('plainTextOverride'),
 	v.literal('attachments'),
-	v.literal('showUnsubscribe')
+	v.literal('showUnsubscribe'),
+	v.literal('previewText')
 );
 
 export type CoeditField = Infer<typeof coeditFieldValidator>;

@@ -66,6 +66,13 @@ interface ListingBrowse {
 	filterIndexes?: Readonly<Record<string, string>>;
 	/** Optional `sort` arg → index map (browse path only; see `sortKeys`). */
 	sortIndexes?: Readonly<Record<string, string>>;
+	/**
+	 * Per filter field, the `sort` arg → index map for that single filter: the
+	 * compound index whose prefix is the filter field and whose next field is
+	 * the sort key. Without an entry, a filtered browse keeps the
+	 * `filterIndexes` order whatever `sort` asks for.
+	 */
+	filterSortIndexes?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 /**
@@ -251,7 +258,9 @@ async function browsePage<
 	// ordered, no page-thinning.
 	if (active.length === 1) {
 		const only = active[0]!;
-		const idx = descriptor.browse.filterIndexes?.[only.field];
+		const idx =
+			(args.sort ? descriptor.browse.filterSortIndexes?.[only.field]?.[args.sort] : undefined) ??
+			descriptor.browse.filterIndexes?.[only.field];
 		if (idx) {
 			const q = db.query(descriptor.table as never) as unknown as AnyQuery;
 			const result = await paginatePage(
@@ -268,9 +277,10 @@ async function browsePage<
 
 	// Default browse index: soft-delete rides it; remaining equality filters are
 	// applied post-index (ordinary filters may thin a page; only `deletedAt` is
-	// barred from that). An explicit `sort` may swap in an alternate index.
+	// barred from that). An explicit `sort` may swap in an alternate index,
+	// which the post-index filter keeps in order.
 	let indexName = descriptor.browse.index;
-	if (active.length === 0 && args.sort) {
+	if (args.sort) {
 		indexName = descriptor.browse.sortIndexes?.[args.sort] ?? indexName;
 	}
 

@@ -136,11 +136,28 @@ bun run dev        # tauri dev — starts a desktop-mode Nuxt at localhost:3000 
 ```
 
 `tauri dev` starts that Nuxt itself (`beforeDevCommand` runs `dev:desktop` in
-`apps/web`), and it reads the repository's `.env` and `.env.local`, so a
-backend those files point at must already be running. `bun run dev:stack` is
-not that backend yet: it has no backend-only mode, its own Nuxt takes port 3000
-in the main checkout, and in a linked worktree it hands its backend URLs to its
-own Nuxt only.
+`apps/web`), so the backend must already be running. `bun run dev:stack
+--no-web` is that backend: it starts Convex and Redis, pushes the functions,
+seeds the demo accounts and runs the Convex watcher, but no Nuxt. Before the
+watcher starts it prints the variables the desktop Nuxt needs, for example:
+
+```sh
+NUXT_PORT=3000 NUXT_PUBLIC_SITE_URL=http://localhost:3000 NUXT_PUBLIC_CONVEX_URL=http://127.0.0.1:3210 NUXT_PUBLIC_CONVEX_SITE_URL=http://127.0.0.1:3211
+```
+
+Put that line in front of `bun run dev` in a second terminal. Variables set in
+the shell win over `.env` and `.env.local`. File uploads also need the stack's
+instance secret: add
+`INSTANCE_SECRET="$(bun -p "require('../../.owlat-dev/secrets.json').instanceSecret")"`. The backend only trusts the web
+port it printed, and `tauri.conf.json` loads `localhost:3000`, so in a linked
+worktree, where the port is not 3000, also point the window at that port:
+
+```sh
+cd apps/desktop
+NUXT_PORT=23000 NUXT_PUBLIC_SITE_URL=http://localhost:23000 \
+  NUXT_PUBLIC_CONVEX_URL=http://127.0.0.1:23210 NUXT_PUBLIC_CONVEX_SITE_URL=http://127.0.0.1:23211 \
+  bun run dev --config '{"build":{"devUrl":"http://localhost:23000"}}'
+```
 
 In dev the app loads `devUrl` (the Nuxt dev server), which has the full Nitro
 server, so both the web cookie flow and the desktop cross-domain flow work.

@@ -37,6 +37,8 @@ import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
 import { listDomains } from '../publicApi/domainsHttp';
 import { getLimits } from '../publicApi/limitsHttp';
+import * as transactionalEmailsApi from '../publicApi/transactionalEmailsHttp';
+import * as savedBlocksApi from '../publicApi/savedBlocksHttp';
 import { rateLimiter } from '../lib/rateLimiter';
 import { PER_API_KEY_DAILY_BUCKET, PER_API_KEY_DAILY_CONFIG } from '../transactional/sendCaps';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
@@ -119,6 +121,8 @@ const ALL_SCOPES = [
 	'topics:write',
 	'topics:read',
 	'status:read',
+	'templates:read',
+	'templates:write',
 ];
 
 function setupTest() {
@@ -221,6 +225,10 @@ afterEach(() => {
 });
 
 // ─── Auth gate (shared across every route) ──────────────────────────────────
+
+/** The contract's answer to a `dataVariables` value of the wrong shape. */
+const DATA_VARIABLES_SHAPE_MESSAGE =
+	'dataVariables must be an object of string, number, boolean or null values, or of lists of them or of objects of them';
 
 describe('v1 auth gate', () => {
 	it('GET /api/v1/contacts → 401 with no Authorization header', async () => {
@@ -1025,26 +1033,30 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error.category).toBe('invalid_input');
 	});
 
-	it('400 invalid_input for a nested dataVariables value (not 500)', async () => {
-		const t = setupTest();
-		const key = await seedKey(t, ['transactional:send']);
-		const res = await t.fetch('/api/v1/transactional', {
-			method: 'POST',
-			headers: authHeaders(key),
-			body: JSON.stringify({
-				email: 'to@example.com',
-				slug: 'welcome',
-				dataVariables: { order: { id: 1 } },
-			}),
-		});
-		expect(res.status).toBe(400);
-		const body = await res.json();
-		expect(body.error).toEqual({
-			category: 'invalid_input',
-			message: 'dataVariables must be an object of string, number, boolean or null values',
-			data: { field: 'dataVariables.order' },
-		});
-	});
+	// A list of flat entries feeds a repeated Block; any other nesting is refused.
+	it.each([
+		['an object as a value', { order: { id: 1 } }, 'dataVariables.order'],
+		['a list of lists', { lines: [['a']] }, 'dataVariables.lines'],
+		['an object inside a list entry', { lines: [{ product: { id: 1 } }] }, 'dataVariables.lines'],
+	])(
+		'400 invalid_input for a nested dataVariables value: %s (not 500)',
+		async (_label, dataVariables, field) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['transactional:send']);
+			const res = await t.fetch('/api/v1/transactional', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: JSON.stringify({ email: 'to@example.com', slug: 'welcome', dataVariables }),
+			});
+			expect(res.status).toBe(400);
+			const body = await res.json();
+			expect(body.error).toEqual({
+				category: 'invalid_input',
+				message: DATA_VARIABLES_SHAPE_MESSAGE,
+				data: { field },
+			});
+		}
+	);
 
 	it.each([
 		[{ email: 'not-an-email', slug: 'welcome' }, 'Invalid email format', 'email'],
@@ -1117,7 +1129,7 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		const body = await res.json();
 		expect(body.error).toMatchObject({
 			category: 'invalid_input',
-			message: 'dataVariables must be an object of string, number, boolean or null values',
+			message: DATA_VARIABLES_SHAPE_MESSAGE,
 			data: { field: 'dataVariables.__proto__' },
 		});
 	});
@@ -3212,6 +3224,16 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	getStatus,
 	listDomains,
 	getLimits,
+	listTransactionalEmails: transactionalEmailsApi.listTransactionalEmails,
+	createTransactionalEmail: transactionalEmailsApi.createTransactionalEmail,
+	getTransactionalEmail: transactionalEmailsApi.getTransactionalEmail,
+	putTransactionalEmail: transactionalEmailsApi.putTransactionalEmail,
+	publishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	unpublishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	listSavedBlocks: savedBlocksApi.listSavedBlocks,
+	createSavedBlock: savedBlocksApi.createSavedBlock,
+	getSavedBlock: savedBlocksApi.getSavedBlock,
+	updateSavedBlock: savedBlocksApi.updateSavedBlock,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */
@@ -3300,16 +3322,17 @@ describe('the public contract (@owlat/public-contract)', () => {
 		const res = await t.fetch('/api/v1/transactional', {
 			method: 'POST',
 			headers: authHeaders(key),
-			body: JSON.stringify({ email: 'ada@example.com', slug: 'welcome', dataVariables: { a: [] } }),
+			body: JSON.stringify({
+				email: 'ada@example.com',
+				slug: 'welcome',
+				dataVariables: { a: [[]] },
+			}),
 		});
 		expect(res.status).toBe(400);
 		const body: unknown = await res.json();
 		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
 		expect(body).toMatchObject({
-			error: {
-				category: 'invalid_input',
-				message: 'dataVariables must be an object of string, number, boolean or null values',
-			},
+			error: { category: 'invalid_input', message: DATA_VARIABLES_SHAPE_MESSAGE },
 		});
 	});
 });

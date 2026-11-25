@@ -27,6 +27,13 @@ export type PublishableEmailVariableType = 'personalization' | 'data';
 export type RenderablePublishableEmail = {
 	content: string;
 	subject: string;
+	/**
+	 * The inbox preview line, rendered as the hidden preheader at the top of the
+	 * body. Its `{{name}}` tokens stay in the stored HTML, escaped like a block's,
+	 * so the send personalizes them with the body and the missing-variable check
+	 * and the content scan read them there. Never part of the text/plain body.
+	 */
+	previewText?: string;
 	translations?: string;
 	supportedLanguages?: string[];
 	defaultLanguage?: string;
@@ -78,17 +85,23 @@ export function renderPublishableEmail(
 	// social block's default icons) load from the web app's public origin. A
 	// changed SITE_URL reaches a row only when it is rendered again.
 	const assetBaseUrl = getOptional('SITE_URL');
+	// A transactional email's conditions and repeats depend on the data each
+	// request sends, so they stay in the stored body as regions the send resolves
+	// (`@owlat/shared/sendRegions`). A template's are decided here, as before.
+	const sendTimeBlockLogic = variableType === 'data';
 	const html = renderEmailHtml(blocks as Parameters<typeof renderEmailHtml>[0], {
 		variableType,
 		theme,
 		lang: row.defaultLanguage,
 		assetBaseUrl,
+		sendTimeBlockLogic,
+		preheaderText: row.previewText,
 	});
 	// The text/plain body tracks the blocks exactly as the html does — EXCEPT
 	// when the author wrote their own, which a render must not clobber.
 	const plainTextContent = row.plainTextOverride?.trim()
 		? undefined
-		: renderPlainText(blocks as Parameters<typeof renderPlainText>[0]);
+		: renderPlainText(blocks as Parameters<typeof renderPlainText>[0], { sendTimeBlockLogic });
 
 	let htmlTranslations: string | undefined;
 	// Overlays that do not decode are skipped, and so are the translated renders
@@ -109,7 +122,16 @@ export function renderPublishableEmail(
 				translationsObj[lang] = {
 					htmlContent: renderEmailHtml(
 						translatedBlocks as unknown as Parameters<typeof renderEmailHtml>[0],
-						{ variableType, theme, lang, assetBaseUrl }
+						{
+							variableType,
+							theme,
+							lang,
+							assetBaseUrl,
+							sendTimeBlockLogic,
+							// A language without its own preview text keeps the default's; the
+							// settings page stores an empty field as '', so that counts as none.
+							preheaderText: langTranslation.previewText || row.previewText,
+						}
 					),
 					subject: langTranslation.subject ?? row.subject,
 				};

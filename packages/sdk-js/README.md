@@ -265,6 +265,23 @@ for (const domain of await owlat.domains.list()) {
 }
 ```
 
+### Templates
+
+Transactional emails and saved blocks: read, write and publish. Reads need the
+`templates:read` scope, writes `templates:write`. A read is the export, and
+`upsert` takes it back unchanged.
+
+```typescript
+const email = await owlat.transactionalEmails.get('order-confirmation');
+const { issues } = await owlat.transactionalEmails.upsert(
+	'order-confirmation',
+	{ ...email, subject: 'Your order is confirmed' },
+	{ ifRevision: email.revision, whilePublished: true }
+);
+await owlat.transactionalEmails.publish('order-confirmation');
+const { data: savedBlocks } = await owlat.savedBlocks.list();
+```
+
 ## Error Handling
 
 The SDK throws typed errors that you can catch and handle appropriately:

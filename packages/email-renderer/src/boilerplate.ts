@@ -2,17 +2,7 @@ import type { RenderContext, GmailAnnotations } from './types';
 import { buildStyleBlock } from './styles';
 import { getOfficeDocumentSettings, msoTableOpen, msoTableClose } from './outlook';
 import { escapeAttr, escapeCss, escapeHtml, isHttpsUrl } from './sanitize';
-
-/**
- * Generate hidden preheader text that shows as inbox preview snippet.
- * Padded with zero-width spaces to prevent email clients from pulling body content.
- */
-const getPreheaderHtml = (text: string): string => {
-	if (!text) return '';
-	// Zero-width spaces + non-breaking spaces to fill preview and prevent body text leaking
-	const padding = '&#847; &zwnj; &nbsp; &#8199; &#65279; '.repeat(30);
-	return `<div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;mso-hide:all">${escapeHtml(text)}</div><div style="display:none;max-height:0;overflow:hidden" aria-hidden="true"><span style="font:0px/0 Arial">${padding}</span></div>`;
-};
+import { getPreheaderHtml } from './preheader';
 
 /**
  * Generate font import links for web fonts.

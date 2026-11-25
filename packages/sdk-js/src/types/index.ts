@@ -5,5 +5,6 @@ export * from './domains';
 export * from './events';
 export * from './limits';
 export * from './status';
+export * from './templates';
 export * from './topics';
 export * from './transactional';

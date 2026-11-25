@@ -63,8 +63,8 @@ const RENDERED_V1 = {
 };
 
 describe('renderer version', () => {
-	it('is 4 since block margins sit outside the background and nested items keep their own box', () => {
-		expect(CURRENT_RENDERER_VERSION).toBe(4);
+	it("is 5 since a transactional email's conditions and repeats are left to the send", () => {
+		expect(CURRENT_RENDERER_VERSION).toBe(5);
 	});
 });
 

@@ -3,7 +3,7 @@
 import * as cheerio from 'cheerio';
 import { createHmac } from 'node:crypto';
 import { getOptional } from '../../lib/env';
-import { footerHtml } from './footer';
+import { footerHtml, viewInBrowserHtml } from './footer';
 import { isOwnSubscriptionLink } from './ownLinks';
 import { encodeTrackedTarget, trackedLinkPath, trackedLinkSigningInput } from './trackingUrl';
 
@@ -56,12 +56,12 @@ export function transformHtml(html: string, config: TransformConfig): string {
 
 	// 0. Inject "View in browser" link at top of email
 	if (config.viewInBrowserUrl) {
-		const viewInBrowserHtml = `<div style="text-align:center;font-size:11px;color:#999;padding:8px 0 4px"><a href="${config.viewInBrowserUrl}" data-no-track style="color:#999;text-decoration:underline">View in browser</a></div>`;
+		const viewInBrowser = viewInBrowserHtml(config.viewInBrowserUrl, config.footerLanguage);
 		const $body = $('body');
 		if ($body.length > 0) {
-			$body.prepend(viewInBrowserHtml);
+			$body.prepend(viewInBrowser);
 		} else {
-			$.root().prepend(viewInBrowserHtml);
+			$.root().prepend(viewInBrowser);
 		}
 	}
 

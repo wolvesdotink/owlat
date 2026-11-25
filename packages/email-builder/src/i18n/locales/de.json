@@ -607,7 +607,13 @@
 			"newVariableTitle": "Neue Datenvariable für diese E-Mail anlegen",
 			"newVariable": "Neue Variable",
 			"name": "Name",
-			"variable": "Variable"
+			"variable": "Variable",
+			"previewText": "Vorschau",
+			"previewTextLabel": "Vorschautext",
+			"previewTextPlaceholder": "Steht im Posteingang hinter dem Betreff (optional)",
+			"previewTextPlaceholderWithVariables": "Steht im Posteingang hinter dem Betreff, {{ fügt eine Variable ein",
+			"previewTextInsertVariableTitle": "Variable in den Vorschautext einfügen",
+			"previewTextInsertVariable": "Variable in den Vorschautext einfügen"
 		},
 		"panel": {
 			"fontDefault": "Standard",
@@ -770,8 +776,10 @@
 				"string": "Zeichenkette",
 				"number": "Zahl",
 				"boolean": "Wahrheitswert",
-				"date": "Datum"
+				"date": "Datum",
+				"array": "Liste"
 			},
+			"arrayHint": "Eine Liste von Einträgen für einen wiederholten Block. Wähl sie unter „Wiederholen“ des Blocks und nutze darin {example}.",
 			"preview": "Vorschau",
 			"usage": "Wird in der API-Nutzlast verwendet",
 			"create": "Variable anlegen"

@@ -24,6 +24,7 @@ import {
 import { sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { sendLimitsSchema } from './limits';
+import { TEMPLATE_OPERATIONS } from './templateOperations';
 import { deliveryStatusSchema } from './status';
 import {
 	addContactToTopicRequestSchema,
@@ -284,6 +285,7 @@ export const PUBLIC_OPERATIONS = [
 		errors: [404],
 		reasons: ['feature_disabled'],
 	},
+	...TEMPLATE_OPERATIONS,
 	{
 		operationId: 'listTopics',
 		method: 'GET',
