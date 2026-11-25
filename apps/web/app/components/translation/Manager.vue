@@ -270,28 +270,28 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 		}
 
 		// Call AI translation action via Convex, in batches the action accepts:
-		// a long table has more rows than one call takes.
-		const translations: { id: string; translatedText: string }[] = [];
+		// a long table has more rows than one call takes. Each batch is saved
+		// as one write when it arrives, so a later failure keeps the earlier
+		// batches and a retry sends only the fields still empty. A failed write
+		// keeps its generated values as drafts in their cells.
+		let translated = 0;
 		for (const batch of translateBatches(itemsToTranslate)) {
 			const result = await requireConvex().action(api.emailTemplates.translate.translateBatch, {
 				items: batch,
 				sourceLanguage: languageLabel(defaultLanguage.value),
 				targetLanguage: languageLabel(targetLanguage),
 			});
-			translations.push(...result.translations);
+			const entries = result.translations.flatMap((item) => {
+				const row = translatableRows.value.find((r) => r.id === item.id);
+				return row ? [{ cell: cellOf(row, targetLanguage), value: item.translatedText }] : [];
+			});
+			if (!(await saveCells(targetLanguage, entries))) return;
+			translated += result.translations.length;
 		}
-
-		// Apply the translations as one write. A failed write keeps every
-		// generated value as a draft in its cell, to retry or discard.
-		const entries = translations.flatMap((item) => {
-			const row = translatableRows.value.find((r) => r.id === item.id);
-			return row ? [{ cell: cellOf(row, targetLanguage), value: item.translatedText }] : [];
-		});
-		if (!(await saveCells(targetLanguage, entries))) return;
 
 		showToast(
 			t('components.translation.manager.autoTranslated', {
-				count: translations.length,
+				count: translated,
 				language: languageLabel(targetLanguage),
 			})
 		);

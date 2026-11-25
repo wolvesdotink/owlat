@@ -562,6 +562,58 @@ describe('list items, table text, menu labels and accordion titles', () => {
 		).toBe('invalid_input');
 	});
 
+	it('shows the source of an item whose translation was cleared, and keeps the others in place on a swap', () => {
+		const menu = (labels: string[]) => ({
+			id: 'menu',
+			type: 'menu',
+			content: { items: labels.map((label) => ({ label, url: 'https://owlat.com' })) },
+		});
+		const entity = templateEntity({
+			content: JSON.stringify([menu(['Contact us', 'Contact'])]),
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({
+				de: {
+					subject: 'Hallo',
+					blocks: { menu: { texts: { [k('Contact us')]: '', [k('Contact')]: 'Kontakt' } } },
+				},
+			}),
+		});
+		const labels = (content: string, blocks: Record<string, unknown>) =>
+			JSON.parse(mergeTranslationWithContent(content, blocks as never))[0].content.items.map(
+				(item: { label: string }) => item.label
+			);
+		expect(labels(entity.content, parseTranslations(entity.translations)['de']!.blocks!)).toEqual([
+			'Contact us',
+			'Kontakt',
+		]);
+		const patch = setDefaultLanguagePatch(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS)!;
+		const en = parseTranslations(patch.translations)['en']!.blocks!;
+		expect(labels(patch.content!, en)).toEqual(['Contact us', 'Contact']);
+	});
+
+	it('leaves items untranslated rather than wrong when two texts become one on a swap', () => {
+		const entity = templateEntity({
+			content: JSON.stringify([
+				{ ...LIST, content: { ...LIST.content, items: ['Contact us', 'Contact'] } },
+			]),
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({
+				de: {
+					subject: 'Hallo',
+					blocks: { list: { texts: { [k('Contact us')]: 'Kontakt', [k('Contact')]: 'Kontakt' } } },
+				},
+			}),
+		});
+		const patch = setDefaultLanguagePatch(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS)!;
+		const en = parseTranslations(patch.translations)['en']!.blocks!;
+		expect(JSON.parse(mergeTranslationWithContent(patch.content!, en))[0].content.items).toEqual([
+			'Kontakt',
+			'Kontakt',
+		]);
+	});
+
 	it('moves every overlay onto the new default text when a language becomes the default', () => {
 		const french = { list: { texts: { [k('Free shipping')]: 'Livraison gratuite' } } };
 		const entity = templateEntity({

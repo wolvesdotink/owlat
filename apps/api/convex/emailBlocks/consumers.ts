@@ -217,7 +217,8 @@ function legacyCopyRenames(
 	previous: BlockTreeNode[],
 	sourceIds: ReadonlySet<string>,
 	groupId: string,
-	renames: BlockIdRenewal[]
+	renames: BlockIdRenewal[],
+	sectionRenames: BlockIdRenewal[]
 ): void {
 	for (const [index, node] of copy.entries()) {
 		const counterpart = previous[index]?.type === node.type ? previous[index] : undefined;
@@ -225,9 +226,32 @@ function legacyCopyRenames(
 			const source = sourceIds.has(node.id) ? node.id : counterpart?.id;
 			if (source !== undefined) renames.push({ from: node.id, to: linkedCopyId(groupId, source) });
 		}
+		// Accordion sections get linked-copy ids too, and a translation keys
+		// their titles by section id: each one maps the same way as its Block.
+		const counterpartEntries = counterpart ? ownedEntries(counterpart) : [];
+		for (const [entryIndex, entry] of ownedEntries(node).entries()) {
+			const id = entry['id'];
+			if (typeof id !== 'string' || id.startsWith(`${groupId}-`)) continue;
+			const counterpartId = counterpartEntries[entryIndex]?.['id'];
+			const source = sourceIds.has(id)
+				? id
+				: typeof counterpartId === 'string'
+					? counterpartId
+					: undefined;
+			if (source !== undefined) {
+				sectionRenames.push({ from: id, to: linkedCopyId(groupId, source) });
+			}
+		}
 		const previousLists = counterpart ? childBlockLists(counterpart) : [];
 		for (const [listIndex, list] of childBlockLists(node).entries()) {
-			legacyCopyRenames(list, previousLists[listIndex] ?? [], sourceIds, groupId, renames);
+			legacyCopyRenames(
+				list,
+				previousLists[listIndex] ?? [],
+				sourceIds,
+				groupId,
+				renames,
+				sectionRenames
+			);
 		}
 	}
 }
@@ -239,9 +263,13 @@ const treeShape = (nodes: BlockTreeNode[]): string =>
 const hasOwn = (record: object, key: string): boolean =>
 	Object.prototype.hasOwnProperty.call(record, key);
 
+/** The ids of every Block and accordion section in `nodes`. */
 function collectIds(nodes: BlockTreeNode[], ids: Set<string>): Set<string> {
 	for (const node of nodes) {
 		ids.add(node.id);
+		for (const entry of ownedEntries(node)) {
+			if (typeof entry['id'] === 'string') ids.add(entry['id']);
+		}
 		for (const list of childBlockLists(node)) collectIds(list, ids);
 	}
 	return ids;
@@ -257,9 +285,12 @@ function collectIds(nodes: BlockTreeNode[], ids: Set<string>): Set<string> {
 function carryRenamedOverlays(
 	translationsBlob: string | undefined,
 	renames: readonly BlockIdRenewal[],
+	sectionRenames: readonly BlockIdRenewal[],
 	blocks: EditorBlock[]
 ): string | undefined {
-	if (renames.length === 0 || !translationsBlob) return undefined;
+	if ((renames.length === 0 && sectionRenames.length === 0) || !translationsBlob) {
+		return undefined;
+	}
 	let translations: ReturnType<typeof parseTranslations>;
 	try {
 		translations = parseTranslations(translationsBlob);
@@ -281,6 +312,21 @@ function carryRenamedOverlays(
 		for (const { from, to } of renames) {
 			if (kept.has(to) && !kept.has(from) && hasOwn(overlays, from)) {
 				delete overlays[from];
+				changed = true;
+			}
+		}
+		for (const entry of Object.values(overlays)) {
+			if (!entry.sectionTitles) continue;
+			const titles = { ...entry.sectionTitles };
+			let moved = false;
+			for (const { from, to } of sectionRenames) {
+				if (!kept.has(to) || !hasOwn(titles, from) || hasOwn(titles, to)) continue;
+				titles[to] = titles[from] as string;
+				delete titles[from];
+				moved = true;
+			}
+			if (moved) {
+				entry.sectionTitles = titles;
 				changed = true;
 			}
 		}
@@ -325,10 +371,18 @@ export function replaceLinkedBlocks(
 		collectIds(treeNodes(previousBlocks), new Set())
 	);
 	const renames: BlockIdRenewal[] = [];
+	const sectionRenames: BlockIdRenewal[] = [];
 	const previousShape = treeShape(treeNodes(previousBlocks));
 	for (const [groupId, copy] of groups) {
 		const clonedFrom = treeShape(treeNodes(copy)) === previousShape ? previousBlocks : [];
-		legacyCopyRenames(treeNodes(copy), treeNodes(clonedFrom), sourceIds, groupId, renames);
+		legacyCopyRenames(
+			treeNodes(copy),
+			treeNodes(clonedFrom),
+			sourceIds,
+			groupId,
+			renames,
+			sectionRenames
+		);
 	}
 
 	const result: EditorBlock[] = [];
@@ -356,7 +410,7 @@ export function replaceLinkedBlocks(
 			result.push(block);
 		}
 	}
-	const carried = carryRenamedOverlays(translations, renames, result);
+	const carried = carryRenamedOverlays(translations, renames, sectionRenames, result);
 	return carried === undefined
 		? { blocks: result }
 		: { blocks: result, patch: { translations: carried } };

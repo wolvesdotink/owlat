@@ -194,9 +194,12 @@ export function mergeTranslationIntoItem(
 	};
 	const texts = translatedContent?.texts;
 	if (texts) {
+		// An empty translation is a cleared cell: the item shows its source
+		// text, as an untranslated one does.
 		content = mapItemTexts(item.type, content, (text) => {
 			const key = itemTextKey(text);
-			return text !== '' && hasOwn(texts, key) ? (texts[key] as string) : text;
+			const translated = text !== '' && hasOwn(texts, key) ? texts[key] : undefined;
+			return translated || text;
 		});
 	}
 	if (item.type === 'accordion' && translatedContent?.sectionTitles) {
@@ -294,10 +297,21 @@ export function extractTranslatableContent(
 	return translatableContent;
 }
 
-function collectSlotsById(items: readonly unknown[], slotsById: Map<string, ItemTextSlot[]>): void {
+/** Where a positional text sits in its block, independent of its text. */
+const slotPosition = (slot: ItemTextSlot): string => `${slot.part}:${slot.row ?? ''}:${slot.index}`;
+
+function collectSlotsById(
+	items: readonly unknown[],
+	slotsById: Map<string, Map<string, ItemTextSlot>>
+): void {
 	for (const item of items) {
 		if (!isBlockLikeItem(item)) continue;
-		if (!slotsById.has(item.id)) slotsById.set(item.id, itemTextSlots(item));
+		if (!slotsById.has(item.id)) {
+			slotsById.set(
+				item.id,
+				new Map(itemTextSlots(item).map((slot) => [slotPosition(slot), slot]))
+			);
+		}
 		for (const list of childBlockLists(item)) collectSlotsById(list, slotsById);
 	}
 }
@@ -316,8 +330,8 @@ export function rekeyItemTexts(
 	next: readonly unknown[],
 	blocks: Record<string, TranslatableBlockContent>
 ): Record<string, TranslatableBlockContent> {
-	const before = new Map<string, ItemTextSlot[]>();
-	const after = new Map<string, ItemTextSlot[]>();
+	const before = new Map<string, Map<string, ItemTextSlot>>();
+	const after = new Map<string, Map<string, ItemTextSlot>>();
 	collectSlotsById(previous, before);
 	collectSlotsById(next, after);
 	const rekeyed: Record<string, TranslatableBlockContent> = {};
@@ -327,16 +341,22 @@ export function rekeyItemTexts(
 			rekeyed[blockId] = { ...rest };
 			continue;
 		}
-		const oldSlots = before.get(blockId) ?? [];
-		const newSlots = after.get(blockId) ?? [];
+		const newSlots = after.get(blockId);
 		const moved: Record<string, string> = {};
-		for (const [index, slot] of oldSlots.entries()) {
-			const target = newSlots[index];
+		// Two source texts the new default writes the same way share one key.
+		// When their translations differ, keeping either would show it on the
+		// wrong item, so both items become untranslated instead.
+		const conflicting = new Set<string>();
+		for (const [position, slot] of before.get(blockId) ?? []) {
+			const target = newSlots?.get(position);
 			const key = itemTextKey(slot.text);
 			if (!target || !hasOwn(texts, key)) continue;
 			const newKey = itemTextKey(target.text);
-			if (!hasOwn(moved, newKey)) moved[newKey] = texts[key] as string;
+			const value = texts[key] as string;
+			if (!hasOwn(moved, newKey)) moved[newKey] = value;
+			else if (moved[newKey] !== value) conflicting.add(newKey);
 		}
+		for (const key of conflicting) delete moved[key];
 		rekeyed[blockId] = Object.keys(moved).length > 0 ? { ...rest, texts: moved } : { ...rest };
 	}
 	return rekeyed;
