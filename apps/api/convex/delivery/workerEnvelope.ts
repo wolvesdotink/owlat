@@ -1,5 +1,5 @@
 import { type Infer, v } from 'convex/values';
-import { jsonPrimitiveValue } from '../lib/convexValidators';
+import { dataVariablesRecord } from '../lib/convexValidators';
 
 export const attachmentRefValidator = v.object({
 	filename: v.string(),
@@ -79,7 +79,7 @@ export const envelopeInputValidator = v.union(
 			// template row; `composeForSend` ships it as the text alternative.
 			plainTextContent: v.optional(v.string()),
 		}),
-		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
+		dataVariables: v.optional(dataVariablesRecord),
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
 		headers: v.optional(v.record(v.string(), v.string())),
 		autoSubmittedType: v.optional(v.union(v.literal('auto-generated'), v.literal('auto-replied'))),

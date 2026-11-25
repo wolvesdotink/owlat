@@ -1,0 +1,3468 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://docs.owlat.app/schemas/blocks.json",
+	"title": "Owlat block content",
+	"description": "The blocks of an email template, transactional email or saved block, in the order they render. Generated from the block types; fields a block does not list are refused.",
+	"type": "array",
+	"items": {
+		"$ref": "#/$defs/Block"
+	},
+	"$defs": {
+		"Block": {
+			"description": "One block at the top level of an email. `type` decides the shape of `content`.",
+			"type": "object",
+			"properties": {
+				"type": {
+					"enum": [
+						"text",
+						"image",
+						"button",
+						"divider",
+						"spacer",
+						"columns",
+						"social",
+						"container",
+						"hero",
+						"table",
+						"rawHtml",
+						"video",
+						"accordion",
+						"menu",
+						"carousel",
+						"list",
+						"progressBar"
+					]
+				}
+			},
+			"required": ["type"],
+			"oneOf": [
+				{
+					"$ref": "#/$defs/TextBlock"
+				},
+				{
+					"$ref": "#/$defs/ImageBlock"
+				},
+				{
+					"$ref": "#/$defs/ButtonBlock"
+				},
+				{
+					"$ref": "#/$defs/DividerBlock"
+				},
+				{
+					"$ref": "#/$defs/SpacerBlock"
+				},
+				{
+					"$ref": "#/$defs/ColumnsBlock"
+				},
+				{
+					"$ref": "#/$defs/SocialBlock"
+				},
+				{
+					"$ref": "#/$defs/ContainerBlock"
+				},
+				{
+					"$ref": "#/$defs/HeroBlock"
+				},
+				{
+					"$ref": "#/$defs/TableBlock"
+				},
+				{
+					"$ref": "#/$defs/RawHtmlBlock"
+				},
+				{
+					"$ref": "#/$defs/VideoBlock"
+				},
+				{
+					"$ref": "#/$defs/AccordionBlock"
+				},
+				{
+					"$ref": "#/$defs/MenuBlock"
+				},
+				{
+					"$ref": "#/$defs/CarouselBlock"
+				},
+				{
+					"$ref": "#/$defs/ListBlock"
+				},
+				{
+					"$ref": "#/$defs/ProgressBarBlock"
+				}
+			]
+		},
+		"TextBlock": {
+			"description": "A paragraph or heading of rich text.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "text"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"html": {
+							"description": "The text as HTML. Tags, attributes and styles outside the text policy are removed on write.",
+							"type": "string"
+						},
+						"blockType": {
+							"description": "Whether the text is a paragraph or a heading level.",
+							"type": "string",
+							"enum": ["paragraph", "h1", "h2", "h3"]
+						},
+						"fontSize": {
+							"description": "Font size in px.",
+							"type": "number"
+						},
+						"textColor": {
+							"description": "Text color (CSS color).",
+							"type": "string"
+						},
+						"textAlign": {
+							"type": "string",
+							"enum": ["left", "center", "right", "justify"]
+						},
+						"lineHeight": {
+							"description": "Line height as a multiple of the font size, such as 1.5.",
+							"type": "number"
+						},
+						"fontWeight": {
+							"description": "Block-level font weight (e.g. 400, 700)",
+							"type": "number"
+						},
+						"letterSpacing": {
+							"description": "Letter spacing in px",
+							"type": "number"
+						},
+						"textTransform": {
+							"description": "Text transform",
+							"type": "string",
+							"enum": ["none", "uppercase", "lowercase", "capitalize"]
+						},
+						"textDecoration": {
+							"description": "Text decoration",
+							"type": "string",
+							"enum": ["none", "underline", "line-through"]
+						},
+						"fontFamily": {
+							"description": "Per-block font family override",
+							"type": "string"
+						},
+						"mobileFontSize": {
+							"description": "Font size on mobile (rendered via media query)",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"postalAddress": {
+							"description": "Marks the block that prints the sender's postal address, as the brand kit footer does.",
+							"type": "boolean"
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["html", "blockType", "fontSize", "textColor"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "greeting",
+					"type": "text",
+					"content": {
+						"html": "<p>Hi {{first_name|'there'}}, your order <strong>{{order_number}}</strong> is on its way.</p>",
+						"blockType": "paragraph",
+						"fontSize": 16,
+						"textColor": "#1f2937",
+						"lineHeight": 1.5,
+						"paddingTop": 8,
+						"paddingBottom": 8
+					}
+				}
+			]
+		},
+		"ImageBlock": {
+			"description": "An image, optionally linked.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "image"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"src": {
+							"description": "Image URL (https).",
+							"type": "string"
+						},
+						"alt": {
+							"description": "Alternative text. Leave empty only for a decorative image.",
+							"type": "string"
+						},
+						"width": {
+							"description": "Width in percent of the space the image sits in, 1 to 100.",
+							"type": "number"
+						},
+						"align": {
+							"type": "string",
+							"enum": ["left", "center", "right"]
+						},
+						"decorative": {
+							"description": "Marks the image as purely decorative: the empty `alt` is intentional, so the renderer emits `role=\"presentation\"` and the accessibility audit stops reporting the missing alt text.",
+							"type": "boolean"
+						},
+						"storageId": {
+							"description": "Set by the media library for an uploaded `src`. Leave it out for an external URL.",
+							"type": "string"
+						},
+						"mediaAssetId": {
+							"description": "Set by the media library for an uploaded `src`. Leave it out for an external URL.",
+							"type": "string"
+						},
+						"darkStorageId": {
+							"description": "Set by the media library for an uploaded `darkSrc`. Leave it out for an external URL.",
+							"type": "string"
+						},
+						"darkMediaAssetId": {
+							"description": "Set by the media library for an uploaded `darkSrc`. Leave it out for an external URL.",
+							"type": "string"
+						},
+						"linkUrl": {
+							"description": "Where a click on the image leads.",
+							"type": "string"
+						},
+						"height": {
+							"description": "Optional fixed height in px",
+							"type": "number"
+						},
+						"title": {
+							"description": "Title attribute for accessibility",
+							"type": "string"
+						},
+						"fluidOnMobile": {
+							"description": "Whether image should be 100% width on mobile",
+							"type": "boolean"
+						},
+						"srcset": {
+							"description": "Responsive image srcset for retina/HiDPI displays",
+							"type": "string"
+						},
+						"sizes": {
+							"description": "Sizes attribute for responsive images",
+							"type": "string"
+						},
+						"darkSrc": {
+							"description": "Alternative image source for dark mode (toggled via prefers-color-scheme CSS)",
+							"type": "string"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["src", "alt", "width", "align"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "product-shot",
+					"type": "image",
+					"content": {
+						"src": "https://example.com/images/product.png",
+						"alt": "The desk lamp in matte black",
+						"width": 100,
+						"align": "center",
+						"linkUrl": "https://example.com/products/desk-lamp"
+					}
+				}
+			]
+		},
+		"ButtonBlock": {
+			"description": "A call-to-action button that links to a URL.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "button"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"text": {
+							"description": "The button label.",
+							"type": "string"
+						},
+						"url": {
+							"description": "Where the button leads. The validator reports an empty URL or `#` as an error.",
+							"type": "string"
+						},
+						"backgroundColor": {
+							"description": "The button's fill color. The section around it takes `blockBackgroundColor`.",
+							"type": "string"
+						},
+						"textColor": {
+							"description": "Label color (CSS color).",
+							"type": "string"
+						},
+						"align": {
+							"description": "`full` stretches the button across the available width.",
+							"type": "string",
+							"enum": ["left", "center", "right", "full"]
+						},
+						"borderRadius": {
+							"description": "Corner radius of the button in px.",
+							"type": "number"
+						},
+						"paddingX": {
+							"description": "Horizontal padding inside the button in px.",
+							"type": "number"
+						},
+						"paddingY": {
+							"description": "Vertical padding inside the button in px.",
+							"type": "number"
+						},
+						"fontSize": {
+							"description": "Independent font size for button text",
+							"type": "number"
+						},
+						"fontFamily": {
+							"description": "Independent font family for button",
+							"type": "string"
+						},
+						"fontWeight": {
+							"description": "Font weight (e.g. 400, 700)",
+							"type": "number"
+						},
+						"letterSpacing": {
+							"description": "Letter spacing in px",
+							"type": "number"
+						},
+						"textTransform": {
+							"description": "Text transform",
+							"type": "string",
+							"enum": ["none", "uppercase", "lowercase", "capitalize"]
+						},
+						"buttonBorderWidth": {
+							"description": "Border width on the button element itself",
+							"type": "number"
+						},
+						"buttonBorderColor": {
+							"description": "Border color on the button element",
+							"type": "string"
+						},
+						"buttonBorderStyle": {
+							"description": "Border style on the button element",
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"buttonWidth": {
+							"description": "Explicit button width (px or %)",
+							"type": "string"
+						},
+						"target": {
+							"description": "Link target attribute",
+							"type": "string",
+							"enum": ["_blank", "_self"]
+						},
+						"backgroundGradient": {
+							"description": "Gradient background (CSS linear-gradient with VML fallback)",
+							"$ref": "#/$defs/GradientBackground"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"blockBackgroundColor": {
+							"description": "Background of the section around a button (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": [
+						"text",
+						"url",
+						"backgroundColor",
+						"textColor",
+						"align",
+						"borderRadius",
+						"paddingX",
+						"paddingY"
+					],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "track-order",
+					"type": "button",
+					"content": {
+						"text": "Track your order",
+						"url": "https://example.com/orders/{{order_number}}",
+						"backgroundColor": "#4f46e5",
+						"textColor": "#ffffff",
+						"align": "center",
+						"borderRadius": 6,
+						"paddingX": 24,
+						"paddingY": 12
+					}
+				}
+			]
+		},
+		"DividerBlock": {
+			"description": "A horizontal rule.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "divider"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"color": {
+							"description": "Line color (CSS color).",
+							"type": "string"
+						},
+						"thickness": {
+							"description": "Line thickness in px.",
+							"type": "number"
+						},
+						"width": {
+							"description": "Line length in percent of the available width, 1 to 100.",
+							"type": "number"
+						},
+						"style": {
+							"type": "string",
+							"enum": ["solid", "dashed", "dotted"]
+						},
+						"align": {
+							"description": "Divider alignment",
+							"type": "string",
+							"enum": ["left", "center", "right"]
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["color", "thickness", "width", "style"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "rule",
+					"type": "divider",
+					"content": {
+						"color": "#e5e7eb",
+						"thickness": 1,
+						"width": 100,
+						"style": "solid",
+						"paddingTop": 16,
+						"paddingBottom": 16
+					}
+				}
+			]
+		},
+		"SpacerBlock": {
+			"description": "Empty vertical space.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "spacer"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"height": {
+							"description": "Height in px.",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["height"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "gap",
+					"type": "spacer",
+					"content": {
+						"height": 24
+					}
+				}
+			]
+		},
+		"ColumnsBlock": {
+			"description": "Up to four columns side by side, each holding text, image, button, divider and spacer blocks.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "columns"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"columnCount": {
+							"description": "How many columns render. Extra entries in `columns` are ignored.",
+							"type": "integer",
+							"enum": [1, 2, 3, 4, 5]
+						},
+						"ratio": {
+							"description": "Width preset for the columns. One column always takes the full width.",
+							"type": "string",
+							"enum": ["equal", "left-wide", "right-wide", "left-narrow", "right-narrow"]
+						},
+						"columnWidths": {
+							"description": "Custom column widths in whole percent, one per column, summing to 100. When valid they win over `ratio`; see `getColumnWidths`.",
+							"type": "array",
+							"items": {
+								"type": "number"
+							}
+						},
+						"mobileStacking": {
+							"description": "Stack the columns on top of each other on mobile.",
+							"type": "boolean"
+						},
+						"columns": {
+							"description": "The blocks of each column, one array per column, left to right.",
+							"type": "array",
+							"items": {
+								"type": "array",
+								"items": {
+									"$ref": "#/$defs/ColumnItem"
+								}
+							}
+						},
+						"verticalAlign": {
+							"description": "Vertical alignment for all columns",
+							"type": "string",
+							"enum": ["top", "middle", "bottom"]
+						},
+						"columnGap": {
+							"description": "Gap between columns in px",
+							"type": "number"
+						},
+						"columnStyles": {
+							"description": "Per-column styling overrides",
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/ColumnStyle"
+							}
+						},
+						"direction": {
+							"description": "Text direction for column ordering",
+							"type": "string",
+							"enum": ["ltr", "rtl"]
+						},
+						"mobileStackOrder": {
+							"description": "Mobile stacking order: 'normal' preserves desktop order, 'reverse' flips it",
+							"type": "string",
+							"enum": ["normal", "reverse"]
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["columnCount", "ratio", "mobileStacking", "columns"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "product-row",
+					"type": "columns",
+					"content": {
+						"columnCount": 2,
+						"ratio": "right-wide",
+						"mobileStacking": true,
+						"columnGap": 16,
+						"columns": [
+							[
+								{
+									"id": "product-row-image",
+									"type": "image",
+									"content": {
+										"src": "https://example.com/images/lamp-thumb.png",
+										"alt": "Desk lamp",
+										"width": 100,
+										"align": "center"
+									}
+								}
+							],
+							[
+								{
+									"id": "product-row-name",
+									"type": "text",
+									"content": {
+										"html": "<p><strong>Desk lamp</strong><br>Matte black, warm white bulb</p>",
+										"blockType": "paragraph",
+										"fontSize": 15,
+										"textColor": "#1f2937"
+									}
+								},
+								{
+									"id": "product-row-price",
+									"type": "text",
+									"content": {
+										"html": "<p>€49.00</p>",
+										"blockType": "paragraph",
+										"fontSize": 15,
+										"textColor": "#1f2937",
+										"textAlign": "right"
+									}
+								}
+							]
+						]
+					}
+				}
+			]
+		},
+		"SocialBlock": {
+			"description": "A row of social profile icons.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "social"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"links": {
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/SocialLink"
+							}
+						},
+						"iconStyle": {
+							"description": "Which set of the built-in icons to use.",
+							"type": "string",
+							"enum": ["filled", "outline"]
+						},
+						"align": {
+							"type": "string",
+							"enum": ["left", "center", "right"]
+						},
+						"iconSize": {
+							"description": "Icon size in px.",
+							"type": "number"
+						},
+						"iconSpacing": {
+							"description": "Space between icons in px.",
+							"type": "number"
+						},
+						"iconColor": {
+							"description": "Icon color (CSS color).",
+							"type": "string"
+						},
+						"mode": {
+							"description": "Layout mode: horizontal or vertical",
+							"type": "string",
+							"enum": ["horizontal", "vertical"]
+						},
+						"showLabels": {
+							"description": "Show platform name text labels",
+							"type": "boolean"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["links", "iconStyle", "align", "iconSize", "iconSpacing", "iconColor"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "follow",
+					"type": "social",
+					"content": {
+						"links": [
+							{
+								"platform": "mastodon",
+								"url": "https://example.com/@owlat",
+								"enabled": true
+							},
+							{
+								"platform": "github",
+								"url": "https://github.com/wolvesdotink/owlat",
+								"enabled": true
+							}
+						],
+						"iconStyle": "filled",
+						"align": "center",
+						"iconSize": 24,
+						"iconSpacing": 12,
+						"iconColor": "#4b5563"
+					}
+				}
+			]
+		},
+		"ContainerBlock": {
+			"description": "A group of blocks with a shared background, border and padding.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "container"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"items": {
+							"description": "The blocks inside the container, top to bottom.",
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/ContainerItem"
+							}
+						},
+						"maxWidth": {
+							"description": "Maximum width in px.",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"backgroundImage": {
+							"description": "Background image URL for hero-like sections",
+							"type": "string"
+						},
+						"backgroundPosition": {
+							"description": "Background image position",
+							"type": "string",
+							"enum": ["center", "top", "bottom"]
+						},
+						"backgroundSize": {
+							"description": "Background image size",
+							"type": "string",
+							"enum": ["cover", "contain"]
+						},
+						"backgroundGradient": {
+							"description": "Gradient background (CSS linear-gradient with VML fallback)",
+							"$ref": "#/$defs/GradientBackground"
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": [
+						"items",
+						"maxWidth",
+						"paddingTop",
+						"paddingRight",
+						"paddingBottom",
+						"paddingLeft",
+						"borderWidth",
+						"borderColor",
+						"borderStyle",
+						"borderRadius"
+					],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "summary-card",
+					"type": "container",
+					"content": {
+						"maxWidth": 600,
+						"paddingTop": 24,
+						"paddingRight": 24,
+						"paddingBottom": 24,
+						"paddingLeft": 24,
+						"paddingLinked": true,
+						"marginTop": 0,
+						"marginRight": 0,
+						"marginBottom": 16,
+						"marginLeft": 0,
+						"borderWidth": 1,
+						"borderColor": "#e5e7eb",
+						"borderStyle": "solid",
+						"borderRadius": 8,
+						"backgroundColor": "#f9fafb",
+						"items": [
+							{
+								"id": "summary-title",
+								"type": "text",
+								"content": {
+									"html": "Order summary",
+									"blockType": "h2",
+									"fontSize": 20,
+									"textColor": "#111827"
+								}
+							},
+							{
+								"id": "summary-total",
+								"type": "text",
+								"content": {
+									"html": "<p>Total: <strong>{{order_total}}</strong></p>",
+									"blockType": "paragraph",
+									"fontSize": 16,
+									"textColor": "#1f2937"
+								}
+							}
+						]
+					}
+				}
+			]
+		},
+		"HeroBlock": {
+			"description": "A background image with blocks laid over it, such as a headline and a button.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "hero"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"backgroundImage": {
+							"description": "Background image URL (https).",
+							"type": "string"
+						},
+						"backgroundPosition": {
+							"type": "string",
+							"enum": ["center", "top", "bottom"]
+						},
+						"backgroundSize": {
+							"type": "string",
+							"enum": ["cover", "contain"]
+						},
+						"height": {
+							"description": "Height in px; with `fluid-height` the content may grow past it.",
+							"type": "number"
+						},
+						"mode": {
+							"type": "string",
+							"enum": ["fixed-height", "fluid-height"]
+						},
+						"verticalAlign": {
+							"description": "Where the blocks sit within the height.",
+							"type": "string",
+							"enum": ["top", "middle", "bottom"]
+						},
+						"overlayColor": {
+							"description": "Color laid over the image, for contrast (CSS color, may be translucent).",
+							"type": "string"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"backgroundGradient": {
+							"description": "Gradient background (CSS linear-gradient with VML fallback)",
+							"$ref": "#/$defs/GradientBackground"
+						},
+						"items": {
+							"description": "The blocks laid over the image, top to bottom.",
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/ContainerItem"
+							}
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": [
+						"backgroundImage",
+						"backgroundPosition",
+						"backgroundSize",
+						"height",
+						"mode",
+						"verticalAlign",
+						"items"
+					],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "launch-hero",
+					"type": "hero",
+					"content": {
+						"backgroundImage": "https://example.com/images/hero.jpg",
+						"backgroundPosition": "center",
+						"backgroundSize": "cover",
+						"height": 320,
+						"mode": "fluid-height",
+						"verticalAlign": "middle",
+						"overlayColor": "rgba(17, 24, 39, 0.45)",
+						"backgroundColor": "#111827",
+						"items": [
+							{
+								"id": "launch-hero-title",
+								"type": "text",
+								"content": {
+									"html": "The new collection is here",
+									"blockType": "h1",
+									"fontSize": 32,
+									"textColor": "#ffffff",
+									"textAlign": "center"
+								}
+							},
+							{
+								"id": "launch-hero-cta",
+								"type": "button",
+								"content": {
+									"text": "Shop now",
+									"url": "https://example.com/collection",
+									"backgroundColor": "#ffffff",
+									"textColor": "#111827",
+									"align": "center",
+									"borderRadius": 999,
+									"paddingX": 28,
+									"paddingY": 12
+								}
+							}
+						]
+					}
+				}
+			]
+		},
+		"TableBlock": {
+			"description": "A data table, such as an invoice or a price list.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "table"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"headers": {
+							"description": "Header cell texts, one per column.",
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						"rows": {
+							"description": "Body rows, each an array of cell texts in column order.",
+							"type": "array",
+							"items": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							}
+						},
+						"headerBackgroundColor": {
+							"type": "string"
+						},
+						"headerTextColor": {
+							"type": "string"
+						},
+						"borderColor": {
+							"description": "Color of the cell borders (CSS color).",
+							"type": "string"
+						},
+						"striped": {
+							"description": "Alternate the background of body rows.",
+							"type": "boolean"
+						},
+						"stripeColor": {
+							"description": "Background of every other body row when `striped`.",
+							"type": "string"
+						},
+						"cellPadding": {
+							"description": "Cell padding in px.",
+							"type": "number"
+						},
+						"textAlign": {
+							"type": "string",
+							"enum": ["left", "center", "right"]
+						},
+						"columns": {
+							"description": "Per-column width and alignment definitions",
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/TableColumn"
+							}
+						},
+						"cells": {
+							"description": "Rich cell data (alternative to rows[][] for advanced layouts)",
+							"type": "array",
+							"items": {
+								"type": "array",
+								"items": {
+									"$ref": "#/$defs/TableCell"
+								}
+							}
+						},
+						"footerRow": {
+							"description": "Optional footer row",
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						"captionText": {
+							"description": "Table caption for accessibility",
+							"type": "string"
+						},
+						"responsiveMode": {
+							"description": "Responsive table mode for mobile viewports (default: 'default')",
+							"type": "string",
+							"enum": ["default", "stack", "scroll", "hide-columns"]
+						},
+						"hideOnMobileColumns": {
+							"description": "Column indices to hide on mobile (only used when responsiveMode is 'hide-columns')",
+							"type": "array",
+							"items": {
+								"type": "number"
+							}
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": [
+						"headers",
+						"rows",
+						"headerBackgroundColor",
+						"headerTextColor",
+						"borderColor",
+						"striped",
+						"stripeColor",
+						"cellPadding",
+						"textAlign"
+					],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "invoice",
+					"type": "table",
+					"content": {
+						"headers": ["Item", "Qty", "Price"],
+						"rows": [
+							["Desk lamp", "1", "€49.00"],
+							["Bulb, warm white", "2", "€9.00"]
+						],
+						"footerRow": ["Total", "", "€58.00"],
+						"headerBackgroundColor": "#f3f4f6",
+						"headerTextColor": "#111827",
+						"borderColor": "#e5e7eb",
+						"striped": true,
+						"stripeColor": "#f9fafb",
+						"cellPadding": 10,
+						"textAlign": "left",
+						"columns": [
+							{
+								"width": "60%"
+							},
+							{
+								"width": "15%",
+								"textAlign": "center"
+							},
+							{
+								"textAlign": "right"
+							}
+						],
+						"responsiveMode": "stack"
+					}
+				}
+			]
+		},
+		"RawHtmlBlock": {
+			"description": "HTML written by hand, sanitized when the email renders.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "rawHtml"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"html": {
+							"description": "The HTML. Tags, attributes and styles outside the raw HTML policy are removed at render.",
+							"type": "string"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["html"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "legal-note",
+					"type": "rawHtml",
+					"content": {
+						"html": "<p style=\"font-size: 12px; color: #6b7280\">Prices include VAT. <a href=\"https://example.com/terms\">Terms</a></p>",
+						"paddingTop": 8,
+						"paddingBottom": 8
+					}
+				}
+			]
+		},
+		"VideoBlock": {
+			"description": "A video thumbnail with a play button that links to the video.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "video"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"thumbnailUrl": {
+							"description": "Thumbnail image URL (https).",
+							"type": "string"
+						},
+						"videoUrl": {
+							"description": "Where a click leads, such as the video's page.",
+							"type": "string"
+						},
+						"alt": {
+							"description": "Alternative text of the thumbnail.",
+							"type": "string"
+						},
+						"width": {
+							"description": "Width in percent of the available width, 1 to 100.",
+							"type": "number"
+						},
+						"align": {
+							"type": "string",
+							"enum": ["left", "center", "right"]
+						},
+						"playButtonColor": {
+							"type": "string"
+						},
+						"playButtonSize": {
+							"description": "Play button size in px.",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["thumbnailUrl", "videoUrl", "alt", "width", "align"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "walkthrough",
+					"type": "video",
+					"content": {
+						"thumbnailUrl": "https://example.com/images/walkthrough.jpg",
+						"videoUrl": "https://example.com/videos/walkthrough",
+						"alt": "Watch the two-minute walkthrough",
+						"width": 100,
+						"align": "center",
+						"playButtonColor": "#ffffff"
+					}
+				}
+			]
+		},
+		"AccordionBlock": {
+			"description": "Sections that open and close. Clients without support, Gmail among them, show every section open.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "accordion"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"sections": {
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/AccordionSection"
+							}
+						},
+						"allowMultiple": {
+							"description": "Whether multiple sections can be open simultaneously",
+							"type": "boolean"
+						},
+						"initialExpanded": {
+							"description": "Index of initially expanded section (-1 = all collapsed)",
+							"type": "number"
+						},
+						"headerBackgroundColor": {
+							"description": "Header background color",
+							"type": "string"
+						},
+						"headerTextColor": {
+							"description": "Header text color",
+							"type": "string"
+						},
+						"headerFontSize": {
+							"description": "Header font size",
+							"type": "number"
+						},
+						"contentBackgroundColor": {
+							"description": "Content background color",
+							"type": "string"
+						},
+						"iconColor": {
+							"description": "Icon color for expand/collapse indicator",
+							"type": "string"
+						},
+						"sectionBorderColor": {
+							"description": "Border color between sections",
+							"type": "string"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["sections"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "faq",
+					"type": "accordion",
+					"content": {
+						"sections": [
+							{
+								"id": "faq-shipping",
+								"title": "When will my order arrive?",
+								"items": [
+									{
+										"id": "faq-shipping-answer",
+										"type": "text",
+										"content": {
+											"html": "<p>Most orders arrive within three working days.</p>",
+											"blockType": "paragraph",
+											"fontSize": 15,
+											"textColor": "#1f2937"
+										}
+									}
+								]
+							},
+							{
+								"id": "faq-returns",
+								"title": "Can I return it?",
+								"items": [
+									{
+										"id": "faq-returns-answer",
+										"type": "text",
+										"content": {
+											"html": "<p>Yes, within 30 days.</p>",
+											"blockType": "paragraph",
+											"fontSize": 15,
+											"textColor": "#1f2937"
+										}
+									}
+								]
+							}
+						],
+						"initialExpanded": 0,
+						"headerBackgroundColor": "#f3f4f6",
+						"headerTextColor": "#111827"
+					}
+				}
+			]
+		},
+		"MenuBlock": {
+			"description": "A row of navigation links.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "menu"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"items": {
+							"description": "The links, left to right.",
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/MenuLink"
+							}
+						},
+						"align": {
+							"type": "string",
+							"enum": ["left", "center", "right"]
+						},
+						"fontSize": {
+							"description": "Font size for menu links",
+							"type": "number"
+						},
+						"fontFamily": {
+							"description": "Font family for menu links",
+							"type": "string"
+						},
+						"fontWeight": {
+							"description": "Font weight for menu links",
+							"type": "number"
+						},
+						"textColor": {
+							"description": "Text color for menu links",
+							"type": "string"
+						},
+						"textTransform": {
+							"description": "Text transform",
+							"type": "string",
+							"enum": ["none", "uppercase", "lowercase", "capitalize"]
+						},
+						"itemSpacing": {
+							"description": "Spacing between items in px",
+							"type": "number"
+						},
+						"separator": {
+							"description": "Separator character between items (e.g. '|', '·')",
+							"type": "string"
+						},
+						"separatorColor": {
+							"description": "Separator color",
+							"type": "string"
+						},
+						"hamburgerOnMobile": {
+							"description": "Enable hamburger toggle on mobile",
+							"type": "boolean"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["items", "align"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "nav",
+					"type": "menu",
+					"content": {
+						"items": [
+							{
+								"label": "Shop",
+								"url": "https://example.com/shop"
+							},
+							{
+								"label": "Orders",
+								"url": "https://example.com/orders"
+							},
+							{
+								"label": "Help",
+								"url": "https://example.com/help"
+							}
+						],
+						"align": "center",
+						"fontSize": 14,
+						"textColor": "#374151",
+						"separator": "·"
+					}
+				}
+			]
+		},
+		"CarouselBlock": {
+			"description": "An image slideshow. Clients without support, Gmail among them, show the first image.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "carousel"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"images": {
+							"description": "The slides, in order. At least one.",
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/CarouselImage"
+							}
+						},
+						"iconWidth": {
+							"description": "Navigation dot size in px",
+							"type": "number"
+						},
+						"iconColor": {
+							"description": "Active dot/nav color",
+							"type": "string"
+						},
+						"iconInactiveColor": {
+							"description": "Inactive dot color",
+							"type": "string"
+						},
+						"thumbnailWidth": {
+							"description": "Thumbnail strip width in px (0 = hidden)",
+							"type": "number"
+						},
+						"borderRadius": {
+							"description": "Border radius on images",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["images"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "gallery",
+					"type": "carousel",
+					"content": {
+						"images": [
+							{
+								"src": "https://example.com/images/lamp-front.jpg",
+								"alt": "Lamp, front"
+							},
+							{
+								"src": "https://example.com/images/lamp-side.jpg",
+								"alt": "Lamp, side"
+							}
+						],
+						"iconColor": "#111827"
+					}
+				}
+			]
+		},
+		"ListBlock": {
+			"description": "A bulleted, numbered, checkmark or icon list.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "list"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"items": {
+							"description": "List item text (can contain HTML)",
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						"listType": {
+							"description": "List style type",
+							"type": "string",
+							"enum": ["bullet", "numbered", "check", "icon"]
+						},
+						"bulletColor": {
+							"description": "Bullet/number color",
+							"type": "string"
+						},
+						"bulletSize": {
+							"description": "Bullet/number font size",
+							"type": "number"
+						},
+						"iconUrl": {
+							"description": "Custom icon URL for 'icon' list type",
+							"type": "string"
+						},
+						"fontSize": {
+							"description": "Text font size",
+							"type": "number"
+						},
+						"textColor": {
+							"description": "Text color",
+							"type": "string"
+						},
+						"itemSpacing": {
+							"description": "Spacing between items in px",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderRadius": {
+							"description": "Corner radius in px.",
+							"type": "number"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["items", "listType"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "next-steps",
+					"type": "list",
+					"content": {
+						"items": ["Confirm your address", "Pick a delivery day", "Track the parcel"],
+						"listType": "numbered",
+						"fontSize": 15,
+						"textColor": "#1f2937"
+					}
+				}
+			]
+		},
+		"ProgressBarBlock": {
+			"description": "A horizontal bar filled to a value.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email. Translations and saved-block links key on it.",
+					"type": "string",
+					"minLength": 1
+				},
+				"type": {
+					"const": "progressBar"
+				},
+				"content": {
+					"type": "object",
+					"properties": {
+						"value": {
+							"description": "Current value (0-100)",
+							"type": "number"
+						},
+						"maxValue": {
+							"description": "Maximum value (default 100)",
+							"type": "number"
+						},
+						"barColor": {
+							"description": "Filled bar color",
+							"type": "string"
+						},
+						"trackColor": {
+							"description": "Track background color",
+							"type": "string"
+						},
+						"height": {
+							"description": "Bar height in px",
+							"type": "number"
+						},
+						"borderRadius": {
+							"description": "Border radius on bar ends",
+							"type": "number"
+						},
+						"showLabel": {
+							"description": "Show percentage label",
+							"type": "boolean"
+						},
+						"labelPosition": {
+							"description": "Label position",
+							"type": "string",
+							"enum": ["right", "inside"]
+						},
+						"labelColor": {
+							"description": "Label text color",
+							"type": "string"
+						},
+						"labelFontSize": {
+							"description": "Label font size",
+							"type": "number"
+						},
+						"paddingTop": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingRight": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingBottom": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLeft": {
+							"description": "Space inside the block's border, in px.",
+							"type": "number"
+						},
+						"paddingLinked": {
+							"description": "Editor state: whether the four paddings are edited as one. The render ignores it.",
+							"type": "boolean"
+						},
+						"marginTop": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginRight": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginBottom": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"marginLeft": {
+							"description": "Space outside the block, in px.",
+							"type": "number"
+						},
+						"backgroundColor": {
+							"description": "Background of the block (CSS color).",
+							"type": "string"
+						},
+						"borderWidth": {
+							"description": "Border width in px.",
+							"type": "number"
+						},
+						"borderColor": {
+							"description": "Border color (CSS color).",
+							"type": "string"
+						},
+						"borderStyle": {
+							"type": "string",
+							"enum": ["none", "solid", "dashed", "dotted"]
+						},
+						"darkBackgroundColor": {
+							"description": "Background color override in dark mode",
+							"type": "string"
+						},
+						"darkTextColor": {
+							"description": "Text color override in dark mode",
+							"type": "string"
+						},
+						"hideOnMobile": {
+							"description": "Hide this block on mobile viewports",
+							"type": "boolean"
+						},
+						"hideOnDesktop": {
+							"description": "Hide this block on desktop viewports",
+							"type": "boolean"
+						},
+						"fullWidth": {
+							"description": "Stretch the block's background across the whole window; the content keeps the email's width.",
+							"type": "boolean"
+						},
+						"cssClass": {
+							"description": "Custom CSS class name(s) to apply to the block wrapper",
+							"type": "string"
+						},
+						"condition": {
+							"description": "Show the block only when a variable matches. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockCondition"
+						},
+						"repeat": {
+							"description": "Render the block once per item of an array variable. Only top-level blocks honour it.",
+							"$ref": "#/$defs/BlockRepeat"
+						}
+					},
+					"required": ["value", "barColor", "trackColor", "height"],
+					"additionalProperties": false
+				},
+				"savedBlockRef": {
+					"description": "Set on the blocks of a linked saved block; a change to the saved block replaces them.",
+					"$ref": "#/$defs/SavedBlockRef"
+				}
+			},
+			"required": ["id", "type", "content"],
+			"additionalProperties": false,
+			"examples": [
+				{
+					"id": "onboarding-progress",
+					"type": "progressBar",
+					"content": {
+						"value": 60,
+						"barColor": "#4f46e5",
+						"trackColor": "#e5e7eb",
+						"height": 8,
+						"showLabel": true,
+						"labelPosition": "right"
+					}
+				}
+			]
+		},
+		"AccordionSection": {
+			"description": "One section of an accordion: a title and the blocks it reveals.",
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "Unique within the email.",
+					"type": "string"
+				},
+				"title": {
+					"type": "string"
+				},
+				"items": {
+					"description": "The blocks shown when the section is open.",
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/ContainerItem"
+					}
+				}
+			},
+			"required": ["id", "title", "items"],
+			"additionalProperties": false
+		},
+		"BlockCondition": {
+			"description": "Show the block only when a variable matches.",
+			"type": "object",
+			"properties": {
+				"variable": {
+					"description": "The variable's name, without braces.",
+					"type": "string"
+				},
+				"operator": {
+					"description": "`exists` is true for a variable that is set and not empty.",
+					"type": "string",
+					"enum": ["equals", "notEquals", "contains", "exists", "notExists"]
+				},
+				"value": {
+					"description": "What `equals`, `notEquals` and `contains` compare with.",
+					"type": "string"
+				}
+			},
+			"required": ["variable", "operator"],
+			"additionalProperties": false
+		},
+		"BlockRepeat": {
+			"description": "Render the block once per item of an array variable, such as the lines of an order.",
+			"type": "object",
+			"properties": {
+				"variable": {
+					"description": "The variable holding the items, as a JSON array.",
+					"type": "string"
+				},
+				"itemAlias": {
+					"description": "The name each item's fields go by: with `item`, `{{item.name}}` is the item's `name`.",
+					"type": "string"
+				},
+				"maxItems": {
+					"description": "Render at most this many items; 500 at most in any case.",
+					"type": "number"
+				}
+			},
+			"required": ["variable", "itemAlias"],
+			"additionalProperties": false
+		},
+		"CarouselImage": {
+			"description": "One slide of a carousel.",
+			"type": "object",
+			"properties": {
+				"src": {
+					"description": "Image URL (https).",
+					"type": "string"
+				},
+				"alt": {
+					"type": "string"
+				},
+				"linkUrl": {
+					"description": "Where a click on the slide leads.",
+					"type": "string"
+				},
+				"thumbnailSrc": {
+					"description": "Smaller image for the thumbnail strip.",
+					"type": "string"
+				}
+			},
+			"required": ["src", "alt"],
+			"additionalProperties": false
+		},
+		"ColumnItem": {
+			"description": "A block inside a column: text, image, button, divider or spacer.",
+			"oneOf": [
+				{
+					"$ref": "#/$defs/TextBlock"
+				},
+				{
+					"$ref": "#/$defs/ImageBlock"
+				},
+				{
+					"$ref": "#/$defs/ButtonBlock"
+				},
+				{
+					"$ref": "#/$defs/DividerBlock"
+				},
+				{
+					"$ref": "#/$defs/SpacerBlock"
+				}
+			]
+		},
+		"ColumnStyle": {
+			"description": "Styling of one column, by position.",
+			"type": "object",
+			"properties": {
+				"backgroundColor": {
+					"description": "Background of the block (CSS color).",
+					"type": "string"
+				},
+				"paddingTop": {
+					"description": "Space inside the block's border, in px.",
+					"type": "number"
+				},
+				"paddingRight": {
+					"description": "Space inside the block's border, in px.",
+					"type": "number"
+				},
+				"paddingBottom": {
+					"description": "Space inside the block's border, in px.",
+					"type": "number"
+				},
+				"paddingLeft": {
+					"description": "Space inside the block's border, in px.",
+					"type": "number"
+				},
+				"verticalAlign": {
+					"type": "string",
+					"enum": ["top", "middle", "bottom"]
+				},
+				"borderWidth": {
+					"description": "Column border width",
+					"type": "number"
+				},
+				"borderColor": {
+					"description": "Column border color",
+					"type": "string"
+				},
+				"borderStyle": {
+					"description": "Column border style",
+					"type": "string",
+					"enum": ["none", "solid", "dashed", "dotted"]
+				},
+				"borderRadius": {
+					"description": "Column border radius",
+					"type": "number"
+				},
+				"backgroundImage": {
+					"description": "Background image URL (CSS-only, Outlook falls back to backgroundColor)",
+					"type": "string"
+				},
+				"backgroundPosition": {
+					"description": "Background image position",
+					"type": "string",
+					"enum": ["left", "center", "right", "top", "bottom"]
+				},
+				"backgroundSize": {
+					"description": "Background image size",
+					"type": "string",
+					"enum": ["cover", "contain", "auto"]
+				},
+				"stackOnMobile": {
+					"description": "Per-column opt-out from mobile stacking (default: true, follows parent mobileStacking)",
+					"type": "boolean"
+				}
+			},
+			"additionalProperties": false
+		},
+		"ContainerItem": {
+			"description": "A block inside a container, hero or accordion section: text, image, button, divider, spacer, columns, social or another container.",
+			"oneOf": [
+				{
+					"$ref": "#/$defs/TextBlock"
+				},
+				{
+					"$ref": "#/$defs/ImageBlock"
+				},
+				{
+					"$ref": "#/$defs/ButtonBlock"
+				},
+				{
+					"$ref": "#/$defs/DividerBlock"
+				},
+				{
+					"$ref": "#/$defs/SpacerBlock"
+				},
+				{
+					"$ref": "#/$defs/ColumnsBlock"
+				},
+				{
+					"$ref": "#/$defs/SocialBlock"
+				},
+				{
+					"$ref": "#/$defs/ContainerBlock"
+				}
+			]
+		},
+		"GradientBackground": {
+			"description": "Gradient background definition for buttons, containers, and hero blocks. Renders as CSS linear-gradient with solid backgroundColor fallback. Uses VML gradient fill (<v:fill type=\"gradient\">) for Outlook.",
+			"type": "object",
+			"properties": {
+				"direction": {
+					"description": "CSS gradient direction (e.g. 'to right', '135deg', 'to bottom right')",
+					"type": "string"
+				},
+				"stops": {
+					"description": "Color stops",
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"color": {
+								"type": "string"
+							},
+							"position": {
+								"type": "number"
+							}
+						},
+						"required": ["color", "position"],
+						"additionalProperties": false
+					}
+				}
+			},
+			"required": ["direction", "stops"],
+			"additionalProperties": false
+		},
+		"MenuLink": {
+			"description": "One link of a menu.",
+			"type": "object",
+			"properties": {
+				"label": {
+					"type": "string"
+				},
+				"url": {
+					"type": "string"
+				}
+			},
+			"required": ["label", "url"],
+			"additionalProperties": false
+		},
+		"SavedBlockRef": {
+			"description": "Reference to a saved block for linked block functionality",
+			"type": "object",
+			"properties": {
+				"blockId": {
+					"type": "string"
+				},
+				"groupId": {
+					"type": "string"
+				},
+				"blockName": {
+					"type": "string"
+				}
+			},
+			"required": ["blockId", "groupId", "blockName"],
+			"additionalProperties": false
+		},
+		"SocialLink": {
+			"description": "One platform's profile link.",
+			"type": "object",
+			"properties": {
+				"platform": {
+					"type": "string",
+					"enum": [
+						"twitter",
+						"facebook",
+						"instagram",
+						"linkedin",
+						"youtube",
+						"tiktok",
+						"github",
+						"whatsapp",
+						"telegram",
+						"threads",
+						"pinterest",
+						"discord",
+						"mastodon",
+						"bluesky",
+						"vimeo",
+						"medium",
+						"snapchat"
+					]
+				},
+				"url": {
+					"description": "Profile URL. A link without one is not shown.",
+					"type": "string"
+				},
+				"enabled": {
+					"description": "Whether the icon is shown.",
+					"type": "boolean"
+				},
+				"iconUrl": {
+					"description": "Custom icon URL",
+					"type": "string"
+				}
+			},
+			"required": ["platform", "url", "enabled"],
+			"additionalProperties": false
+		},
+		"TableCell": {
+			"description": "Rich table cell with styling options",
+			"type": "object",
+			"properties": {
+				"content": {
+					"description": "Cell content (can contain HTML)",
+					"type": "string"
+				},
+				"colSpan": {
+					"description": "Merge columns",
+					"type": "number"
+				},
+				"rowSpan": {
+					"description": "Merge rows",
+					"type": "number"
+				},
+				"textAlign": {
+					"description": "Per-cell text alignment",
+					"type": "string",
+					"enum": ["left", "center", "right"]
+				},
+				"backgroundColor": {
+					"description": "Per-cell background color",
+					"type": "string"
+				},
+				"fontWeight": {
+					"description": "Per-cell font weight",
+					"type": "number"
+				}
+			},
+			"required": ["content"],
+			"additionalProperties": false
+		},
+		"TableColumn": {
+			"description": "Per-column table definition",
+			"type": "object",
+			"properties": {
+				"width": {
+					"description": "Column width (e.g. \"25%\" or \"100px\")",
+					"type": "string"
+				},
+				"textAlign": {
+					"description": "Column text alignment",
+					"type": "string",
+					"enum": ["left", "center", "right"]
+				}
+			},
+			"additionalProperties": false
+		}
+	}
+}

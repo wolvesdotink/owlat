@@ -10,6 +10,7 @@ import {
 	type AutomationStepWaitReason,
 } from '../lib/validators/automations';
 import { healthWindowStart } from './health';
+import { newestWaitingStepRuns } from './waitingRuns';
 import type { DatabaseReader } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 
@@ -73,6 +74,17 @@ async function runNotesOf(
 	return { failure: null, waiting };
 }
 
+/** The running runs behind the newest `take` waiting step runs, in that order. */
+async function waitingRunsOf(
+	db: DatabaseReader,
+	automationId: Doc<'automations'>['_id'],
+	take: number
+): Promise<Doc<'automationRuns'>[]> {
+	const stepRuns = await newestWaitingStepRuns(db, automationId, take);
+	const runs = await Promise.all(stepRuns.map((stepRun) => db.get(stepRun.automationRunId)));
+	return runs.filter((run): run is Doc<'automationRuns'> => run?.status === 'running');
+}
+
 // Get automation runs for analytics with contact details.
 // Pagination is index-ordered (desc by creation time); the previous shape
 // `.collect()`-ed every matching run, JS-sorted, then sliced — which scaled
@@ -82,7 +94,9 @@ async function runNotesOf(
 // `endReason` narrows to the runs behind one of the list's health counts: the
 // runs that ended for that reason inside the same last-7-days window
 // (automations/health.ts), most recently ended first. It takes precedence over
-// `status` (every such run is cancelled).
+// `status` (every such run is cancelled). `waiting` narrows to the running runs
+// whose email step waits for the sending setup now (automations/waitingRuns.ts),
+// newest wait first; it takes precedence over both.
 //
 // all-members: run history is part of the automation page every member may
 // read; the joined contact is the display projection (id, email, name) already
@@ -93,6 +107,9 @@ async function runNotesOf(
 // text or a plugin's reason, already clamped and stripped at the plugin seam.
 // A running run whose email step waits for the sending setup joins `waiting`,
 // the same pair plus when the wait gives up (null on every other run).
+// A run that skipped an email step because the contact may no longer get it
+// carries `emailSkip` from the row; `emailSkipTopicName` names the topic the
+// contact left (null when the topic was deleted since, or for another reason).
 export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -100,6 +117,7 @@ export const getAutomationRuns = automationsQuery({
 			v.union(v.literal('running'), v.literal('completed'), v.literal('cancelled'))
 		),
 		endReason: v.optional(automationRunEndReasonValidator),
+		waiting: v.optional(v.boolean()),
 		limit: v.optional(v.number()),
 		offset: v.optional(v.number()),
 	},
@@ -111,43 +129,47 @@ export const getAutomationRuns = automationsQuery({
 		const takeCount = offset + limit + 1;
 		const endReason = args.endReason;
 
-		const runs = endReason
-			? await ctx.db
-					.query('automationRuns')
-					.withIndex('by_automation_end_reason_completed', (q) =>
-						q
-							.eq('automationId', args.automationId)
-							.eq('endReason', endReason)
-							.gte('completedAt', healthWindowStart(Date.now()))
-					)
-					.order('desc')
-					.take(takeCount)
-			: args.status
+		const runs = args.waiting
+			? await waitingRunsOf(ctx.db, args.automationId, takeCount)
+			: endReason
 				? await ctx.db
 						.query('automationRuns')
-						.withIndex('by_automation_and_status', (q) =>
-							q.eq('automationId', args.automationId).eq('status', args.status!)
+						.withIndex('by_automation_end_reason_completed', (q) =>
+							q
+								.eq('automationId', args.automationId)
+								.eq('endReason', endReason)
+								.gte('completedAt', healthWindowStart(Date.now()))
 						)
 						.order('desc')
 						.take(takeCount)
-				: await ctx.db
-						.query('automationRuns')
-						.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-						.order('desc')
-						.take(takeCount);
+				: args.status
+					? await ctx.db
+							.query('automationRuns')
+							.withIndex('by_automation_and_status', (q) =>
+								q.eq('automationId', args.automationId).eq('status', args.status!)
+							)
+							.order('desc')
+							.take(takeCount)
+					: await ctx.db
+							.query('automationRuns')
+							.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
+							.order('desc')
+							.take(takeCount);
 
 		const paginatedRuns = runs.slice(offset, offset + limit);
 		const hasMore = runs.length > offset + limit;
 
 		const enrichedRuns = await Promise.all(
 			paginatedRuns.map(async (run) => {
-				const [contact, notes] = await Promise.all([
+				const [contact, notes, skipTopic] = await Promise.all([
 					getLiveContact(ctx, run.contactId),
 					runNotesOf(ctx.db, run),
+					run.emailSkip?.topicId ? ctx.db.get(run.emailSkip.topicId) : null,
 				]);
 				return {
 					...run,
 					...notes,
+					emailSkipTopicName: skipTopic?.name ?? null,
 					contact: contact
 						? {
 								_id: contact._id,

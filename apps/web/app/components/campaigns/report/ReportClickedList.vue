@@ -99,9 +99,11 @@ const { t } = useI18n();
 						</div>
 						<div v-if="send.clickedLinks.length > 3" class="text-xs text-text-tertiary">
 							{{
-								t('dashboard.campaigns.detail.report.moreLinks', {
-									count: send.clickedLinks.length - 3,
-								})
+								t(
+									'dashboard.campaigns.detail.report.moreLinks',
+									{ count: send.clickedLinks.length - 3 },
+									send.clickedLinks.length - 3
+								)
 							}}
 						</div>
 					</div>

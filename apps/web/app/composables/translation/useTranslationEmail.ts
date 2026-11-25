@@ -97,7 +97,6 @@ export function useTranslationEmail(props: {
 		{ label: () => t('components.translation.manager.removeLanguageOperation') }
 	);
 
-	// The transactional write takes no preview text, so its fields are named.
 	const updateTranslation = async (
 		payload: TranslationUpdatePayload
 	): Promise<TranslationCommitResult> => {
@@ -109,12 +108,7 @@ export function useTranslationEmail(props: {
 					})
 				: await updateTransactionalTranslation({
 						id: props.emailId as Id<'transactionalEmails'>,
-						language: payload.language,
-						subject: payload.subject,
-						blocks: payload.blocks,
-						htmlContent: payload.htmlContent,
-						rendererVersion: payload.rendererVersion,
-						expectedContentRevision: payload.expectedContentRevision,
+						...payload,
 					});
 		return saved.ok ? { ok: true, revision: saved.result.contentRevision } : { ok: false };
 	};

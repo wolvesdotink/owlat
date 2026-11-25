@@ -29,6 +29,10 @@
 			"types": "./src/registryLatch.ts",
 			"import": "./src/registryLatch.ts"
 		},
+		"./preheader": {
+			"types": "./src/preheader.ts",
+			"import": "./src/preheader.ts"
+		},
 		"./sanitize": {
 			"types": "./src/sanitize.ts",
 			"import": "./src/sanitize.ts"

@@ -37,7 +37,7 @@ interface MailboxFixture {
 type AdapterArgs = Parameters<MutationCtx['runQuery']>[1];
 
 /** BetterAuth user id (`_id`) for a login email, or null when not seeded. */
-async function authUserIdByEmail(ctx: MutationCtx, email: string): Promise<string | null> {
+export async function authUserIdByEmail(ctx: MutationCtx, email: string): Promise<string | null> {
 	const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
 		model: 'user',
 		where: [{ field: 'email', value: email }],
@@ -45,6 +45,17 @@ async function authUserIdByEmail(ctx: MutationCtx, email: string): Promise<strin
 	} as unknown as AdapterArgs)) as { page?: Array<{ _id: string }> } | null;
 	const user = result?.page?.[0];
 	return user ? user._id : null;
+}
+
+/** The deployment's one organization, or null before `/seed/admin` created it. */
+export async function singletonOrganizationId(ctx: MutationCtx): Promise<string | null> {
+	const orgResult = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
+		model: 'organization',
+		where: [],
+		paginationOpts: { cursor: null, numItems: 1 },
+	} as unknown as AdapterArgs)) as { page?: Array<{ id?: string; _id?: string }> } | null;
+	const org = orgResult?.page?.[0];
+	return org ? String(org.id ?? org._id) : null;
 }
 
 async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {
@@ -56,13 +67,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 
 	// Mailboxes are tenant rows — without the singleton org there is nothing to
 	// attach them to (mirrors the accounts loader's guard).
-	const orgResult = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
-		model: 'organization',
-		where: [],
-		paginationOpts: { cursor: null, numItems: 1 },
-	} as unknown as AdapterArgs)) as { page?: Array<{ id?: string; _id?: string }> } | null;
-	const org = orgResult?.page?.[0];
-	const organizationId = org ? String(org.id ?? org._id) : null;
+	const organizationId = await singletonOrganizationId(ctx);
 	if (!organizationId) {
 		return { inserted: 0, skipped: records.length, ids };
 	}

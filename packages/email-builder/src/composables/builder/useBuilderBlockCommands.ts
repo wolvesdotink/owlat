@@ -2,13 +2,14 @@ import type { ComputedRef, Ref } from 'vue';
 import type {
 	BlockType,
 	ColumnItem,
+	ColumnsBlockContent,
 	ContainerBlockContent,
 	ContainerItem,
 	EditorBlock,
 	EmailTheme,
 	HeroBlockContent,
 } from '../../types';
-import { createBlock } from '../../utils/blocks';
+import { createBlock, updateColumnsContent } from '../../utils/blocks';
 import { locateBlock, replaceBlockInTree } from '../../utils/blockTree';
 import { moveBlock, type MoveDirection } from '../../utils/blockMove';
 import { generateId } from '../../utils/id';
@@ -76,7 +77,9 @@ export function useBuilderBlockCommands({
 					...block,
 					content: (key.includes('.')
 						? setByPath(block.content as unknown as Record<string, unknown>, key, value)
-						: { ...block.content, [key]: value }) as unknown as EditorBlock['content'],
+						: block.type === 'columns'
+							? updateColumnsContent(block.content as ColumnsBlockContent, key, value)
+							: { ...block.content, [key]: value }) as unknown as EditorBlock['content'],
 				}) as EditorBlock,
 			selectedRootId.value
 		);

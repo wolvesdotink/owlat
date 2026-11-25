@@ -180,12 +180,27 @@ describe('site URL for the success messages', () => {
 		}
 	});
 
+	it('loadBackendContext follows the site port .env moved', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'owlat-backend-'));
+		try {
+			writeFileSync(
+				join(dir, '.env'),
+				'INSTANCE_SECRET=abc\nNUXT_PUBLIC_CONVEX_SITE_URL=http://localhost:3211\nCONVEX_SITE_PORT=13211\n'
+			);
+			expect((await loadBackendContext(dir)).baseUrl).toBe('http://localhost:13211');
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('loadBackendContext reaches the published port through OWLAT_LOCAL_HOST (Docker Desktop)', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'owlat-backend-'));
 		vi.stubEnv('OWLAT_LOCAL_HOST', 'host.docker.internal');
 		try {
 			writeFileSync(join(dir, '.env'), 'INSTANCE_SECRET=abc\n');
 			expect((await loadBackendContext(dir)).baseUrl).toBe('http://host.docker.internal:3211');
+			writeFileSync(join(dir, '.env'), 'INSTANCE_SECRET=abc\nCONVEX_SITE_PORT=13211\n');
+			expect((await loadBackendContext(dir)).baseUrl).toBe('http://host.docker.internal:13211');
 			// An explicit URL still wins.
 			expect((await loadBackendContext(dir, 'http://127.0.0.1:9999')).baseUrl).toBe(
 				'http://127.0.0.1:9999'

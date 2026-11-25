@@ -112,6 +112,46 @@ describe('SubjectFields', () => {
 		expect(w.findAll('[title]')).toHaveLength(0);
 	});
 
+	describe('preview text', () => {
+		const previewInput = (w: VueWrapper) =>
+			w.get<HTMLInputElement>('input[aria-label="Preview text"]');
+
+		it('shows no preview text row unless the host edits it here', () => {
+			const w = mountFields('Hi');
+			expect(w.find('input[aria-label="Preview text"]').exists()).toBe(false);
+		});
+
+		it('inserts a variable into the preview text from the {{ picker', async () => {
+			const w = mountFields('Hi', {
+				previewText: '',
+				'onUpdate:previewText': (value: string) => wrapper?.setProps({ previewText: value }),
+			});
+			const input = previewInput(w);
+			expect(input.attributes('maxlength')).toBe('150');
+			input.element.value = 'Order {{ord';
+			input.element.setSelectionRange(11, 11);
+			await input.trigger('input');
+			await input.trigger('keydown', { key: 'Enter' });
+			expect(w.emitted('update:previewText')?.at(-1)).toEqual(['Order {{orderId}}']);
+			expect(w.emitted('update:subject')).toBeUndefined();
+		});
+
+		it('does not insert a variable that would pass the 150-character limit', async () => {
+			const w = mountFields('Hi', { previewText: 'x'.repeat(145) });
+			await w.get('[data-testid="preview-text-insert-variable"]').trigger('click');
+			await w.findAll('[role="option"]')[1]!.trigger('mousedown');
+			expect(w.emitted('update:previewText')).toBeUndefined();
+		});
+
+		it('flags an unknown token in the preview text and offers to define it', async () => {
+			const w = mountFields('Hi', { previewText: 'Track {{trackingCode}}' });
+			expect(previewInput(w).attributes('aria-describedby')).toBeTruthy();
+			const define = w.findAll('button').find((b) => b.text() === 'Define trackingCode');
+			await define!.trigger('click');
+			expect(w.emitted('add-variable')?.at(-1)).toEqual(['trackingCode']);
+		});
+	});
+
 	it('hides the insert button when there is nothing to insert', () => {
 		const w = mountFields('Hi', { variables: [], dataVariables: [] });
 		expect(w.find('[data-testid="subject-insert-variable"]').exists()).toBe(false);

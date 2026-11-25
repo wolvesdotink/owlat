@@ -3,6 +3,7 @@ import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
 import {
 	extractTranslatableContent,
 	mergeTranslationIntoItem,
+	rekeyItemTexts,
 	type BlockLikeItem,
 	type TranslatableBlockContent,
 } from '@owlat/api/translationMerge';
@@ -68,6 +69,13 @@ function isBlockLikeItem(value: unknown): value is BlockLikeItem {
 	);
 }
 
+/** The entries of a Block list document; throws when `content` is not one. */
+function readBlockList(content: string): unknown[] {
+	const decoded = decodeJsonText(content, blockListDecoder);
+	if (!decoded.ok) throw new Error('Could not read the email content to merge a translation into');
+	return decoded.value;
+}
+
 /**
  * `content` with an overlay's Block text merged in; an entry that is not a
  * Block has no id for overlay text to address and stays as it is. Content
@@ -78,10 +86,8 @@ function mergeOverlayIntoContent(
 	content: string,
 	blocks: Record<string, TranslatableBlockContent>
 ): string {
-	const decoded = decodeJsonText(content, blockListDecoder);
-	if (!decoded.ok) throw new Error('Could not read the email content to merge a translation into');
 	return JSON.stringify(
-		decoded.value.map((block) =>
+		readBlockList(content).map((block) =>
 			isBlockLikeItem(block) ? mergeTranslationIntoItem(block, blocks) : block
 		)
 	);
@@ -131,10 +137,18 @@ export function promoteLanguage(
 ): SettingsLanguageState {
 	const promoted = state.translations[language];
 	if (!promoted) throw new Error(`No ${language} translation to make the default language`);
-	const others = { ...state.translations };
-	delete others[language];
+	const content = mergeOverlayIntoContent(state.content, promoted.blocks ?? {});
+	// List items, table text and menu labels are keyed by their source text,
+	// which the swap replaces: every overlay moves to the new default's keys.
+	const rekey = (blocks: Record<string, TranslatableBlockContent>) =>
+		rekeyItemTexts(readBlockList(state.content), readBlockList(content), blocks);
+	const others: Record<string, SettingsOverlay> = {};
+	for (const [code, overlay] of Object.entries(state.translations)) {
+		if (code === language) continue;
+		others[code] = overlay.blocks ? { ...overlay, blocks: rekey(overlay.blocks) } : overlay;
+	}
 	return {
-		content: mergeOverlayIntoContent(state.content, promoted.blocks ?? {}),
+		content,
 		subject: promoted.subject ?? '',
 		defaultLanguage: language,
 		supportedLanguages: [
@@ -147,7 +161,7 @@ export function promoteLanguage(
 			...others,
 			[state.defaultLanguage]: {
 				subject: state.subject,
-				blocks: extractTranslatableContent(state.content),
+				blocks: rekey(extractTranslatableContent(state.content)),
 			},
 		},
 	};

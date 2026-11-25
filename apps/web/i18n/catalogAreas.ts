@@ -44,6 +44,17 @@ const ALWAYS_ON_DIRS = ['layouts', 'plugins', 'middleware'];
 const ALWAYS_ON_FILES: ReadonlySet<string> = new Set(['app.vue', 'error.vue']);
 
 /**
+ * Dashboard sections whose pages below one of the listed segments form an area
+ * of their own (`/dashboard/send/transactional` is `dashboard-send-transactional`).
+ * A locale chunk holds copy, which no dynamic import can shrink, so a section
+ * whose copy outgrows its budget is cut along a route boundary instead: each
+ * page then loads the messages of its own part only.
+ */
+const SUB_AREAS: Readonly<Record<string, readonly string[]>> = {
+	send: ['transactional'],
+};
+
+/**
  * The area a page file (relative to `pages/`) belongs to, or `null` for a page
  * whose messages ship in the boot catalog: the auth pages, the root page, and
  * any page whose area segment is dynamic. Either separator splits a segment:
@@ -51,7 +62,7 @@ const ALWAYS_ON_FILES: ReadonlySet<string> = new Set(['app.vue', 'error.vue']);
  */
 export function pageArea(relativePath: string): AreaRoute | null {
 	const segments = relativePath.replace(/\.vue$/, '').split(/[\\/]/);
-	const [first, second] = segments;
+	const [first, second, third] = segments;
 	if (!first || first === 'auth' || first === 'index' || first.startsWith('[')) return null;
 	if (first === 'dashboard') {
 		// `pages/dashboard.vue` would wrap every dashboard route.
@@ -60,6 +71,13 @@ export function pageArea(relativePath: string): AreaRoute | null {
 			return { path: '/dashboard', exact: true, area: 'dashboard' };
 		}
 		if (!second || /[[(]/.test(second)) return null;
+		if (third && SUB_AREAS[second]?.includes(third)) {
+			return {
+				path: `/dashboard/${second}/${third}`,
+				exact: false,
+				area: `dashboard-${second}-${third}`,
+			};
+		}
 		return { path: `/dashboard/${second}`, exact: false, area: `dashboard-${second}` };
 	}
 	if (/[[(]/.test(first)) return null;

@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import {
-	buildContactsCsv,
-	downloadCsv,
-	fetchPropertyValuesChunked,
-	type CsvContact,
-} from '~/utils/contactsCsv';
+import type { CsvContact } from '~/utils/contactsCsv';
 import { DownloadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -69,6 +64,12 @@ const handleExport = async () => {
 			isOpen.value = false;
 			return;
 		}
+
+		// The CSV writer (papaparse) loads with the first export that has rows, not
+		// with the contacts page that mounts this modal. A chunk that fails to load
+		// lands in the catch below like any other export failure.
+		const { buildContactsCsv, downloadCsv, fetchPropertyValuesChunked } =
+			await import('~/utils/contactsCsv');
 
 		const contactExportIds = (contactsToExport as ExportContact[]).map((c) => c._id);
 		// Chunk the ids so each query stays under the Convex per-transaction

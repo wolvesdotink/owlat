@@ -396,6 +396,28 @@ describe('the route and deferred-feature budgets', () => {
 		);
 	});
 
+	it('prints the line a locale chunk over its budget takes, not the advice to defer code', () => {
+		const locale = '../node_modules/.cache/owlat-i18n/areas/send.en.json';
+		const output = build(
+			{
+				...CHUNKS,
+				'index.js':
+					'import{v}from"./vue.js";const l=()=>import(`./send.en.js`);export default v(l);\n',
+				'send.en.js': `export default "${incompressible(4 * 1024)}";\n`,
+			},
+			{ ...RESOURCES, [locale]: { file: 'send.en.js', src: locale } }
+		);
+		const gzip = report(output).deferred.find((chunk) => chunk.key === locale)?.beyondEntry
+			.gzip as number;
+
+		const result = run(output, '--budgets', budgetsFile(`${ROOMY}\ndeferred 1 ${locale}`));
+
+		expect(result.status).toBe(1);
+		expect(result.output).toContain('1 locale chunk is over budget');
+		expect(result.output).toContain(`  deferred ${suggestedBudgetKiB(gzip)} ${locale}`);
+		expect(result.output).not.toContain('closure is over budget');
+	});
+
 	it('records an over-budget build as JSON without failing', () => {
 		const result = run(heavyEditor(), '--json', '--budgets', budgets(4));
 		const edit = (JSON.parse(result.stdout) as Report).routes.find(

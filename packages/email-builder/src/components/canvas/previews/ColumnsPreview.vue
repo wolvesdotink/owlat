@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, inject } from 'vue';
-import type { EditorBlock, EmailTheme, ColumnsBlockContent, Variable, SlashCommand } from '../../../types';
+import type {
+	EditorBlock,
+	EmailTheme,
+	ColumnsBlockContent,
+	Variable,
+	SlashCommand,
+} from '../../../types';
 import type { ParentContext } from '../types';
 import { blockBoxStyle, getColumnWidths } from '../../../utils/blocks';
 import { VueDraggable } from 'vue-draggable-plus';
@@ -20,7 +26,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	(e: 'select-nested', payload: { itemId: string; context: ParentContext; element: HTMLElement }): void;
+	(
+		e: 'select-nested',
+		payload: { itemId: string; context: ParentContext; element: HTMLElement }
+	): void;
 	(e: 'update-children', blockId: string, children: unknown[]): void;
 	(e: 'double-click-block', blockId: string): void;
 	(e: 'exit-inline-edit'): void;
@@ -43,7 +52,7 @@ const wrapperStyles = computed(() => ({
 }));
 
 const columnWidths = computed(() =>
-	getColumnWidths(content.value.columnCount, content.value.ratio)
+	getColumnWidths(content.value.columnCount, content.value.ratio, content.value.columnWidths)
 );
 
 const direction = computed(() => content.value.direction || 'ltr');
@@ -55,13 +64,16 @@ function getColumnStyles(colIdx: number) {
 	const bgParts: string[] = [];
 	if (colStyle.backgroundImage) bgParts.push(`url(${colStyle.backgroundImage})`);
 
-	const hasBorder = colStyle.borderWidth && colStyle.borderWidth > 0 && colStyle.borderStyle !== 'none';
+	const hasBorder =
+		colStyle.borderWidth && colStyle.borderWidth > 0 && colStyle.borderStyle !== 'none';
 
 	return {
 		backgroundColor: colStyle.backgroundColor || undefined,
 		backgroundImage: bgParts.length ? bgParts.join(', ') : undefined,
-		backgroundPosition: colStyle.backgroundImage ? (colStyle.backgroundPosition || 'center') : undefined,
-		backgroundSize: colStyle.backgroundImage ? (colStyle.backgroundSize || 'cover') : undefined,
+		backgroundPosition: colStyle.backgroundImage
+			? colStyle.backgroundPosition || 'center'
+			: undefined,
+		backgroundSize: colStyle.backgroundImage ? colStyle.backgroundSize || 'cover' : undefined,
 		backgroundRepeat: colStyle.backgroundImage ? 'no-repeat' : undefined,
 		verticalAlign: colStyle.verticalAlign || undefined,
 		paddingTop: colStyle.paddingTop != null ? `${colStyle.paddingTop}px` : undefined,
@@ -83,8 +95,9 @@ function handleColumnReorder(colIdx: number, newItems: unknown[]) {
 
 function handleChildSelect(itemId: string, colIdx: number, event: MouseEvent) {
 	event.stopPropagation();
-	const el = (event.currentTarget as HTMLElement)?.closest(`[data-block-id="${itemId}"]`) as HTMLElement
-		|| event.currentTarget as HTMLElement;
+	const el =
+		((event.currentTarget as HTMLElement)?.closest(`[data-block-id="${itemId}"]`) as HTMLElement) ||
+		(event.currentTarget as HTMLElement);
 	emit('select-nested', {
 		itemId,
 		context: { type: 'column', parentId: props.block.id, columnIndex: colIdx },
@@ -105,7 +118,11 @@ function handleChildDoubleClick(item: { id: string; type: string }) {
 				v-for="(col, colIdx) in content.columns"
 				:key="colIdx"
 				class="flex flex-col min-h-[40px] border border-dashed border-transparent rounded transition-colors duration-(--motion-fast) hover:border-border-default"
-				:style="{ width: columnWidths[colIdx], verticalAlign: content.verticalAlign || 'top', ...getColumnStyles(colIdx) }"
+				:style="{
+					width: columnWidths[colIdx],
+					verticalAlign: content.verticalAlign || 'top',
+					...getColumnStyles(colIdx),
+				}"
 			>
 				<VueDraggable
 					:model-value="col"
@@ -138,11 +155,18 @@ function handleChildDoubleClick(item: { id: string; type: string }) {
 							:selected-nested-item-id="selectedNestedItemId"
 							:inline-edit-block-id="inlineEditBlockId"
 							:variables="variables"
-							@select-nested="(payload: { itemId: string; context: ParentContext; element: HTMLElement }) => emit('select-nested', payload)"
-							@update-children="(blockId: string, children: unknown[]) => emit('update-children', blockId, children)"
+							@select-nested="
+								(payload: { itemId: string; context: ParentContext; element: HTMLElement }) =>
+									emit('select-nested', payload)
+							"
+							@update-children="
+								(blockId: string, children: unknown[]) => emit('update-children', blockId, children)
+							"
 							@double-click-block="(id: string) => emit('double-click-block', id)"
 							@exit-inline-edit="emit('exit-inline-edit')"
-							@slash-command-select="(cmd: SlashCommand, blockId: string) => emit('slash-command-select', cmd, blockId)"
+							@slash-command-select="
+								(cmd: SlashCommand, blockId: string) => emit('slash-command-select', cmd, blockId)
+							"
 							@insert-block-after="(id: string) => emit('insert-block-after', id)"
 							@open-link-dialog="(id: string) => emit('open-link-dialog', id)"
 						/>

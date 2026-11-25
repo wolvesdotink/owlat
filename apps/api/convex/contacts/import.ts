@@ -18,6 +18,10 @@
  *      step 6 so DOI-required topic memberships activate immediately
  *      rather than firing a confirmation email at subscribe time.
  *
+ * Under `handleDuplicates: 'skip'` a row that matches an existing contact
+ * stops after step 2: the contact keeps its fields, properties, consent state
+ * and topic memberships, and the row counts as skipped.
+ *
  * A row whose contact holds a global opt-out (`contacts.unsubscribedAt`) stops
  * after step 4: no attest, no topic, no confirmation mail. The rows come from
  * another system, which cannot know the recipient unsubscribed here, so an
@@ -232,7 +236,8 @@ export const importBatch = internalMutation({
 		}
 
 		const source = args.source;
-		const mode = args.handleDuplicates === 'skip' ? 'upsert' : 'merge';
+		const skipsExisting = args.handleDuplicates === 'skip';
+		const mode = skipsExisting ? 'upsert' : 'merge';
 
 		// Within-batch dedup, keeps first occurrence.
 		const { unique: deduplicatedRows, duplicateCount: withinBatchDuplicates } =
@@ -272,6 +277,16 @@ export const importBatch = internalMutation({
 					},
 				});
 				outcome = countResolution(outcome, action);
+
+				// `skip` leaves a contact that already exists exactly as it is: no
+				// property writes, no activity, no attest, no topic membership. The
+				// operator chose not to touch existing records, and a topic
+				// membership or attest would record consent this file never showed.
+				if (skipsExisting && action !== 'created') {
+					const existing = await ctx.db.get(contactId);
+					if (existing?.unsubscribedAt !== undefined) outcome.keptUnsubscribed++;
+					continue;
+				}
 
 				// A merge that changed a built-in field must fire the
 				// `contact_updated` automation trigger — the resolution module

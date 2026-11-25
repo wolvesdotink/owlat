@@ -22,6 +22,8 @@ const translatableBlockContentValidator = v.object({
 	html: v.optional(v.string()),
 	buttonText: v.optional(v.string()),
 	alt: v.optional(v.string()),
+	texts: v.optional(v.record(v.string(), v.string())),
+	sectionTitles: v.optional(v.record(v.string(), v.string())),
 });
 
 /** A language overlay's per-block text, keyed by block id. */
