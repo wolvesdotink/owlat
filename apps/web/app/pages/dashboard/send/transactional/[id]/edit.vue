@@ -132,6 +132,10 @@ const showUnsubscribe = ref(false);
 // the builder's Text view; dirty-tracked and saved with the rest of the email.
 const plainTextOverride = ref('');
 
+// The inbox preview line, edited under the subject. Rendered into the stored
+// HTML as the hidden preheader, its tokens personalized like the subject's.
+const previewText = ref('');
+
 // Email editor bridge — owns the handler set, the load→dirty→save loop, and the
 // media-picker / test-email plumbing. The transactional editor adds attachments
 // to the dirty-tracked refs and supplies its own publishable save.
@@ -164,10 +168,10 @@ const {
 } = useEmailEditorBridge({
 	source: email,
 	revision: (row) => row.contentRevision ?? 0,
-	extraWatch: [attachments, showUnsubscribe, plainTextOverride],
+	extraWatch: [attachments, showUnsubscribe, plainTextOverride, previewText],
 	coedit: {
 		target: () => ({ type: 'transactionalEmail', id: emailId.value }),
-		fields: { attachments, showUnsubscribe, plainTextOverride },
+		fields: { attachments, showUnsubscribe, plainTextOverride, previewText },
 	},
 	canKeepDraft: sameDefaultLanguage,
 	initialize: (e, ctx) => {
@@ -175,6 +179,7 @@ const {
 		ctx.subject.value = e.subject;
 		showUnsubscribe.value = e.showUnsubscribe ?? false;
 		plainTextOverride.value = e.plainTextOverride ?? '';
+		previewText.value = e.previewText ?? '';
 		ctx.blocks.value = parseStoredBlocks(e.content);
 		// Initialize attachments
 		try {
@@ -193,6 +198,7 @@ const {
 		const surfaceFields = {
 			attachments: JSON.stringify(attachments.value),
 			showUnsubscribe: showUnsubscribe.value,
+			previewText: previewText.value,
 		};
 		return await publishableEmailSave({
 			draft: {
@@ -380,8 +386,10 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 				:is-saving="isSaving"
 				:plain-text-override="plainTextOverride"
 				:allow-plain-text-override="true"
+				:preview-text="previewText"
 				:remote-marks="coediting?.remoteMarks.value"
 				@update:plain-text-override="plainTextOverride = $event"
+				@update:preview-text="previewText = $event"
 				@collab-focus="onCollabFocus"
 				@save="requestSave"
 				@back="handleBack"

@@ -589,6 +589,31 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 });
 
+describe('transactional.dispatch.dispatch — preview text variables', () => {
+	it("returns 'invalid_variables' for a variable the preview text alone uses without a fallback", async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t, {
+			dataVariablesSchema: { trackingCode: 'string' },
+		});
+		await t.mutation(api.transactional.emails.update, {
+			id: templateId,
+			content: JSON.stringify([{ id: 'b1', type: 'text', content: { html: '<p>Shipped</p>' } }]),
+			previewText: 'Track it with {{trackingCode}}',
+			forceWhilePublished: true,
+		});
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+		});
+
+		expect(outcome.ok).toBe(false);
+		if (outcome.ok) throw new Error('expected rejection');
+		expect(outcome.reason).toBe('invalid_variables');
+		expect(outcome.variables).toEqual(['trackingCode']);
+	});
+});
+
 // ─── Drift-bug closures ─────────────────────────────────────────────────────
 
 describe('transactional.dispatch.dispatch — drift-bug closures', () => {

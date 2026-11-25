@@ -236,6 +236,29 @@ describe('owlat upgrade', () => {
 		expect(JSON.parse(seen[0]!.body)).toEqual({ composeTemplate: TEMPLATE });
 	});
 
+	it('says in a sentence that the release is up, with the warnings, not the JSON answer', async () => {
+		answers['POST /update'] = {
+			status: 200,
+			body: {
+				success: true,
+				rollout: 'healthy',
+				warnings: ['The old mail-sync container is still running.'],
+				steps: [{ step: 'pull', ok: true, stdout: 'pulled', stderr: '' }],
+			},
+		};
+		const result = await owlat(['upgrade']);
+
+		expect(result.code).toBe(0);
+		expect(result.stdout).not.toContain('"success"');
+		expect(result.stdout).not.toContain('"steps"');
+		expect(result.stdout).toContain(
+			'The release is running and passed the readiness check.\n' +
+				'warning: The old mail-sync container is still running.'
+		);
+		expect(result.stdout).toContain("'owlat status' in another shell");
+		expect(result.stdout).toContain('Updated to v9.9.9.');
+	});
+
 	it('pins the version named with --version', async () => {
 		const result = await owlat(['upgrade', '--version', '1.2.3']);
 

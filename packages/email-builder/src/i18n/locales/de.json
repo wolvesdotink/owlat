@@ -607,7 +607,13 @@
 			"newVariableTitle": "Neue Datenvariable für diese E-Mail anlegen",
 			"newVariable": "Neue Variable",
 			"name": "Name",
-			"variable": "Variable"
+			"variable": "Variable",
+			"previewText": "Vorschau",
+			"previewTextLabel": "Vorschautext",
+			"previewTextPlaceholder": "Steht im Posteingang hinter dem Betreff (optional)",
+			"previewTextPlaceholderWithVariables": "Steht im Posteingang hinter dem Betreff, {{ fügt eine Variable ein",
+			"previewTextInsertVariableTitle": "Variable in den Vorschautext einfügen",
+			"previewTextInsertVariable": "Variable in den Vorschautext einfügen"
 		},
 		"panel": {
 			"fontDefault": "Standard",

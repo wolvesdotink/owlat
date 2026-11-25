@@ -496,3 +496,62 @@ describe('Deliverability Center complete materialization', () => {
 		).rejects.toThrow('no partial readiness result was returned');
 	});
 });
+
+describe('the Microsoft SNDS note', () => {
+	const DAY = 86_400_000;
+	function sndsDay(
+		ip: string,
+		daysAgo: number,
+		filterResult: 'green' | 'yellow' | 'red',
+		trapHits = 0
+	) {
+		const today = Math.floor(Date.now() / DAY) * DAY;
+		return {
+			ip,
+			periodStart: today - daysAgo * DAY,
+			complaintBand: 'lt_0_1' as const,
+			filterResult,
+			trapHits,
+			messageRecipients: 100,
+			rcptCommands: 100,
+			dataCommands: 100,
+			fetchedAt: Date.now(),
+			ingestedAt: Date.now(),
+		};
+	}
+
+	async function centerWithSnds() {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sndsIpDailyStats', sndsDay('198.51.100.7', 1, 'red'));
+			// Green, but SNDS counted trap hits on it; the older day's count is superseded.
+			await ctx.db.insert('sndsIpDailyStats', sndsDay('203.0.113.25', 2, 'green', 9));
+			await ctx.db.insert('sndsIpDailyStats', sndsDay('203.0.113.25', 1, 'green', 3));
+			// Too old to count.
+			await ctx.db.insert('sndsIpDailyStats', sndsDay('192.0.2.9', 5, 'green', 4));
+		});
+		return t.query(api.delivery.checklist.getCenter, {});
+	}
+
+	it('shows trap hits next to the address even while its filter result is green', async () => {
+		const center = await centerWithSnds();
+		const today = Math.floor(Date.now() / DAY) * DAY;
+		expect(center.sndsStandings).toEqual([
+			{ ip: '198.51.100.7', filterResult: 'red', periodStart: today - DAY },
+		]);
+		expect(center.sndsTrapHits).toEqual([
+			{ ip: '203.0.113.25', trapHits: 3, periodStart: today - DAY },
+		]);
+	});
+
+	it('shows nothing on a deployment that does not send through the built-in mail server', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('SMTP_RELAY_HOST', 'smtp.relay.example');
+		vi.stubEnv('SMTP_RELAY_USERNAME', 'relay-user');
+		vi.stubEnv('SMTP_RELAY_PASSWORD', 'relay-secret');
+		const center = await centerWithSnds();
+		expect(center.sndsStandings).toEqual([]);
+		expect(center.sndsTrapHits).toEqual([]);
+	});
+});

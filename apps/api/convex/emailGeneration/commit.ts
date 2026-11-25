@@ -135,6 +135,7 @@ async function createDraft(
 			name: args.name,
 			slug,
 			subject: args.subject,
+			previewText: args.previewText,
 			content,
 			dataVariablesSchema: args.dataVariablesSchema,
 			optionalDataVariables: args.optionalDataVariables,

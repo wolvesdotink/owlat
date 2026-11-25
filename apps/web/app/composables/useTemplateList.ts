@@ -41,9 +41,9 @@ interface TemplateListQuery<T> {
 
 interface UseTemplateListOptions<T extends TemplateListItem> {
 	/**
-	 * Build the page's query from the list state. The two lists differ here on
-	 * purpose: templates sorts the loaded page client-side, transactional passes
-	 * the sort to its query.
+	 * Build the page's query from the list state. The sort goes to the server
+	 * with the search: sorting a paginated list in the browser would only
+	 * order the rows loaded so far.
 	 */
 	query: (state: {
 		search: Readonly<Ref<string>>;

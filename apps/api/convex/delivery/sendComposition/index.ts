@@ -10,8 +10,9 @@
  * adding a registry entry is a compile error.
  */
 
-import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
+import { brandFooterTextHtml, POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import { htmlToPlainText } from '@owlat/shared/html';
+import { preheaderTextHtml, stripPreheaderHtml } from '@owlat/email-renderer/preheader';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
 import { composeAutomation } from './automation';
@@ -77,7 +78,7 @@ const COMPOSERS = {
  */
 export function composeForSend(input: ComposeInput): ComposeOutput {
 	const composer = COMPOSERS[input.kind] as ComposerFn<typeof input.kind>;
-	const composed = composer(input);
+	const composed = withoutBlankPreheader(composer(input));
 	// The text/plain alternative, in preference order:
 	//  1. the template's `plainTextContent` — the author's manual override, or
 	//     the body generated from the block document at save time. It is
@@ -99,7 +100,7 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 		? input.kind === 'transactional'
 			? personalizeBody(stored, bodyVariablesFor(input), { escape: 'plain' }, variablesFor(input))
 			: personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
-		: htmlToPlainText(composed.html, { preserveBreaks: true });
+		: htmlTextPart(composed.html);
 	const config = composed.transformConfig;
 	const lines = addressLines(config?.senderAddress);
 	const text =
@@ -116,11 +117,34 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	// Compared on the rendered text, so bold or a link inside an address line
 	// still counts as printing it.
 	const htmlPrintsAddress =
-		POSTAL_ADDRESS_BLOCK_RE.test(composed.html) &&
-		printsEveryLine(htmlToPlainText(composed.html, { preserveBreaks: true }), lines);
+		(POSTAL_ADDRESS_BLOCK_RE.test(composed.html) &&
+			printsEveryLine(htmlToPlainText(composed.html, { preserveBreaks: true }), lines)) ||
+		printsUnmarkedFooterBlock(composed.html, config?.senderAddress);
 	if (!config || !htmlPrintsAddress) return { ...composed, text };
 	const { senderAddress: _printedByTheBody, ...transformConfig } = config;
 	return { ...composed, transformConfig, text };
+}
+
+/**
+ * A preview text whose tokens all resolved empty leaves only the padding: drop
+ * the whole preheader so neither the HTML nor a text part derived from it
+ * carries it.
+ */
+function withoutBlankPreheader<T extends { html: string }>(composed: T): T {
+	const preheader = preheaderTextHtml(composed.html);
+	if (preheader === undefined || htmlToPlainText(preheader) !== '') return composed;
+	return { ...composed, html: stripPreheaderHtml(composed.html) };
+}
+
+/**
+ * The text part derived from the HTML, without the hidden preheader and its
+ * padding. An email with no visible text (images only) gets the preheader line
+ * instead: an empty text part would make the transport derive one from the
+ * whole HTML, padding included.
+ */
+function htmlTextPart(html: string): string {
+	const visible = htmlToPlainText(stripPreheaderHtml(html), { preserveBreaks: true });
+	return visible || htmlToPlainText(preheaderTextHtml(html) ?? '');
 }
 
 /**
@@ -133,6 +157,40 @@ const POSTAL_ADDRESS_BLOCK_RE = new RegExp(
 	`<[a-z][^>]*\\s${POSTAL_ADDRESS_BLOCK_ATTRIBUTE}(?=[\\s=/>])`,
 	'i'
 );
+
+/**
+ * Whether the body holds a brand kit footer block saved before the block
+ * carried the marker: an element whose whole content is the html the builder
+ * inserts for this sender's name and address, byte for byte. The sender
+ * address is `name\naddress` or the address alone, so both shapes are tried.
+ * A block whose address was edited, or that shows an older address, does not
+ * match, and the footer prints the address as before.
+ */
+function printsUnmarkedFooterBlock(html: string, senderAddress: string | undefined): boolean {
+	if (!senderAddress) return false;
+	const newline = senderAddress.indexOf('\n');
+	const shapes = [brandFooterTextHtml('', senderAddress)];
+	if (newline > 0) {
+		shapes.push(
+			brandFooterTextHtml(senderAddress.slice(0, newline), senderAddress.slice(newline + 1))
+		);
+	}
+	const body = renderedSpelling(html);
+	return shapes.some((shape) => body.includes(`>${renderedSpelling(shape)}</`));
+}
+
+/**
+ * The renderer's sanitizer re-serializes a text block: `<br>` comes out as
+ * `<br />`, and the quotes the builder escaped come out as plain characters
+ * (only `&`, `<` and `>` stay escaped in text). Both sides are brought to that
+ * spelling before they are compared; nothing else is normalized.
+ */
+function renderedSpelling(html: string): string {
+	return html
+		.replace(/<br\s*\/?>/gi, '<br>')
+		.replace(/&#39;|&#x27;|&apos;/gi, "'")
+		.replace(/&quot;|&#34;/gi, '"');
+}
 
 /**
  * Whether a body already prints every line of the sender's address, so the
