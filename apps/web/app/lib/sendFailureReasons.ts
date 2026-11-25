@@ -54,7 +54,7 @@ export const SEND_FAILURE_CODE_CLASSES: Readonly<Record<string, SendFailureClass
 	SMTPUTF8_UNSUPPORTED: 'addressUnsupported',
 	RECIPIENT_SUPPRESSED: 'blocklisted',
 	RECIPIENT_UNSUBSCRIBED: 'unsubscribed',
-	// Left the topic an automation belongs to: an unsubscribe, from that topic.
+	// Left the topic the mail was sent for: an unsubscribe, from that topic.
 	RECIPIENT_LEFT_TOPIC: 'unsubscribed',
 	CONTACT_DELETED: 'contactDeleted',
 	// The automation was paused after it queued the email: withdrawn, not failed.
