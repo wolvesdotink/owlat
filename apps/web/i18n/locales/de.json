@@ -3791,7 +3791,8 @@
 					"push": "Push auf {count} Gerät | Push auf {count} Geräten",
 					"noPush": "Kein Push",
 					"webhook": "Webhook an {count} Endpunkt | Webhook an {count} Endpunkte",
-					"noWebhook": "Kein Webhook eingerichtet"
+					"noWebhook": "Kein Webhook eingerichtet",
+					"webhookCleartext": "Webhook braucht HTTPS"
 				},
 				"email": {
 					"title": "E-Mail",
@@ -3824,6 +3825,7 @@
 					"title": "Webhook-Endpunkt",
 					"reach": "Geht an {count} Webhook, signiert und mit Wiederholungen. | Geht an {count} Webhooks, signiert und mit Wiederholungen.",
 					"notSet": "Kein Webhook empfängt Zustellbarkeitsalarme. Schick sie an dein Bereitschafts-Tool oder deinen Team-Chat.",
+					"cleartext": "{count} Webhook für Alarme hat eine http://-Adresse und bekommt keine Alarme, bis seine Adresse mit https:// beginnt. | {count} Webhooks für Alarme haben eine http://-Adresse und bekommen keine Alarme, bis ihre Adressen mit https:// beginnen.",
 					"off": "Ausgehende Webhooks sind auf dieser Instanz ausgeschaltet.",
 					"add": "Alarm-Webhook hinzufügen",
 					"manage": "Webhooks verwalten"
@@ -8970,7 +8972,9 @@
 						"title": "Microsoft-Reputation (SNDS)",
 						"red": "SNDS bewertet {ip} für den {day} mit Rot: Outlook.com und Hotmail filtern den Großteil der Mails von dieser Adresse. Owlat sendet Mails an Microsoft von dieser Adresse mit reduzierter Rate, bis SNDS sie wieder grün bewertet. Andere Adressen und Anbieter sind nicht betroffen.",
 						"yellow": "SNDS bewertet {ip} für den {day} mit Gelb: Microsoft filtert einen Teil der Mails von dieser Adresse. Noch wird nichts zurückgehalten.",
-						"action": "So wird eine rote Adresse wieder grün"
+						"action": "So wird eine rote Adresse wieder grün",
+						"trapHits": "SNDS hat am {day} {count} Spamfallen-Treffer für {ip} gezählt. Ein Treffer heißt: Deine Liste enthält eine Adresse, die sich nie angemeldet hat. Abwarten hilft hier nicht: Finde die Liste oder den Import, aus dem sie stammt, und entferne Adressen ohne bestätigte Anmeldung. | SNDS hat am {day} {count} Spamfallen-Treffer für {ip} gezählt. Ein Treffer heißt: Deine Liste enthält Adressen, die sich nie angemeldet haben. Abwarten hilft hier nicht: Finde die Liste oder den Import, aus dem sie stammen, und entferne Adressen ohne bestätigte Anmeldung.",
+						"trapAction": "So räumst du nach Spamfallen-Treffern auf"
 					}
 				},
 				"dmarc": {
@@ -19787,6 +19791,7 @@
 				"eventsRequired": "Es muss mindestens ein Ereignis ausgewählt sein",
 				"nameRequired": "Name ist erforderlich",
 				"urlInvalid": "Ungültiges URL-Format",
+				"urlAlertsNeedHttps": "Zustellbarkeitsalarme gehen nur an eine https://-Adresse",
 				"urlProtocol": "Die URL muss das Protokoll HTTP oder HTTPS verwenden",
 				"urlRequired": "URL ist erforderlich"
 			},

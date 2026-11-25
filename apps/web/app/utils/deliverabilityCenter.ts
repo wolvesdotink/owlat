@@ -134,6 +134,8 @@ export interface DeliverabilityCenter {
 	};
 	/** Sending addresses Microsoft SNDS currently rates red or yellow. */
 	sndsStandings: Array<{ ip: string; filterResult: 'red' | 'yellow'; periodStart: number }>;
+	/** Sending addresses with spam-trap hits on their newest fresh SNDS day with any. */
+	sndsTrapHits: Array<{ ip: string; trapHits: number; periodStart: number }>;
 	loopback: {
 		domains: Array<{
 			id: Id<'domains'>;

@@ -282,7 +282,7 @@ describe('deliverability alert channels', () => {
 			// The owner switched the kind off: only the admin hears about it in the app.
 			inApp: { recipientCount: 1 },
 			push: { isConfigured: true, deviceCount: 2 },
-			webhook: { isFeatureOn: false, count: 0 },
+			webhook: { isFeatureOn: false, count: 0, cleartextCount: 0 },
 			me: { isSwitchOn: true, deviceCount: 2 },
 		});
 	});
@@ -350,6 +350,40 @@ describe('deliverability alert channels', () => {
 		// An editor cannot run it.
 		Object.assign(caller, { userId: ids['editor']!, role: 'editor' });
 		await expect(t.action(api.delivery.checklistAlertTest.sendTestAlert, {})).rejects.toThrow();
+	});
+
+	it('names an alert webhook left on an http URL and sends it nothing, not even the test', async () => {
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', '');
+		vi.stubEnv('DEFAULT_FROM_EMAIL', '');
+		const { t } = await seedOrganization();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { webhooks: true },
+				createdAt: 1,
+			});
+			for (const url of ['http://oncall.example.com/hook', 'https://chat.example.com/hook']) {
+				await ctx.db.insert('webhooks', {
+					name: url,
+					url,
+					events: ['deliverability.alert_raised', 'deliverability.alert_resolved'],
+					secret: 'whsec_test',
+					isActive: true,
+					createdAt: 1,
+					updatedAt: 1,
+				});
+			}
+		});
+
+		const channels = await t.query(api.delivery.checklistAlertChannels.getChannels, {});
+		expect(channels.webhook).toEqual({ isFeatureOn: true, count: 1, cleartextCount: 1 });
+
+		const result = await t.action(api.delivery.checklistAlertTest.sendTestAlert, {});
+		expect(result.webhook).toMatchObject({ status: 'queued' });
+		const logs = await t.run((ctx) => ctx.db.query('webhookDeliveryLogs').collect());
+		const hooks = await t.run((ctx) => ctx.db.query('webhooks').collect());
+		expect(logs.map((log) => hooks.find((hook) => hook._id === log.webhookId)?.url)).toEqual([
+			'https://chat.example.com/hook',
+		]);
 	});
 
 	it('says why each channel was skipped', async () => {

@@ -260,7 +260,10 @@ async function copyReport() {
 
 			<div v-if="center" class="space-y-6">
 				<DeliveryBounceFeedbackNote />
-				<DeliveryMicrosoftSndsNote :standings="center.sndsStandings" />
+				<DeliveryMicrosoftSndsNote
+					:standings="center.sndsStandings"
+					:trap-hits="center.sndsTrapHits"
+				/>
 				<section
 					class="overflow-hidden rounded-(--radius-card) surface-2"
 					aria-labelledby="deliverability-grade-heading"
