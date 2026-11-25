@@ -56,6 +56,7 @@ export type {
 export type {
 	ButtonBlockContent,
 	ColumnItem,
+	ColumnCount,
 	ColumnRatio,
 	ColumnStyle,
 	ColumnsBlockContent,

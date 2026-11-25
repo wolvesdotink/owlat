@@ -249,6 +249,9 @@ export interface ColumnItem {
  */
 export type ColumnRatio = 'equal' | 'left-wide' | 'right-wide' | 'left-narrow' | 'right-narrow';
 
+/** How many columns a columns Block holds. */
+export type ColumnCount = 1 | 2 | 3 | 4 | 5;
+
 /**
  * Per-column styling options
  */
@@ -287,8 +290,13 @@ export interface ColumnsBlockContent
 		FullWidthOption,
 		CssClassOption,
 		ConditionalOption {
-	columnCount: 1 | 2 | 3 | 4;
+	columnCount: ColumnCount;
 	ratio: ColumnRatio;
+	/**
+	 * Custom column widths in whole percent, one per column, summing to 100.
+	 * When valid they win over `ratio`; see `getColumnWidths`.
+	 */
+	columnWidths?: number[];
 	mobileStacking: boolean;
 	columns: ColumnItem[][];
 	/** Vertical alignment for all columns */

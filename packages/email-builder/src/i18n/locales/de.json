@@ -88,6 +88,7 @@
 			"rightWide": "Rechts breit",
 			"leftNarrow": "Links schmal",
 			"rightNarrow": "Rechts schmal",
+			"columnWidths": "Spaltenbreiten",
 			"columnGap": "Spaltenabstand",
 			"verticalAlign": "Vertikale Ausrichtung",
 			"top": "Oben",
@@ -737,6 +738,12 @@
 			},
 			"select": {
 				"placeholder": "Auswählen..."
+			},
+			"columnWidths": {
+				"customize": "Eigene Breiten festlegen",
+				"usePreset": "Verhältnis-Vorlage verwenden",
+				"column": "Breite von Spalte {index}",
+				"help": "Ganze Prozent, mindestens {min} % pro Spalte. Änderst du eine Spalte, passt sich die daneben an."
 			}
 		},
 		"richText": {

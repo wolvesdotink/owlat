@@ -1,7 +1,9 @@
 import type {
 	BlockType,
 	BlockContent,
+	ColumnCount,
 	ColumnItem,
+	ColumnsBlockContent,
 	EditorBlock,
 	UniversalPadding,
 	UniversalMargin,
@@ -216,3 +218,42 @@ export const updateBlockBorderRadius = (block: EditorBlock, value: number): void
 // Column-width math now lives in @owlat/shared so the editor preview and the
 // renderer agree. Re-exported here to keep existing builder call sites working.
 export { getColumnWidths } from '@owlat/shared';
+
+/**
+ * A columns Block's content with a new column count. The column lists follow
+ * the count: new columns start empty, and the items of removed columns move to
+ * the end of the last remaining column so nothing is lost. Custom widths are
+ * dropped because they were sized for the old count; the ratio preset, which
+ * has an entry for every count, takes over.
+ */
+export const withColumnCount = (
+	content: ColumnsBlockContent,
+	columnCount: ColumnCount
+): ColumnsBlockContent => {
+	const columns = Array.from({ length: columnCount }, (_, i) => [...(content.columns[i] ?? [])]);
+	const removed = content.columns.slice(columnCount).flat();
+	columns[columnCount - 1]?.push(...removed);
+	const { columnWidths: _dropped, ...rest } = content;
+	return { ...rest, columnCount, columns };
+};
+
+/**
+ * The content after writing `key` on a columns Block, for the writes that
+ * touch more than their own field: the column count reshapes the column
+ * lists, and picking a ratio preset replaces custom widths. Any other key is
+ * a plain field write.
+ */
+export const updateColumnsContent = (
+	content: ColumnsBlockContent,
+	key: string,
+	value: unknown
+): ColumnsBlockContent => {
+	if (key === 'columnCount' && typeof value === 'number') {
+		return withColumnCount(content, value as ColumnCount);
+	}
+	if (key === 'ratio') {
+		const { columnWidths: _dropped, ...rest } = content;
+		return { ...rest, ratio: value as ColumnsBlockContent['ratio'] };
+	}
+	return { ...content, [key]: value };
+};

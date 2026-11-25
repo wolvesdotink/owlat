@@ -13,6 +13,8 @@ export {
 	getBlockBorderRadius,
 	updateBlockBorderRadius,
 	getColumnWidths,
+	withColumnCount,
+	updateColumnsContent,
 } from './blocks';
 export {
 	type BlockLocation,
