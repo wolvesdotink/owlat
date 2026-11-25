@@ -117,6 +117,16 @@ export const activityMetadataValidator = v.object({
 export const dataVariableTypeValidator = v.union(fieldTypeValidator, v.literal('array'));
 export const dataVariablesSchemaValidator = v.record(v.string(), dataVariableTypeValidator);
 
+// A data variable's example value (`@owlat/shared/dataVariableExamples`): the
+// value a send would carry, without `null`, which is no example at all.
+export const dataVariableExampleValue = v.union(
+	v.string(),
+	v.number(),
+	v.boolean(),
+	v.array(v.union(jsonPrimitiveValue, jsonPrimitiveRecord))
+);
+export const dataVariableExamplesValidator = v.record(v.string(), dataVariableExampleValue);
+
 // ─── Webhook payload contract (FROZEN) ─────────────────────────────────────
 // Per-event payload shapes are documented in apps/api/convex/docs/webhook-payloads.md.
 // Any change to these shapes requires bumping CURRENT_WEBHOOK_PAYLOAD_VERSION

@@ -70,6 +70,10 @@
 			"types": "./src/sendRegions.ts",
 			"import": "./src/sendRegions.ts"
 		},
+		"./dataVariableExamples": {
+			"types": "./src/dataVariableExamples.ts",
+			"import": "./src/dataVariableExamples.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"

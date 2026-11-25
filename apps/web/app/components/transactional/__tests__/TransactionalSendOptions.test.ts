@@ -1,7 +1,8 @@
 /**
  * The transactional editor's send options: marking a data variable optional
  * and exempting the template from the per-recipient limit save at once, with
- * the template's id; someone who cannot manage templates sees the state but
+ * the template's id; each variable shows its example value and opens an
+ * editor for it; someone who cannot manage templates sees the state but
  * cannot change it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -46,7 +47,7 @@ function mountOptions(
 		props: {
 			emailId: EMAIL_ID,
 			variables: [
-				{ key: 'orderNumber', type: 'string' },
+				{ key: 'orderNumber', type: 'string', example: 'A-1001' },
 				{ key: 'giftNote', type: 'string' },
 			],
 			optionalVariables: props.optionalVariables ?? [],
@@ -56,6 +57,14 @@ function mountOptions(
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
+				LazyTransactionalVariableExampleDialog: {
+					props: ['variable'],
+					template: '<div data-testid="example-dialog">{{ variable.key }}</div>',
+				},
+				UiButton: {
+					emits: ['click'],
+					template: '<button type="button" @click="$emit(\'click\')"><slot /></button>',
+				},
 				UiSwitch: {
 					props: ['modelValue', 'label', 'disabled'],
 					emits: ['update:modelValue'],
@@ -84,6 +93,18 @@ describe('TransactionalSendOptions', () => {
 		]);
 	});
 
+	it("shows each variable's example and opens its editor", async () => {
+		const wrapper = mountOptions();
+		expect(wrapper.get('[data-testid="variable-example-orderNumber"]').text()).toBe(
+			'Example: A-1001'
+		);
+		expect(wrapper.get('[data-testid="variable-example-giftNote"]').text()).toBe('No example');
+		expect(wrapper.find('[data-testid="example-dialog"]').exists()).toBe(false);
+
+		await wrapper.get('[data-testid="variable-edit-example-giftNote"]').trigger('click');
+		expect(wrapper.get('[data-testid="example-dialog"]').text()).toBe('giftNote');
+	});
+
 	it('exempts the template from the per-recipient limit', async () => {
 		const wrapper = mountOptions();
 		await wrapper.get('[data-testid="recipient-limit-exempt"]').trigger('click');
@@ -102,5 +123,6 @@ describe('TransactionalSendOptions', () => {
 		expect(
 			wrapper.get('[data-testid="variable-optional-orderNumber"]').attributes('disabled')
 		).toBeDefined();
+		expect(wrapper.find('[data-testid="variable-edit-example-orderNumber"]').exists()).toBe(false);
 	});
 });

@@ -526,6 +526,15 @@
 				"array": "List"
 			},
 			"arrayHint": "A list of entries for a repeated block. Choose it under the block's Repeat setting, and use {example} inside the block.",
+			"example": "Example value",
+			"exampleNone": "No example",
+			"exampleHint": "Sample data for the preview and test sends, never a real customer's data. Real sends don't use it.",
+			"exampleErrors": {
+				"json": "This isn't valid JSON.",
+				"list": "Enter a JSON list of up to {max} entries, each a plain value or a flat object of plain values.",
+				"number": "Enter a number.",
+				"date": "Enter a date such as 2026-11-25."
+			},
 			"preview": "Preview",
 			"usage": "Used in the API payload",
 			"create": "Create variable"

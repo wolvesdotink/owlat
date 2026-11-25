@@ -347,6 +347,7 @@ deferred 21 components/transactional/CreateEmailModal.vue
 deferred 19 components/transactional/SenderDialog.vue
 deferred 5 components/transactional/SenderRow.vue
 deferred 14 components/transactional/TemplateSenderCard.vue
+deferred 27 components/transactional/TransactionalVariableExampleDialog.vue
 deferred 10 contactsCsv
 deferred 2 en
 deferred 16 layouts/admin.vue

@@ -7984,7 +7984,12 @@
 			},
 			"sendOptions": {
 				"description": "Diese Einstellungen gelten sofort für den nächsten Versand, auch während die E-Mail veröffentlicht ist.",
+				"exampleDialog": {
+					"label": "Beispielwert",
+					"title": "Beispielwert für {name}"
+				},
 				"operations": {
+					"example": "Beispielwert ändern",
 					"recipientLimit": "Empfängerlimit ändern",
 					"variable": "Variable ändern"
 				},
@@ -7995,7 +8000,11 @@
 				"title": "Versand",
 				"variables": {
 					"description": "Eine Anfrage, die eine Variable weglässt, die die E-Mail ohne Fallback verwendet, wird mit einem Fehler abgelehnt, der sie nennt. Markiere eine Variable als optional, damit Anfragen sie weglassen dürfen: Sie wird dann leer gesendet oder mit ihrem Fallback.",
+					"editExample": "Beispielwert von {name} bearbeiten",
 					"empty": "Diese E-Mail hat noch keine Datenvariablen.",
+					"example": "Beispiel: {value}",
+					"exampleButton": "Beispiel",
+					"noExample": "Kein Beispiel",
 					"optional": "Darf fehlen",
 					"required": "Pflicht, außer mit Fallback",
 					"title": "Datenvariablen",

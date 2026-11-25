@@ -32,6 +32,10 @@
 		"./plain-clone": {
 			"types": "./src/utils/plainClone.ts",
 			"import": "./src/utils/plainClone.ts"
+		},
+		"./variable-example-field": {
+			"types": "./src/components/dialogs/VariableExampleField.vue",
+			"import": "./src/components/dialogs/VariableExampleField.vue"
 		}
 	},
 	"scripts": {

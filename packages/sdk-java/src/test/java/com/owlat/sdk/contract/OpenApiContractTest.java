@@ -260,6 +260,7 @@ class OpenApiContractTest {
                 .translations(Map.of("de", new EmailTranslation("Deine Bestellung",
                         Map.of("b-heading", new TranslatedBlockText("<p>Danke</p>", "Los", "Bild")))))
                 .dataVariablesSchema(Map.of("orderNumber", "string"))
+                .dataVariableExamples(Map.of("orderNumber", "A-1001"))
                 .defaultLanguage("en")
                 .showUnsubscribe(false)
                 .build();

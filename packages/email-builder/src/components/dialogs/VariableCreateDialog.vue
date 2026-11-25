@@ -3,7 +3,9 @@ import { computed, ref, watch } from 'vue';
 import { SparklesIcon } from '@coolicons/vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
+import type { DataVariableExampleValue } from '@owlat/shared/dataVariableExamples';
 import VariablePlaceholderTag from '../ui/VariablePlaceholderTag.vue';
+import VariableExampleField from './VariableExampleField.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 import { DEFAULT_ITEM_ALIAS } from '../../utils/blockRepeat';
 
@@ -20,7 +22,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	(e: 'close'): void;
-	(e: 'create', variable: { key: string; type: DataVariableType }): void;
+	(
+		e: 'create',
+		variable: { key: string; type: DataVariableType; example?: DataVariableExampleValue }
+	): void;
 }>();
 
 /** How a repeated block reads an entry's field, with the default item alias. */
@@ -28,15 +33,24 @@ const ITEM_FIELD_EXAMPLE = `{{${DEFAULT_ITEM_ALIAS}.field}}`;
 
 const variableKey = ref('');
 const variableType = ref<DataVariableType>('string');
+const example = ref<
+	{ valid: true; value: DataVariableExampleValue | undefined } | { valid: false }
+>({ valid: true, value: undefined });
+// A new field per form, so a reopened dialog starts without the last example.
+const formKey = ref(0);
 
 const normalizedKey = computed(() => variableKey.value.trim());
 const isValidKey = computed(() => /^[a-zA-Z][a-zA-Z0-9_]*$/.test(normalizedKey.value));
 const isDuplicate = computed(() => props.existingKeys.includes(normalizedKey.value));
-const canCreate = computed(() => !!normalizedKey.value && isValidKey.value && !isDuplicate.value);
+const canCreate = computed(
+	() => !!normalizedKey.value && isValidKey.value && !isDuplicate.value && example.value.valid
+);
 
 const resetForm = () => {
 	variableKey.value = '';
 	variableType.value = 'string';
+	example.value = { valid: true, value: undefined };
+	formKey.value++;
 };
 
 const handleClose = () => {
@@ -46,7 +60,12 @@ const handleClose = () => {
 
 const handleCreate = () => {
 	if (!canCreate.value) return;
-	emit('create', { key: normalizedKey.value, type: variableType.value });
+	const value = example.value.valid ? example.value.value : undefined;
+	emit('create', {
+		key: normalizedKey.value,
+		type: variableType.value,
+		...(value !== undefined ? { example: value } : {}),
+	});
 	resetForm();
 };
 
@@ -114,6 +133,18 @@ watch(
 				<p v-if="variableType === 'array'" class="text-xs text-text-tertiary mt-2">
 					{{ t('builder.variableDialog.arrayHint', { example: ITEM_FIELD_EXAMPLE }) }}
 				</p>
+			</div>
+
+			<div>
+				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-example">{{
+					t('builder.variableDialog.example')
+				}}</label>
+				<VariableExampleField
+					:key="formKey"
+					:type="variableType"
+					input-id="variable-example"
+					@change="example = $event"
+				/>
 			</div>
 
 			<div

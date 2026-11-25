@@ -53,7 +53,7 @@ export function useBuilderPreview({
 	// inbox line reads "Alex invited you" instead of "{{inviterName}} invited you".
 	const previewSubject = computed(() =>
 		fillPreviewVariables(formSubject.value, {
-			values: renderOptions.value.variableValues ?? {},
+			values: preview.previewValues.value,
 			labels: Object.fromEntries(variables.value.map((v) => [v.key, v.label])),
 		})
 	);
@@ -61,7 +61,7 @@ export function useBuilderPreview({
 	// The inbox preview line next to the subject, its tokens filled the same way.
 	const previewPreheader = computed(() =>
 		fillPreviewVariables(renderOptions.value.preheaderText ?? previewText.value ?? '', {
-			values: renderOptions.value.variableValues ?? {},
+			values: preview.previewValues.value,
 			labels: Object.fromEntries(variables.value.map((v) => [v.key, v.label])),
 		})
 	);

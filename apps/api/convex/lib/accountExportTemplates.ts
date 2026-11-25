@@ -244,6 +244,7 @@ export function projectTransactionalEmailMetadata(template: Doc<'transactionalEm
 		previewText: template.previewText,
 		dataVariablesSchema: template.dataVariablesSchema,
 		optionalDataVariables: template.optionalDataVariables,
+		dataVariableExamples: template.dataVariableExamples,
 		isRecipientCapExempt: template.isRecipientCapExempt,
 		status: template.status,
 		publishedAt: template.publishedAt,

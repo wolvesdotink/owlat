@@ -1180,6 +1180,159 @@ describe('transactionalEmails.updateSchema', () => {
 	});
 });
 
+// ============ data variable example values ============
+
+describe('transactionalEmails data variable examples', () => {
+	const ORDER_SCHEMA = {
+		customerName: 'string',
+		total: 'number',
+		isExpress: 'boolean',
+		shippedOn: 'date',
+		items: 'array',
+	} as const;
+
+	async function newEmail(t: ReturnType<typeof convexTest>, status?: 'published') {
+		return await t.run((ctx) =>
+			ctx.db.insert('transactionalEmails', {
+				...createTestTransactionalEmail({ slug: 'examples' }),
+				dataVariablesSchema: { ...ORDER_SCHEMA },
+				...(status ? { status } : {}),
+			})
+		);
+	}
+
+	it('stores an example of every type with the schema, a list included', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await newEmail(t);
+		const examples = {
+			customerName: 'Alex Example',
+			total: 42.5,
+			isExpress: true,
+			shippedOn: '2026-11-25',
+			items: [{ name: 'Notebook', quantity: 2 }, 'Gift card', null],
+		};
+
+		await t.mutation(api.transactional.emails.updateSchema, {
+			id: emailId,
+			dataVariablesSchema: { ...ORDER_SCHEMA },
+			dataVariableExamples: examples,
+		});
+
+		const email = await t.run((ctx) => ctx.db.get(emailId));
+		expect(email?.dataVariableExamples).toEqual(examples);
+		expect(email?.dataVariablesSchema).toEqual(ORDER_SCHEMA);
+	});
+
+	it.each([
+		['customerName', 42, /customerName\W+ must be a string/],
+		['total', '42', /total\W+ must be a number/],
+		['isExpress', 'yes', /isExpress\W+ must be true or false/],
+		['shippedOn', 'next tuesday', /shippedOn\W+ must be an ISO date/],
+		['items', 'Notebook', /items\W+ must be a list/],
+		['items', Array.from({ length: 501 }, () => 'x'), /at most 500 entries/],
+	])('refuses an example for %s that does not match its type', async (name, value, message) => {
+		const t = convexTest(schema, modules);
+		const emailId = await newEmail(t);
+
+		await expect(
+			t.mutation(api.transactional.emails.updateSchema, {
+				id: emailId,
+				dataVariablesSchema: { ...ORDER_SCHEMA },
+				dataVariableExamples: { [name]: value } as never,
+			})
+		).rejects.toThrow(message);
+		const email = await t.run((ctx) => ctx.db.get(emailId));
+		expect(email?.dataVariableExamples).toBeUndefined();
+	});
+
+	it('refuses an example for a variable the email does not declare', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await newEmail(t);
+
+		await expect(
+			t.mutation(api.transactional.sendOptions.setVariableExample, {
+				id: emailId,
+				key: 'couponCode',
+				example: 'SAVE10',
+			})
+		).rejects.toThrow(/couponCode\W+ names a variable the email does not declare/);
+		// Clearing one is refused too, and changes nothing.
+		await expect(
+			t.mutation(api.transactional.sendOptions.setVariableExample, {
+				id: emailId,
+				key: 'couponCode',
+			})
+		).rejects.toThrow(/couponCode\W+ names a variable/);
+		const audit = await t.run((ctx) => ctx.db.query('auditLogs').collect());
+		expect(audit.filter((row) => row.resourceId === emailId)).toHaveLength(0);
+	});
+
+	it('refuses examples larger than the cap', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await newEmail(t);
+
+		await expect(
+			t.mutation(api.transactional.sendOptions.setVariableExample, {
+				id: emailId,
+				key: 'customerName',
+				example: 'x'.repeat(20_000),
+			})
+		).rejects.toThrow(/too large/);
+	});
+
+	it('drops the example of a variable that is removed or retyped', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await newEmail(t);
+		await t.mutation(api.transactional.emails.updateSchema, {
+			id: emailId,
+			dataVariablesSchema: { ...ORDER_SCHEMA },
+			dataVariableExamples: { customerName: 'Alex', total: 3, items: ['a'] },
+		});
+
+		await t.mutation(api.transactional.emails.updateSchema, {
+			id: emailId,
+			// `total` retyped, `items` removed.
+			dataVariablesSchema: { customerName: 'string', total: 'string' },
+		});
+
+		const email = await t.run((ctx) => ctx.db.get(emailId));
+		expect(email?.dataVariableExamples).toEqual({ customerName: 'Alex' });
+	});
+
+	it('sets and clears one example while the email is published, without unpublishing it', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await newEmail(t, 'published');
+
+		await t.mutation(api.transactional.sendOptions.setVariableExample, {
+			id: emailId,
+			key: 'items',
+			example: [{ name: 'Notebook', quantity: 2 }],
+		});
+		await t.mutation(api.transactional.sendOptions.setVariableExample, {
+			id: emailId,
+			key: 'isExpress',
+			example: false,
+		});
+		let email = await t.run((ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('published');
+		expect(email?.dataVariableExamples).toEqual({
+			items: [{ name: 'Notebook', quantity: 2 }],
+			isExpress: false,
+		});
+
+		await t.mutation(api.transactional.sendOptions.setVariableExample, {
+			id: emailId,
+			key: 'items',
+		});
+		await t.mutation(api.transactional.sendOptions.setVariableExample, {
+			id: emailId,
+			key: 'isExpress',
+		});
+		email = await t.run((ctx) => ctx.db.get(emailId));
+		expect(email?.dataVariableExamples).toBeUndefined();
+	});
+});
+
 // ============ transactionalEmails.addTranslation ============
 
 describe('transactionalEmails.addTranslation', () => {

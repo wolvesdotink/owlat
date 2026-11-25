@@ -9,6 +9,7 @@ import type {
 	VariableType,
 	RemoteBlockMark,
 	BuilderCollabFocus,
+	CreatedVariable,
 } from '../../types';
 import { locateBlock } from '../../utils/blockTree';
 import { defaultTheme } from '../../defaults';
@@ -71,7 +72,7 @@ export interface EmailBuilderEmits {
 	(e: 'back'): void;
 	(e: 'settings'): void;
 	(e: 'send-test', html: string): void;
-	(e: 'create-variable', variable: { key: string; type?: string }): void;
+	(e: 'create-variable', variable: CreatedVariable): void;
 	(e: 'update:plainTextOverride', value: string): void;
 	(e: 'update:previewText', value: string): void;
 	(e: 'collab-focus', value: BuilderCollabFocus): void;
@@ -116,7 +117,7 @@ export function useEmailBuilder(props: EmailBuilderProps, emit: EmailBuilderEmit
 		showVariableDialog.value = true;
 	}
 
-	function handleVariableCreate(variable: { key: string; type?: string }) {
+	function handleVariableCreate(variable: CreatedVariable) {
 		emit('create-variable', variable);
 		showVariableDialog.value = false;
 	}
