@@ -12027,8 +12027,8 @@
 						"cancelled": "Cancelled",
 						"completed": "Completed",
 						"emailSkip": {
-							"leftDeletedTopic": "Emails skipped: this contact is no longer subscribed to the automation's topic.",
-							"leftTopic": "Emails skipped: this contact left the topic {name}.",
+							"leftDeletedTopic": "Emails skipped: this contact is not subscribed to the automation's topic.",
+							"leftTopic": "Emails skipped: this contact is not subscribed to the topic {name}.",
 							"unsubscribed": "Emails skipped: this contact unsubscribed from all emails."
 						},
 						"emptyDescription": "Contacts will appear here when the automation is triggered",

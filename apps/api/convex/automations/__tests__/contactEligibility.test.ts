@@ -361,7 +361,7 @@ describe('the topic an automation belongs to', () => {
 			[stepIds[1], 'completed'],
 			[stepIds[2], 'skipped'],
 		]);
-		expect(stepRuns[2]?.errorMessage).toMatch(/no longer subscribed to the automation's topic/);
+		expect(stepRuns[2]?.errorMessage).toMatch(/not subscribed to the automation's topic/);
 		const run = await runOf(t, runId);
 		expect(run.status).toBe('completed');
 		expect(run.emailSkip).toEqual({ reason: 'topic_unsubscribed', topicId });

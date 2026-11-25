@@ -290,8 +290,7 @@ export function completeSentStepAndAdvance(
 
 const EMAIL_SKIP_MESSAGE: Record<AutomationEmailSkipReason, string> = {
 	contact_unsubscribed: 'Contact unsubscribed from marketing; email step skipped',
-	topic_unsubscribed:
-		"Contact is no longer subscribed to the automation's topic; email step skipped",
+	topic_unsubscribed: "Contact is not subscribed to the automation's topic; email step skipped",
 };
 
 /**

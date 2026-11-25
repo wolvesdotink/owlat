@@ -67,14 +67,6 @@ export function contactMarketingIneligibility(
 	return null;
 }
 
-/** {@link contactMarketingIneligibility} for a Contact id — one point read. */
-export async function loadContactMarketingIneligibility(
-	ctx: QueryCtx | MutationCtx,
-	contactId: Id<'contacts'>
-): Promise<Exclude<MarketingIneligibility, 'topic_unsubscribed'> | null> {
-	return contactMarketingIneligibility(await ctx.db.get(contactId));
-}
-
 /**
  * Whether a topic membership is still waiting for double opt-in, so the topic
  * audience will not mail it. THE definition: the audience selector

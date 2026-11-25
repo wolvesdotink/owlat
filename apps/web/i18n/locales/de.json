@@ -12027,8 +12027,8 @@
 						"cancelled": "Abgebrochen",
 						"completed": "Abgeschlossen",
 						"emailSkip": {
-							"leftDeletedTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht mehr für das Thema der Automation angemeldet.",
-							"leftTopic": "E-Mails übersprungen: Dieser Kontakt hat das Thema {name} verlassen.",
+							"leftDeletedTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema der Automation angemeldet.",
+							"leftTopic": "E-Mails übersprungen: Dieser Kontakt ist nicht für das Thema {name} angemeldet.",
 							"unsubscribed": "E-Mails übersprungen: Dieser Kontakt hat sich von allen E-Mails abgemeldet."
 						},
 						"emptyDescription": "Kontakte erscheinen hier, sobald die Automation ausgelöst wird",

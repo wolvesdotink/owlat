@@ -158,16 +158,14 @@ export const getWithRelations = automationsQuery({
 
 /**
  * The topic this automation's emails are sent for, as the editor and the
- * detail page show it: `source` says whether the trigger decides it (the field
- * is unset) or it was set on the automation; `topic` is null when it names a
- * topic that was deleted since. Null when the automation belongs to no topic.
+ * detail page show it: `topic` is null when it names a topic that was deleted
+ * since. Null when the automation belongs to no topic.
  */
 async function loadMailTopic(
 	ctx: QueryCtx,
 	automation: Doc<'automations'>
 ): Promise<{
 	topicId: Id<'topics'>;
-	source: 'trigger' | 'automation';
 	topic: { _id: Id<'topics'>; name: string } | null;
 } | null> {
 	const topicId = automationTopicId(ctx, automation);
@@ -175,7 +173,6 @@ async function loadMailTopic(
 	const topic = await ctx.db.get(topicId);
 	return {
 		topicId,
-		source: automation.topicId === undefined ? 'trigger' : 'automation',
 		topic: topic ? { _id: topic._id, name: topic.name } : null,
 	};
 }

@@ -6,8 +6,8 @@
  * topic until someone picks another topic or "No topic".
  *
  * The select's values: `trigger` (the field unset, so the trigger decides), a
- * topic id, or `none`. For a trigger without a topic, "No topic" is the unset
- * field, so changing the trigger to a topic later still follows the trigger.
+ * topic id, or `none` (saved as an explicit no topic, which a later change of
+ * the trigger to "Subscribed to topic" keeps).
  */
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
@@ -63,13 +63,7 @@ const hintId = useId();
 async function onChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
 	const topicId =
-		value === 'trigger'
-			? ('trigger' as const)
-			: value === 'none'
-				? hasTopicTrigger.value
-					? null
-					: ('trigger' as const)
-				: (value as Id<'topics'>);
+		value === 'trigger' ? ('trigger' as const) : value === 'none' ? null : (value as Id<'topics'>);
 	const result = await setTopic({ automationId: props.automation._id, topicId });
 	if (result.ok) showToast(t('components.automations.mailTopic.saved'));
 }
