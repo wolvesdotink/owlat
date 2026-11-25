@@ -5,6 +5,7 @@ import type {
 	DeliverabilityAlertOperation,
 	DeliverabilityChecklistGroup,
 	DeliverabilityRegressionAlert,
+	DeliverabilitySendingHold,
 } from '~/utils/deliverabilityCenter';
 import { findDeliverabilityItem } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
@@ -12,6 +13,8 @@ import { ArrowRightIcon, SirenIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	alerts: DeliverabilityRegressionAlert[];
+	/** Sending stopped on the instance; listed first, without a check to open or resolve. */
+	sendingHold?: DeliverabilitySendingHold | null;
 	groups: DeliverabilityChecklistGroup[];
 	activeOperation?: DeliverabilityAlertOperation | null;
 }>();
@@ -38,6 +41,20 @@ const rows = computed(() =>
 );
 
 const C = 'components.delivery.deliverabilityRegressionAlerts.channels';
+const H = 'components.delivery.deliverabilityRegressionAlerts.sendingHold';
+
+const alertCount = computed(() => rows.value.length + (props.sendingHold ? 1 : 0));
+/** A hold is not a regression: on its own it gets its own heading. */
+const heading = computed(() =>
+	rows.value.length
+		? t('components.delivery.deliverabilityRegressionAlerts.heading', rows.value.length)
+		: t(`${H}.heading`)
+);
+const subheading = computed(() =>
+	rows.value.length
+		? t('components.delivery.deliverabilityRegressionAlerts.subheading')
+		: t(`${H}.subheading`)
+);
 
 /**
  * One line naming every channel that carried the alert. The email part never
@@ -68,7 +85,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 
 <template>
 	<section
-		v-if="rows.length"
+		v-if="alertCount"
 		class="overflow-hidden rounded-xl border border-error/35 bg-error/5"
 		aria-labelledby="deliverability-alerts-heading"
 	>
@@ -82,15 +99,64 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 					class="font-semibold text-text-primary"
 					aria-live="polite"
 				>
-					{{ t('components.delivery.deliverabilityRegressionAlerts.heading', rows.length) }}
+					{{ heading }}
 				</h2>
 				<p class="mt-0.5 text-sm text-text-secondary">
-					{{ t('components.delivery.deliverabilityRegressionAlerts.subheading') }}
+					{{ subheading }}
 				</p>
 			</div>
 		</header>
 
 		<div class="divide-y divide-error/15">
+			<!-- The reason is stored English, like a regressed check's message. -->
+			<article
+				v-if="sendingHold"
+				class="space-y-3 px-5 py-4 sm:px-6"
+				aria-labelledby="deliverability-alert-sending-hold"
+				data-testid="sending-hold-alert"
+			>
+				<div>
+					<h3 id="deliverability-alert-sending-hold" class="font-medium text-text-primary">
+						{{ t(`${H}.title.${sendingHold.holdStatus}`) }}
+					</h3>
+					<p v-if="sendingHold.previousHoldStatus" class="mt-1 text-sm text-text-secondary">
+						{{ t(`${H}.changedFrom.${sendingHold.previousHoldStatus}`) }}
+					</p>
+					<p class="mt-1 text-sm leading-6 text-text-secondary">{{ sendingHold.reason }}</p>
+				</div>
+
+				<dl class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-text-tertiary">
+					<div class="flex gap-1">
+						<dt>{{ t('components.delivery.deliverabilityRegressionAlerts.detected') }}</dt>
+						<dd>
+							<time :datetime="new Date(sendingHold.observedAt).toISOString()">
+								{{ formatDateTime(sendingHold.observedAt) }}
+							</time>
+						</dd>
+					</div>
+					<div class="flex gap-1">
+						<dt>{{ t(`${C}.label`) }}</dt>
+						<dd data-testid="alert-channels">{{ channelSummary(sendingHold.channels) }}</dd>
+					</div>
+				</dl>
+				<p
+					v-if="sendingHold.channels.email.isOnAffectedTransport"
+					class="text-xs text-warning"
+					data-testid="alert-email-may-not-arrive"
+				>
+					{{ t(`${C}.mayNotArrive`) }}
+				</p>
+
+				<div class="flex flex-wrap items-center gap-2">
+					<UiButton size="sm" variant="secondary" to="/dashboard/admin/delivery">
+						<template #iconLeft>
+							<ArrowRightIcon class="h-3.5 w-3.5" />
+						</template>
+						{{ t(`${H}.openHealth`) }}
+					</UiButton>
+				</div>
+			</article>
+
 			<article
 				v-for="{ alert, item } in rows"
 				:key="alert.id"

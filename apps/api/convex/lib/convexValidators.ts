@@ -64,6 +64,14 @@ export function isOutboundChannel(value: string): value is OutboundChannel {
 export const jsonPrimitiveValue = v.union(v.string(), v.number(), v.boolean(), v.null());
 export const jsonPrimitiveRecord = v.record(v.string(), jsonPrimitiveValue);
 
+// A transactional data variable: a primitive, or the list a repeated Block
+// iterates, whose entries are primitives or flat objects of primitives.
+export const dataVariableValue = v.union(
+	jsonPrimitiveValue,
+	v.array(v.union(jsonPrimitiveValue, jsonPrimitiveRecord))
+);
+export const dataVariablesRecord = v.record(v.string(), dataVariableValue);
+
 // Per-step result blob from the updater sidecar (systemUpdates.steps).
 export const updateStepResultValidator = v.array(
 	v.object({
@@ -104,8 +112,10 @@ export const activityMetadataValidator = v.object({
 	attestSource: v.optional(v.string()),
 });
 
-// Data variables schema definition (transactionalEmails)
-export const dataVariablesSchemaValidator = v.record(v.string(), fieldTypeValidator);
+// Data variables schema definition (transactionalEmails). `array` is a list
+// for a repeated Block; the other types are the contact property field types.
+export const dataVariableTypeValidator = v.union(fieldTypeValidator, v.literal('array'));
+export const dataVariablesSchemaValidator = v.record(v.string(), dataVariableTypeValidator);
 
 // ─── Webhook payload contract (FROZEN) ─────────────────────────────────────
 // Per-event payload shapes are documented in apps/api/convex/docs/webhook-payloads.md.

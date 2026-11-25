@@ -134,10 +134,13 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 
 	// Determine the highest reached status in the progression
 	const currentStatusIndex = progressionOrder.indexOf(props.status);
+	// A failed, bounced or complained send has ended, so the timeline lists only
+	// the steps that carry a timestamp and ends at that state instead of showing
+	// the rest as not yet reached. A soft bounce ends it too: the MTA reports one
+	// only after its own retries ran out, and Owlat never sends that row again.
+	// Evidence recorded later (a late delivery callback, an open or click on a
+	// soft-bounced or complained send) sets its timestamp and is shown then.
 	const isError = errorStatuses.includes(props.status);
-	// A failed send never left Owlat, so the steps after the failure will never
-	// come: the timeline ends there instead of listing them as not yet reached.
-	const isFailed = props.status === 'failed';
 
 	// Build normal progression events
 	const startIndex = props.showQueued ? 0 : 1;
@@ -147,7 +150,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 		const key = progressionOrder[i]!;
 		const ts = timestamps[key];
 		const reached = isError ? ts != null : i <= currentStatusIndex && ts != null;
-		if (isFailed && !reached) continue;
+		if (isError && !reached) continue;
 		const cfg = statusConfig[key]!;
 
 		let delta: string | undefined;
@@ -187,7 +190,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 	// Add error events if they occurred
 	for (const errKey of errorStatuses) {
 		const ts = timestamps[errKey];
-		if (ts || (errKey === 'failed' && isFailed)) {
+		if (ts || errKey === props.status) {
 			const cfg = statusConfig[errKey]!;
 			let delta: string | undefined;
 			if (prevTimestamp && ts) {

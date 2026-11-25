@@ -18,6 +18,7 @@ export const columnsSchema: BlockAttributeSchema = {
 						{ label: '2', value: 2 },
 						{ label: '3', value: 3 },
 						{ label: '4', value: 4 },
+						{ label: '5', value: 5 },
 					],
 				},
 				{
@@ -32,6 +33,7 @@ export const columnsSchema: BlockAttributeSchema = {
 						{ label: 'Right Narrow', value: 'right-narrow' },
 					],
 				},
+				{ key: 'columnWidths', label: 'Column Widths', type: 'columnWidths' },
 				{ key: 'columnGap', label: 'Column Gap', type: 'number', min: 0, max: 40, unit: 'px' },
 				{
 					key: 'verticalAlign',

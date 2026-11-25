@@ -280,6 +280,30 @@ for (const domain of await owlat.domains.list()) {
 }
 ```
 
+After publishing records, ask for a fresh check and poll the list until it has
+run. This needs the `domains:verify` scope; one check per domain per minute.
+
+```typescript
+const { requestedAt } = await owlat.domains.verify('news.example.com');
+```
+
+### Templates
+
+Transactional emails and saved blocks: read, write and publish. Reads need the
+`templates:read` scope, writes `templates:write`. A read is the export, and
+`upsert` takes it back unchanged.
+
+```typescript
+const email = await owlat.transactionalEmails.get('order-confirmation');
+const { issues } = await owlat.transactionalEmails.upsert(
+	'order-confirmation',
+	{ ...email, subject: 'Your order is confirmed' },
+	{ ifRevision: email.revision, whilePublished: true }
+);
+await owlat.transactionalEmails.publish('order-confirmation');
+const { data: savedBlocks } = await owlat.savedBlocks.list();
+```
+
 ## Error Handling
 
 The SDK throws typed errors that you can catch and handle appropriately:

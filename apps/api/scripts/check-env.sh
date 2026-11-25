@@ -21,7 +21,7 @@
 # next form to be discovered by an incident.
 #
 # Test files (`__tests__/`, `*.test.ts`, `*.spec.ts`) are exempt: they configure
-# a test run rather than a deployment.
+# a test run rather than a deployment. So is codegen output (`_generated/`).
 #
 # For the Convex backend (the no-argument form) the oxlint rule
 # owlat/no-process-env (packages/oxlint-plugin-owlat) enforces this on the AST
@@ -81,6 +81,9 @@ while IFS= read -r -d '' file; do
 	relative="${file#"${root}"/}"
 	case "/${relative}" in
 		*/__tests__/* | *.test.ts | *.spec.ts) continue ;;
+		# Convex codegen output, which oxlint ignores in every workspace too: its
+		# `env` export reads process.env and is rewritten on every codegen run.
+		*/_generated/*) continue ;;
 	esac
 	for path in "${allowed[@]}"; do
 		[[ "$relative" == "$path" ]] && continue 2

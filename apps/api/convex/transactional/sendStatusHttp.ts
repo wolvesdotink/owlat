@@ -34,7 +34,7 @@ const NOT_FOUND = 'Transactional send not found';
  * The scope and feature floor both reads share: the scope and the floor of
  * sending, with the same answers. Null when the read may go ahead.
  */
-async function refuseRead(
+export async function refuseRead(
 	ctx: ActionCtx,
 	request: Request,
 	auth: AuthenticatedContext

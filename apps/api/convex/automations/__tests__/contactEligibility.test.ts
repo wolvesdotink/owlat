@@ -22,6 +22,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { emailStepModule } from '../steps/email';
+import { createTestTopic } from '../../__tests__/factories';
 import {
 	DAY_MS,
 	advanceAndRun,
@@ -288,5 +289,267 @@ describe('contact changes between the claim and the enqueue', () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
+	});
+});
+
+describe('the topic an automation belongs to', () => {
+	type TopicSetup = { topicId: Id<'topics'>; otherTopicId: Id<'topics'> };
+
+	async function seedTopics(t: T): Promise<TopicSetup> {
+		return await t.run(async (ctx) => ({
+			topicId: await ctx.db.insert('topics', createTestTopic({ name: 'Product updates' })),
+			otherTopicId: await ctx.db.insert('topics', createTestTopic({ name: 'Promotions' })),
+		}));
+	}
+
+	async function subscribe(t: T, contactId: Id<'contacts'>, topicId: Id<'topics'>) {
+		await t.run(async (ctx) =>
+			ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() })
+		);
+	}
+
+	async function leave(t: T, contactId: Id<'contacts'>, topicId: Id<'topics'>) {
+		await t.run(async (ctx) => {
+			const membership = await ctx.db
+				.query('contactTopics')
+				.withIndex('by_contact_and_topic', (q) =>
+					q.eq('contactId', contactId).eq('topicId', topicId)
+				)
+				.first();
+			if (membership) await ctx.db.delete(membership._id);
+		});
+	}
+
+	/** A three-step drip whose first email has gone out to a member of `memberOf`. */
+	async function startTopicDrip(
+		t: T,
+		automation: Record<string, unknown>,
+		memberOf: Id<'topics'>[]
+	) {
+		const { automationId, stepIds } = await seedAutomation(
+			t,
+			[{ email: 'Welcome' }, { delayDays: 2 }, { email: 'Follow-up' }],
+			automation
+		);
+		const { runId, contactId } = await seedRun(t, automationId, { doiStatus: 'confirmed' });
+		for (const topicId of memberOf) await subscribe(t, contactId, topicId);
+		await t.mutation(internal.automations.stepOrchestration.beginAutomationRun, {
+			automationRunId: runId,
+		});
+		await runDueScheduled(t);
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome']);
+		return { automationId, stepIds, runId, contactId };
+	}
+
+	it("leaving the trigger's topic mid-series skips the remaining emails and records why", async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId } = await seedTopics(t);
+		const { stepIds, runId, contactId } = await startTopicDrip(
+			t,
+			{ triggerType: 'topic_subscribed', triggerConfig: { topicId } },
+			[topicId]
+		);
+
+		await leave(t, contactId, topicId);
+		await advanceAndRun(t, 2 * DAY_MS);
+
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome']);
+		const stepRuns = await stepRunsOf(t, runId);
+		expect(stepRuns.map((r) => [r.automationStepId, r.status])).toEqual([
+			[stepIds[0], 'completed'],
+			[stepIds[1], 'completed'],
+			[stepIds[2], 'skipped'],
+		]);
+		expect(stepRuns[2]?.errorMessage).toMatch(/not subscribed to the automation's topic/);
+		const run = await runOf(t, runId);
+		expect(run.status).toBe('completed');
+		expect(run.emailSkip).toEqual({ reason: 'topic_unsubscribed', topicId });
+	});
+
+	it('an explicit topic gates an automation whose trigger has none', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId, otherTopicId } = await seedTopics(t);
+		const { runId, contactId } = await startTopicDrip(t, { topicId: otherTopicId }, [
+			topicId,
+			otherTopicId,
+		]);
+
+		await leave(t, contactId, otherTopicId);
+		await advanceAndRun(t, 2 * DAY_MS);
+
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome']);
+		expect((await runOf(t, runId)).emailSkip).toEqual({
+			reason: 'topic_unsubscribed',
+			topicId: otherTopicId,
+		});
+	});
+
+	it('an explicit topic replaces the trigger topic', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId, otherTopicId } = await seedTopics(t);
+		const { contactId } = await startTopicDrip(
+			t,
+			{ triggerType: 'topic_subscribed', triggerConfig: { topicId }, topicId: otherTopicId },
+			[topicId, otherTopicId]
+		);
+
+		await leave(t, contactId, topicId);
+		await advanceAndRun(t, 2 * DAY_MS);
+
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome', 'Follow-up']);
+	});
+
+	it('an automation set to no topic keeps mailing a contact who left the trigger topic', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId } = await seedTopics(t);
+		const { runId, contactId } = await startTopicDrip(
+			t,
+			{ triggerType: 'topic_subscribed', triggerConfig: { topicId }, topicId: null },
+			[topicId]
+		);
+
+		await leave(t, contactId, topicId);
+		await advanceAndRun(t, 2 * DAY_MS);
+
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome', 'Follow-up']);
+		expect((await runOf(t, runId)).emailSkip).toBeUndefined();
+	});
+
+	it('a deleted topic stops the mail, as a campaign to it reaches nobody', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId } = await seedTopics(t);
+		const { contactId } = await startTopicDrip(
+			t,
+			{ triggerType: 'topic_subscribed', triggerConfig: { topicId } },
+			[topicId]
+		);
+
+		// `topics.remove` deletes the memberships with the topic.
+		await leave(t, contactId, topicId);
+		await t.run(async (ctx) => ctx.db.delete(topicId));
+		await advanceAndRun(t, 2 * DAY_MS);
+
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome']);
+	});
+
+	it('a membership awaiting double opt-in is not subscribed, as for a campaign', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId } = await seedTopics(t);
+		const { contactId } = await startTopicDrip(
+			t,
+			{ triggerType: 'topic_subscribed', triggerConfig: { topicId } },
+			[topicId]
+		);
+
+		await t.run(async (ctx) => {
+			const membership = await ctx.db
+				.query('contactTopics')
+				.withIndex('by_contact_and_topic', (q) =>
+					q.eq('contactId', contactId).eq('topicId', topicId)
+				)
+				.first();
+			await ctx.db.patch(membership!._id, { pendingDoiConfirmation: true });
+		});
+		await advanceAndRun(t, 2 * DAY_MS);
+
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome']);
+	});
+
+	it('the global unsubscribe wins over leaving the topic', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId } = await seedTopics(t);
+		const { runId, contactId } = await startTopicDrip(
+			t,
+			{ triggerType: 'topic_subscribed', triggerConfig: { topicId } },
+			[topicId]
+		);
+
+		await leave(t, contactId, topicId);
+		await t.run(async (ctx) => ctx.db.patch(contactId, { unsubscribedAt: Date.now() }));
+		await advanceAndRun(t, 2 * DAY_MS);
+
+		expect((await sends(t)).map((s) => s.subject)).toEqual(['Welcome']);
+		expect((await runOf(t, runId)).emailSkip).toEqual({ reason: 'contact_unsubscribed' });
+	});
+
+	it('leaving between the claim and the Send write: the intake refuses, the step is skipped', async () => {
+		const t = convexTest(schema, walkerModules);
+		await seedSettings(t);
+		const { topicId } = await seedTopics(t);
+		const { automationId, stepIds } = await seedAutomation(
+			t,
+			[{ email: 'Welcome' }, { delayDays: 1 }],
+			{ triggerType: 'topic_subscribed', triggerConfig: { topicId } }
+		);
+		const { runId, contactId } = await seedRun(t, automationId, { doiStatus: 'confirmed' });
+		await subscribe(t, contactId, topicId);
+		const started = await t.mutation(internal.automations.stepOrchestration.beginAutomationRun, {
+			automationRunId: runId,
+		});
+		if (started.kind !== 'scheduled') throw new Error('not started');
+		const claim = await t.mutation(internal.automations.stepOrchestration.claimStepRun, {
+			stepRunId: started.stepRunId,
+			attempt: 0,
+		});
+		expect(claim.kind).toBe('claimed');
+
+		await leave(t, contactId, topicId);
+
+		const intake = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation',
+			email: 'reader@example.com',
+			contactId,
+			automationId,
+			subject: 'Welcome',
+			html: '<p>Hello</p>',
+			from: 'Owlat <noreply@example.com>',
+			automationStepRunId: started.stepRunId,
+		});
+		expect(intake).toEqual({
+			ok: false,
+			reason: 'recipient_ineligible',
+			detail: 'topic_unsubscribed',
+		});
+
+		const finalized = await t.mutation(internal.automations.stepOrchestration.finalizeStepRun, {
+			stepRunId: started.stepRunId,
+			attempt: 0,
+			outcome: { kind: 'contact_ineligible', reason: 'topic_unsubscribed' },
+		});
+		expect(finalized.kind).toBe('scheduled');
+		expect(await sends(t)).toHaveLength(0);
+		expect((await stepRunsOf(t, runId)).map((r) => [r.automationStepId, r.status])).toEqual([
+			[stepIds[0], 'skipped'],
+			[stepIds[1], 'pending'],
+		]);
+		expect((await runOf(t, runId)).emailSkip).toEqual({ reason: 'topic_unsubscribed', topicId });
+	});
+
+	it('the email step maps a topic refusal to a skip, not a deletion', async () => {
+		const runMutation = vi.fn().mockResolvedValue({
+			ok: false,
+			reason: 'recipient_ineligible',
+			detail: 'topic_unsubscribed',
+		});
+		const runQuery = vi
+			.fn()
+			.mockResolvedValueOnce({ subject: 'Hi', htmlContent: '<p>Hi</p>' })
+			.mockResolvedValueOnce({ defaultFromEmail: 'noreply@example.com' });
+
+		const outcome = await emailStepModule.execute({ runQuery, runMutation } as never, {
+			config: { emailTemplateId: 'template-1' },
+			contact: { _id: 'contact-1', email: 'reader@example.com' } as never,
+			automation: { _id: 'automation-1' } as never,
+			stepRunId: 'step-run-1' as never,
+		});
+
+		expect(outcome).toEqual({ status: 'contact_ineligible', reason: 'topic_unsubscribed' });
 	});
 });

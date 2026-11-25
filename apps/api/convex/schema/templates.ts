@@ -2,8 +2,8 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { softDeleteFields } from '../lib/validators/softDelete';
 import {
+	dataVariablesRecord,
 	dataVariablesSchemaValidator,
-	jsonPrimitiveRecord,
 	emailTemplateTypeValidator,
 } from '../lib/convexValidators';
 import { sendStatusValidator } from '../lib/literalValidators';
@@ -83,6 +83,11 @@ export const templateTables = {
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// Denormalized search field: "name subject" for full-text search
 		searchableText: v.optional(v.string()),
+		// `name` folded for the list's name sort (emailTemplates/listing.ts
+		// `templateNameSortKey`): an index on `name` itself orders by code
+		// point, so "Zebra" would sort before "apple". Written with `name`;
+		// absent on older rows until `0077_backfill_template_name_sort_key` fills it.
+		nameSortKey: v.optional(v.string()),
 		// Schema version for `content` (EditorBlock[]). Bump on block shape change.
 		contentBlockVersion: v.optional(v.number()),
 		// Editor-content revision: advanced by every write to the fields an
@@ -107,8 +112,14 @@ export const templateTables = {
 		// read), and the Recently deleted list and purge read `[0, cutoff)` from
 		// the same index. updatedAt is the default browse order; the compound
 		// serves type-filtered browse and the per-type counts index-natively.
+		// The created and name pairs serve the list's other sorts the same way,
+		// so every sort pages in order on the server, filtered by type or not.
 		.index('by_deleted_at_and_updated_at', ['deletedAt', 'updatedAt'])
 		.index('by_deleted_at_and_type_and_updated_at', ['deletedAt', 'type', 'updatedAt'])
+		.index('by_deleted_at_and_created_at', ['deletedAt', 'createdAt'])
+		.index('by_deleted_at_and_type_and_created_at', ['deletedAt', 'type', 'createdAt'])
+		.index('by_deleted_at_and_name_sort_key', ['deletedAt', 'nameSortKey'])
+		.index('by_deleted_at_and_type_and_name_sort_key', ['deletedAt', 'type', 'nameSortKey'])
 		.searchIndex('search_templates', {
 			searchField: 'searchableText',
 			filterFields: ['type', 'status', 'deletedAt'],
@@ -198,6 +209,7 @@ export const templateTables = {
 		name: v.string(),
 		slug: v.string(), // Unique identifier, used for API identification
 		subject: v.string(),
+		previewText: v.optional(v.string()), // Preview text shown in inbox, as on `emailTemplates`
 		content: v.string(), // JSON string for editor state
 		htmlContent: v.optional(v.string()), // Rendered HTML for sending
 		// text/plain alternative + author override, exactly as on `emailTemplates`.
@@ -233,8 +245,8 @@ export const templateTables = {
 		// Available translation language codes (e.g., ["en", "de", "fr"])
 		supportedLanguages: v.optional(v.array(v.string())),
 		// Translations keyed by language code (JSON string)
-		// Structure: { "de": { "subject": "...", "blocks": {...} }, ... }
-		// Default language content is stored in main subject/content fields
+		// Structure: { "de": { "subject": "...", "previewText": "...", "blocks": {...} }, ... }
+		// Default language content is stored in main subject/previewText/content fields
 		translations: v.optional(v.string()),
 		// Pre-rendered HTML translations keyed by language code (JSON string)
 		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }
@@ -337,7 +349,7 @@ export const templateTables = {
 		language: v.optional(v.string()),
 		// Data variables that were used for this send. Removed by the retention
 		// sweep once the send is done (`transactional/sendDataRetention.ts`).
-		dataVariables: v.optional(jsonPrimitiveRecord),
+		dataVariables: v.optional(dataVariablesRecord),
 		// What the retention sweep keeps of `dataVariables`: the names, so the
 		// send page can still say what the caller supplied.
 		dataVariableNames: v.optional(v.array(v.string())),
@@ -367,12 +379,13 @@ export const templateTables = {
 		// oldest first.
 		.index('by_kind_data_variables_redacted', ['kind', 'dataVariablesRedactedAt'])
 		// The public send list (`transactional/sendList.ts`): live sends of one
-		// kind, newest first, alone or by recipient or status. `deletedAt` leads
-		// with the kind so an erased send never takes a place in a page, and each
-		// filter is one range, so a page reads no row it then drops.
+		// kind, newest first, alone or by recipient, status or both. `deletedAt`
+		// leads with the kind so an erased send never takes a place in a page, and
+		// each filter is one range, so a page reads no row it then drops.
 		.index('by_kind_deleted', ['kind', 'deletedAt'])
 		.index('by_kind_deleted_email', ['kind', 'deletedAt', 'email'])
 		.index('by_kind_deleted_status', ['kind', 'deletedAt', 'status'])
+		.index('by_kind_deleted_email_status', ['kind', 'deletedAt', 'email', 'status'])
 		.index('by_contact', ['contactId'])
 		.index('by_provider_message_id', ['providerMessageId'])
 		// Answers "does this inbound message already have a send?" as a point

@@ -1,9 +1,10 @@
 import { BaseResource } from './base';
 import type { ApiResponse } from '../types/common';
-import type { SendingDomainSetup } from '../types/domains';
+import type { DomainCheckRequest, SendingDomainSetup } from '../types/domains';
 
 /**
- * Resource for reading the instance's sending domains.
+ * Resource for the instance's sending domains: read them, and ask for a fresh
+ * check of one.
  */
 export class DomainsResource extends BaseResource {
 	/**
@@ -15,7 +16,7 @@ export class DomainsResource extends BaseResource {
 	 *
 	 * The states come from the last check, at `lastCheckedAt`. Owlat re-checks
 	 * verified domains daily; a domain still being set up is checked while its
-	 * Domains page is open.
+	 * Domains page is open, or when {@link verify} asks for it.
 	 *
 	 * @returns Every sending domain
 	 * @throws {ForbiddenError} If the key lacks the `status:read` scope
@@ -31,6 +32,30 @@ export class DomainsResource extends BaseResource {
 	 */
 	async list(): Promise<SendingDomainSetup[]> {
 		const response = await this.http.get<ApiResponse<SendingDomainSetup[]>>('/api/v1/domains');
+		return response.data.data;
+	}
+
+	/**
+	 * Ask for a fresh DNS check of one sending domain, for example right after
+	 * publishing its records. The check runs in the background: poll
+	 * {@link list} until the domain's `lastCheckedAt` is at or after the
+	 * returned `requestedAt`. One check per domain per minute; a second one
+	 * sooner is refused with `retryAfter`. Needs the `domains:verify` scope.
+	 *
+	 * @param domain - The domain name, or its `id` from {@link list}
+	 * @returns The domain as it stood before the check, and when the check was asked for
+	 * @throws {NotFoundError} If no sending domain has that name or id
+	 * @throws {RateLimitError} If the domain was checked less than a minute ago
+	 *
+	 * @example
+	 * ```typescript
+	 * const { requestedAt } = await owlat.domains.verify('news.example.com');
+	 * ```
+	 */
+	async verify(domain: string): Promise<DomainCheckRequest> {
+		const response = await this.http.post<ApiResponse<DomainCheckRequest>>(
+			`/api/v1/domains/${encodeURIComponent(domain)}/verify`
+		);
 		return response.data.data;
 	}
 }

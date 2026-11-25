@@ -50,3 +50,19 @@ export const sendingDomainSetupSchema = z.strictObject({
 
 /** The list is the whole set: an instance has a handful of sending domains, so it is not paged. */
 export const sendingDomainSetupListSchema = z.array(sendingDomainSetupSchema);
+
+export const domainCheckRequestSchema = z.strictObject({
+	id: z.string(),
+	domain: z.string(),
+	status: z.enum(SENDING_DOMAIN_STATUSES).meta({
+		description: 'Verification state before the check.',
+	}),
+	lastCheckedAt: z.string().nullable().meta({
+		description:
+			'ISO 8601 timestamp of the last check that reached a verdict, or null before the first.',
+	}),
+	requestedAt: z.string().meta({
+		description:
+			'ISO 8601 timestamp the check was requested. Once `lastCheckedAt` in `GET /api/v1/domains` is at or after it, a check that reached a verdict has landed since the request: this one, or another check of the domain (every check that reaches a verdict moves the same timestamp).',
+	}),
+});

@@ -88,6 +88,7 @@
 			"rightWide": "Rechts breit",
 			"leftNarrow": "Links schmal",
 			"rightNarrow": "Rechts schmal",
+			"columnWidths": "Spaltenbreiten",
 			"columnGap": "Spaltenabstand",
 			"verticalAlign": "Vertikale Ausrichtung",
 			"top": "Oben",
@@ -607,7 +608,13 @@
 			"newVariableTitle": "Neue Datenvariable für diese E-Mail anlegen",
 			"newVariable": "Neue Variable",
 			"name": "Name",
-			"variable": "Variable"
+			"variable": "Variable",
+			"previewText": "Vorschau",
+			"previewTextLabel": "Vorschautext",
+			"previewTextPlaceholder": "Steht im Posteingang hinter dem Betreff (optional)",
+			"previewTextPlaceholderWithVariables": "Steht im Posteingang hinter dem Betreff, {{ fügt eine Variable ein",
+			"previewTextInsertVariableTitle": "Variable in den Vorschautext einfügen",
+			"previewTextInsertVariable": "Variable in den Vorschautext einfügen"
 		},
 		"panel": {
 			"fontDefault": "Standard",
@@ -737,6 +744,12 @@
 			},
 			"select": {
 				"placeholder": "Auswählen..."
+			},
+			"columnWidths": {
+				"customize": "Eigene Breiten festlegen",
+				"usePreset": "Verhältnis-Vorlage verwenden",
+				"column": "Breite von Spalte {index}",
+				"help": "Ganze Prozent, mindestens {min} % pro Spalte. Änderst du eine Spalte, passt sich die daneben an."
 			}
 		},
 		"richText": {
@@ -770,8 +783,10 @@
 				"string": "Zeichenkette",
 				"number": "Zahl",
 				"boolean": "Wahrheitswert",
-				"date": "Datum"
+				"date": "Datum",
+				"array": "Liste"
 			},
+			"arrayHint": "Eine Liste von Einträgen für einen wiederholten Block. Wähl sie unter „Wiederholen“ des Blocks und nutze darin {example}.",
 			"preview": "Vorschau",
 			"usage": "Wird in der API-Nutzlast verwendet",
 			"create": "Variable anlegen"

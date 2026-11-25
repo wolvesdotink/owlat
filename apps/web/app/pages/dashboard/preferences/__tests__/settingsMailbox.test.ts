@@ -18,6 +18,8 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { usePostboxSettingsMailbox } from '~/composables/postbox/usePostboxSettingsMailbox';
 import PreferencesMailboxPicker from '~/components/preferences/PreferencesMailboxPicker.vue';
 import PostboxPlainRules from '~/components/postbox/PostboxPlainRules.vue';
+import PostboxFilterReachNotice from '~/components/postbox/PostboxFilterReachNotice.vue';
+import PostboxFilterRunsOnApplyBadge from '~/components/postbox/PostboxFilterRunsOnApplyBadge.vue';
 import VacationPage from '../vacation.vue';
 import SignaturesPage from '../signatures.vue';
 import ForwardingPage from '../forwarding.vue';
@@ -45,6 +47,26 @@ const CONNECTED = {
 	scope: 'personal',
 	kind: 'external',
 	status: 'active',
+};
+const CONNECTED_TEAM = {
+	_id: 'mb_team_gmail',
+	address: 'team@gmail.test',
+	displayName: 'Team Gmail',
+	scope: 'shared',
+	kind: 'external',
+	status: 'active',
+};
+
+// The filters the page lists, per mailbox: one built in the editor.
+const filterRows = ref<Array<Record<string, unknown>>>([]);
+const EDITOR_FILTER = {
+	_id: 'f_1',
+	name: 'Receipts',
+	isEnabled: true,
+	stopProcessing: false,
+	priority: 0,
+	conditions: [{ field: 'from', op: 'contains', value: 'shop' }],
+	actions: [{ type: 'addLabel' }],
 };
 
 const responders: Record<string, { subject: string } | null> = {
@@ -75,7 +97,7 @@ const forwardingRules: Record<string, Array<Record<string, unknown>>> = {
 	],
 };
 
-let mailboxes: Array<typeof PERSONAL | typeof SUPPORT | typeof CONNECTED>;
+let mailboxes: Array<typeof PERSONAL | typeof SUPPORT | typeof CONNECTED | typeof CONNECTED_TEAM>;
 // A ref, so a test can hold the roles read in its loading state and land it.
 const roles = ref<Array<{ mailboxId: string; role: 'owner' | 'member' }> | undefined>();
 const rolesError = ref<Error | null>(null);
@@ -135,6 +157,7 @@ beforeEach(() => {
 		{ mailboxId: 'mb_sales', role: 'member' },
 	];
 	rolesError.value = null;
+	filterRows.value = [];
 	openMailboxId.value = null;
 	route.query = {};
 	sessionState.clear();
@@ -168,7 +191,7 @@ beforeEach(() => {
 			remove: vi.fn(),
 		}),
 		usePostboxFilters: () => ({
-			filters: ref([]),
+			filters: filterRows,
 			isLoading: ref(false),
 			error: ref(null),
 			refetch: vi.fn(),
@@ -202,7 +225,12 @@ function mountPage(page: Component) {
 	return mount(page, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { PreferencesMailboxPicker, PostboxPlainRules },
+			components: {
+				PreferencesMailboxPicker,
+				PostboxPlainRules,
+				PostboxFilterReachNotice,
+				PostboxFilterRunsOnApplyBadge,
+			},
 			stubs: {
 				UiInput: {
 					props: ['modelValue'],
@@ -213,13 +241,17 @@ function mountPage(page: Component) {
 				UiSpinner: true,
 				PostboxRuleChips: true,
 				PostboxRuleDryRun: true,
-				PostboxFilterRuleBuilder: true,
+				PostboxFilterRuleBuilder: {
+					name: 'PostboxFilterRuleBuilder',
+					props: ['mailboxId', 'mailbox', 'modelValue'],
+					template: '<div />',
+				},
 				PostboxFilterRunControl: true,
 				UiQueryBoundary: { template: '<div><slot /></div>' },
 				UiSwitch: true,
 				UiSkeleton: true,
 				UiConfirmationDialog: true,
-				UiBadge: true,
+				UiBadge: { template: '<span><slot /></span>' },
 				UiCheckbox: true,
 				PostboxBasicEditor: true,
 				UiButton: {
@@ -534,5 +566,97 @@ describe('the filters page', () => {
 		await flushPromises();
 
 		expect(editorOpen(wrapper)).toBe(true);
+	});
+});
+
+describe('filters on a connected mailbox, where synced mail skips the editor filters', () => {
+	const notice = (wrapper: ReturnType<typeof mountPage>) =>
+		wrapper.find('[data-testid="connected-mailbox-notice"]');
+	const rowState = (wrapper: ReturnType<typeof mountPage>) =>
+		wrapper.find('[data-testid="filter-runs-on-apply"]');
+
+	beforeEach(() => {
+		mailboxes = [PERSONAL, CONNECTED, CONNECTED_TEAM];
+		roles.value = [
+			{ mailboxId: 'mb_me', role: 'owner' },
+			{ mailboxId: 'mb_gmail', role: 'owner' },
+			{ mailboxId: 'mb_team_gmail', role: 'owner' },
+		];
+		filterRows.value = [EDITOR_FILTER];
+	});
+
+	it('says the filters do not run on new mail and that plain-language rules still do', async () => {
+		openMailboxId.value = 'mb_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		const text = notice(wrapper).text();
+		expect(text).toContain('me@gmail.test is synced from your provider');
+		expect(text).toContain('do not run on its new mail');
+		expect(text).toContain('Run on existing mail');
+		expect(text).toContain('Rules in your words still run on new mail');
+		// The enabled row says it waits to be applied, so it does not read as working.
+		expect(rowState(wrapper).text()).toBe('Runs only when you apply it');
+	});
+
+	it('says nothing runs on new mail in a connected team inbox', async () => {
+		openMailboxId.value = 'mb_team_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		const text = notice(wrapper).text();
+		expect(text).toContain('team@gmail.test is synced from your provider');
+		expect(text).toContain('no filter or rule runs on its new mail');
+		expect(text).not.toContain('Rules in your words');
+		expect(rowState(wrapper).exists()).toBe(true);
+	});
+
+	it('marks no row and shows no notice once the picker moves to the hosted mailbox', async () => {
+		openMailboxId.value = 'mb_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		await wrapper.get('select#settings-mailbox').setValue('mb_me');
+		await flushPromises();
+		expect(notice(wrapper).exists()).toBe(false);
+		expect(rowState(wrapper).exists()).toBe(false);
+	});
+
+	it('says a filter with only forward, delete or discard never runs there', async () => {
+		filterRows.value = [
+			{ ...EDITOR_FILTER, actions: [{ type: 'forward', forwardTo: 'a@b.test' }] },
+		];
+		openMailboxId.value = 'mb_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(rowState(wrapper).text()).toBe('Never runs here');
+	});
+
+	it('hides the Stop badge, since a run applies one filter at a time', async () => {
+		filterRows.value = [{ ...EDITOR_FILTER, stopProcessing: true }];
+		openMailboxId.value = 'mb_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(wrapper.text()).not.toContain('Stop');
+	});
+
+	it('marks a switched-off filter as off, not as waiting to be applied', async () => {
+		filterRows.value = [{ ...EDITOR_FILTER, isEnabled: false }];
+		openMailboxId.value = 'mb_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(rowState(wrapper).exists()).toBe(false);
+	});
+
+	it("tells the editor it edits a connected mailbox's filter", async () => {
+		route.query = { filterFrom: 'billing@example.com', settingsMailbox: 'mb_gmail' };
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		const editor = wrapper.findComponent({ name: 'PostboxFilterRuleBuilder' });
+		expect(editor.props('mailbox')).toMatchObject({ kind: 'external' });
 	});
 });

@@ -22,12 +22,6 @@ Hosted cloud is on the roadmap — [join the waitlist](https://owlat.app/waitlis
 On a fresh Linux VPS with Docker + Docker Compose v2:
 
 ```sh
-curl -fsSL https://get.owlat.app | bash
-```
-
-If `get.owlat.app` does not answer, fetch the same script from GitHub. It installs the latest release all the same:
-
-```sh
 curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/main/install.sh | bash
 ```
 
@@ -92,15 +86,15 @@ Owlat is built as a set of independent feature areas. Each one can be turned on 
 
 ### AI
 
-| Feature            | Flag                | Default | Description                                                                                                                                                                                          |
-| ------------------ | ------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Master AI toggle   | `ai`                | off     | Required by every AI feature. Needs an LLM provider configured                                                                                                                                       |
-| AI agent           | `ai.agent`          | off     | Auto-classify inbound mail and draft suggested replies                                                                                                                                               |
-| Draft-on-arrival   | `postbox.aiDraft`   | off     | Pre-generate a human-reviewed reply draft the moment personal mail needs one. Needs `ai` plus _one of_ `postbox` / `mail.external` — works for connected external mailboxes without a hosted Postbox |
-| Autonomous actions | `ai.autonomy`       | off     | Let the agent send approved replies without human review                                                                                                                                             |
-| Knowledge graph    | `ai.knowledge`      | off     | Semantic extraction from conversations for agent context                                                                                                                                             |
-| AI dashboards      | `ai.visualizations` | off     | Generate charts from natural-language prompts                                                                                                                                                        |
-| AI email drafts    | `ai.emailGeneration` | off    | Draft a template, transactional email or whole campaign from a sentence. Drafts only; nothing is sent                                                                                               |
+| Feature            | Flag                 | Default | Description                                                                                                                                                                                          |
+| ------------------ | -------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Master AI toggle   | `ai`                 | off     | Required by every AI feature. Needs an LLM provider configured                                                                                                                                       |
+| AI agent           | `ai.agent`           | off     | Auto-classify inbound mail and draft suggested replies                                                                                                                                               |
+| Draft-on-arrival   | `postbox.aiDraft`    | off     | Pre-generate a human-reviewed reply draft the moment personal mail needs one. Needs `ai` plus _one of_ `postbox` / `mail.external` — works for connected external mailboxes without a hosted Postbox |
+| Autonomous actions | `ai.autonomy`        | off     | Let the agent send approved replies without human review                                                                                                                                             |
+| Knowledge graph    | `ai.knowledge`       | off     | Semantic extraction from conversations for agent context                                                                                                                                             |
+| AI dashboards      | `ai.visualizations`  | off     | Generate charts from natural-language prompts                                                                                                                                                        |
+| AI email drafts    | `ai.emailGeneration` | off     | Draft a template, transactional email or whole campaign from a sentence. Drafts only; nothing is sent                                                                                                |
 
 ### Integrations
 

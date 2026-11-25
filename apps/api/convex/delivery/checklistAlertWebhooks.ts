@@ -22,6 +22,7 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { internalMutation } from '../lib/writeFence';
 import { enqueueSubscribedDeliveries } from '../webhooks/deliveryAttempts';
 import { buildPayload } from '../webhooks/scheduleFanout';
+import { isEventAllowedOverUrl } from '../webhooks/urlPolicy';
 
 type Alert = Doc<'deliverabilityRegressionAlerts'>;
 
@@ -134,17 +135,26 @@ export async function webhookOutcome(
 	return outcome;
 }
 
-/** Active webhooks that would receive a raised alert now. */
+/**
+ * Active webhooks that receive raised alerts now, and the ones subscribed to
+ * either alert event whose stored `http` URL no longer may (`webhooks/urlPolicy.ts`),
+ * which the Center names so the operator does not take them for a channel.
+ */
 export async function subscribedAlertWebhookCount(
 	ctx: QueryCtx
-): Promise<{ isFeatureOn: boolean; count: number }> {
-	if (!(await isFeatureEnabled(ctx, 'webhooks'))) return { isFeatureOn: false, count: 0 };
+): Promise<{ isFeatureOn: boolean; count: number; cleartextCount: number }> {
+	if (!(await isFeatureEnabled(ctx, 'webhooks'))) {
+		return { isFeatureOn: false, count: 0, cleartextCount: 0 };
+	}
 	const webhooks = await ctx.db
 		.query('webhooks')
 		.withIndex('by_active', (q) => q.eq('isActive', true))
 		.collect(); // bounded: active webhooks (org-scale config)
-	return {
-		isFeatureOn: true,
-		count: webhooks.filter((webhook) => webhook.events.includes(RAISED)).length,
-	};
+	const count = webhooks.filter(
+		(webhook) => webhook.events.includes(RAISED) && isEventAllowedOverUrl(RAISED, webhook.url)
+	).length;
+	const cleartextCount = webhooks.filter((webhook) =>
+		webhook.events.some((event) => !isEventAllowedOverUrl(event, webhook.url))
+	).length;
+	return { isFeatureOn: true, count, cleartextCount };
 }

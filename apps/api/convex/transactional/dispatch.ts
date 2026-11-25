@@ -32,7 +32,7 @@ import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounte
 import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
 import { runSendIntakeGates } from '../delivery/sendIntakeGates';
-import { jsonPrimitiveValue } from '../lib/convexValidators';
+import { dataVariablesRecord } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
@@ -149,7 +149,7 @@ export const dispatch = internalMutation({
 	args: {
 		templateLookup: templateLookupValidator,
 		email: v.string(),
-		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
+		dataVariables: v.optional(dataVariablesRecord),
 		language: v.optional(v.string()),
 		// Every `storageId` must be a pending upload the caller registered
 		// (`transactional/pendingUploads.ts`); this transaction always claims it.

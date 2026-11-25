@@ -23,6 +23,7 @@ afterEach(() => {
 const CONTACT_ID = 'k57c0ntact00000000000000000000';
 const TOPIC_ID = 'k57t0pic0000000000000000000000';
 const SEND_ID = 'k57s3nd00000000000000000000000';
+const BLOCK_ID = 'k57bl0ck000000000000000000000';
 
 const example = <Id extends PublicOperationId>(id: Id) => OPERATION_EXAMPLES[id];
 const requestOf = (id: PublicOperationId) =>
@@ -103,10 +104,70 @@ const CALLS: Record<
 		path: '/api/v1/domains',
 		result: example('listDomains').response.data,
 	},
+	verifyDomain: {
+		call: (client) => client.domains.verify('news.example.com'),
+		path: '/api/v1/domains/news.example.com/verify',
+		result: example('verifyDomain').response.data,
+	},
 	getLimits: {
-		call: (client) => client.limits.get(),
+		call: (client) => client.limits.get({ email: 'ada@example.com', slug: 'password-reset' }),
 		path: '/api/v1/limits',
 		result: example('getLimits').response.data,
+	},
+	listTransactionalEmails: {
+		call: (client) => client.transactionalEmails.list(),
+		path: '/api/v1/transactional-emails',
+		result: example('listTransactionalEmails').response,
+	},
+	createTransactionalEmail: {
+		call: (client) =>
+			client.transactionalEmails.create(example('createTransactionalEmail').request),
+		path: '/api/v1/transactional-emails',
+		result: example('createTransactionalEmail').response.data,
+	},
+	getTransactionalEmail: {
+		call: (client) => client.transactionalEmails.get('order-confirmation'),
+		path: '/api/v1/transactional-emails/order-confirmation',
+		result: example('getTransactionalEmail').response.data,
+	},
+	putTransactionalEmail: {
+		call: (client) =>
+			client.transactionalEmails.upsert(
+				'order-confirmation',
+				example('putTransactionalEmail').request
+			),
+		path: '/api/v1/transactional-emails/order-confirmation',
+		result: example('putTransactionalEmail').response.data,
+	},
+	publishTransactionalEmail: {
+		call: (client) => client.transactionalEmails.publish('order-confirmation'),
+		path: '/api/v1/transactional-emails/order-confirmation/publish',
+		result: example('publishTransactionalEmail').response.data,
+	},
+	unpublishTransactionalEmail: {
+		call: (client) => client.transactionalEmails.unpublish('order-confirmation'),
+		path: '/api/v1/transactional-emails/order-confirmation/unpublish',
+		result: example('unpublishTransactionalEmail').response.data,
+	},
+	listSavedBlocks: {
+		call: (client) => client.savedBlocks.list(),
+		path: '/api/v1/saved-blocks',
+		result: example('listSavedBlocks').response,
+	},
+	createSavedBlock: {
+		call: (client) => client.savedBlocks.create(example('createSavedBlock').request),
+		path: '/api/v1/saved-blocks',
+		result: example('createSavedBlock').response.data,
+	},
+	getSavedBlock: {
+		call: (client) => client.savedBlocks.get(BLOCK_ID),
+		path: `/api/v1/saved-blocks/${BLOCK_ID}`,
+		result: example('getSavedBlock').response.data,
+	},
+	updateSavedBlock: {
+		call: (client) => client.savedBlocks.update(BLOCK_ID, example('updateSavedBlock').request),
+		path: `/api/v1/saved-blocks/${BLOCK_ID}`,
+		result: example('updateSavedBlock').response.data,
 	},
 	getStatus: {
 		call: (client) => client.status.get(),

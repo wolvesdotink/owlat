@@ -152,9 +152,11 @@ const timingLine = computed(() => {
 						<span class="text-text-tertiary">·</span>
 						<span class="tabular-nums">
 							{{
-								t('dashboard.campaigns.detail.report.recipients', {
-									count: formatNumber(recipientCount),
-								})
+								t(
+									'dashboard.campaigns.detail.report.recipients',
+									{ count: formatNumber(recipientCount) },
+									recipientCount
+								)
 							}}
 						</span>
 					</template>

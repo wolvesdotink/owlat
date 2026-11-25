@@ -55,6 +55,19 @@ describe('pageArea', () => {
 		expect(pageArea('terms.vue')).toEqual({ path: '/terms', exact: false, area: 'terms' });
 	});
 
+	it('cuts a listed section one segment deeper', () => {
+		expect(pageArea('dashboard/send/transactional/[id]/edit.vue')).toEqual({
+			path: '/dashboard/send/transactional',
+			exact: false,
+			area: 'dashboard-send-transactional',
+		});
+		expect(pageArea('dashboard/send/transactional/index.vue')?.area).toBe(
+			'dashboard-send-transactional'
+		);
+		expect(pageArea('dashboard/send/emails/[id]/edit.vue')?.area).toBe('dashboard-send');
+		expect(pageArea('dashboard/send/index.vue')?.area).toBe('dashboard-send');
+	});
+
 	it('keeps the dashboard home to its own path', () => {
 		expect(pageArea('dashboard/index.vue')).toEqual({
 			path: '/dashboard',
@@ -332,6 +345,22 @@ describe('the real catalogs', () => {
 		expect(leafKeys(admin).some((key) => key.startsWith('dashboard.admin.'))).toBe(true);
 		expect(areasForPath(plan.routes, '/dashboard/admin/team')).toEqual(['dashboard-admin']);
 		expect(areasForPath(plan.routes, '/auth/login')).toEqual([]);
+	});
+
+	it('loads the transactional pages’ copy with them, not with the rest of the send area', () => {
+		const transactional = splits.get('en')!.areas['dashboard-send-transactional']!;
+		const send = splits.get('en')!.areas['dashboard-send']!;
+		// The detail pages' copy; the index shares a label with another send page.
+		const own = (keys: string[]) =>
+			keys.filter((key) => key.startsWith('dashboard.send.transactional.detail.'));
+		expect(own(leafKeys(transactional)).length).toBeGreaterThan(0);
+		expect(own(leafKeys(send))).toEqual([]);
+		expect(areasForPath(plan.routes, '/dashboard/send/transactional/abc/edit')).toEqual([
+			'dashboard-send-transactional',
+		]);
+		expect(areasForPath(plan.routes, '/dashboard/send/emails/abc/edit')).toEqual([
+			'dashboard-send',
+		]);
 	});
 
 	it('keeps the boot catalog well under half of the source catalog', () => {
