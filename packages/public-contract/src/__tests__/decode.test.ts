@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { brandKitUpdateRequestSchema } from '../brandKit';
 import { readListQuery } from '../common';
 import { createContactRequestSchema, updateContactRequestSchema } from '../contacts';
 import { decodeRequest } from '../decode';
@@ -353,6 +354,32 @@ describe('topic membership request', () => {
 		expect(
 			message(addContactToTopicRequestSchema, { email: null, contactId: 'k5700000000' })
 		).toBeNull();
+	});
+});
+
+describe('brand kit update request', () => {
+	it.each([
+		[{ primaryColor: 5 }, 'primaryColor must be a string', 'primaryColor'],
+		[{ buttonRadius: '8' }, 'buttonRadius must be a number', 'buttonRadius'],
+		[
+			{ footerSocialLinks: [{ platform: 'myspace', url: 'https://example.com' }] },
+			'A social link platform must be one the brand kit offers',
+			'footerSocialLinks.0.platform',
+		],
+		[{ headingFont: 'Inter' }, 'Unknown field headingFont', undefined],
+	])('%j → %s', (body, expected, field) => {
+		expect(decodeRequest(brandKitUpdateRequestSchema, body)).toEqual({
+			ok: false,
+			message: expected,
+			...(field === undefined ? {} : { field }),
+		});
+	});
+
+	it('accepts any subset of the fields, none included', () => {
+		expect(decodeRequest(brandKitUpdateRequestSchema, {}).ok).toBe(true);
+		expect(decodeRequest(brandKitUpdateRequestSchema, { linkColor: 'not checked here' }).ok).toBe(
+			true
+		);
 	});
 });
 

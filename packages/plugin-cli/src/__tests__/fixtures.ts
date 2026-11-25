@@ -25,6 +25,8 @@ export interface WorkspaceSpec {
 	readonly modules?: Record<string, string | TestModule>;
 	/** Packages present in bun.lock (default: every installed module). */
 	readonly lockedPackages?: readonly string[];
+	/** Workspace member package.json files, by directory; also sets the root `workspaces` globs. */
+	readonly workspaceMembers?: Record<string, Record<string, unknown>>;
 }
 
 /**
@@ -43,7 +45,22 @@ export async function createCliWorkspace(spec: WorkspaceSpec = {}): Promise<stri
 	const dependencies =
 		spec.dependencies ?? Object.fromEntries(Object.keys(modules).map((name) => [name, '1.0.0']));
 
-	await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', dependencies }));
+	const members = spec.workspaceMembers ?? {};
+	const workspaces = [
+		...new Set(Object.keys(members).map((dir) => `${dir.split('/').slice(0, -1).join('/')}/*`)),
+	];
+	await writeFile(
+		join(root, 'package.json'),
+		JSON.stringify({
+			type: 'module',
+			dependencies,
+			...(workspaces.length > 0 ? { workspaces } : {}),
+		})
+	);
+	for (const [dir, packageJson] of Object.entries(members)) {
+		await mkdir(join(root, ...dir.split('/')), { recursive: true });
+		await writeFile(join(root, ...dir.split('/'), 'package.json'), JSON.stringify(packageJson));
+	}
 
 	for (const [name, definition] of Object.entries(modules)) {
 		const module = typeof definition === 'string' ? { source: definition } : definition;

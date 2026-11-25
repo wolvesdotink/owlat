@@ -76,13 +76,12 @@ The hosted input projection is truncated by Unicode code points: `from` 512,
 and caution reason are validated at the boundary but never stored or returned;
 action history contains only a fixed host-owned result and target summary.
 
-Host-mediated storage methods never accept an organization or plugin id. A
-host-created service is already bound to both scopes. Plugins must declare and
-be granted `plugin-storage:read` for `get`/`list` and
-`plugin-storage:write` for `set`/`delete`; disabling or removing a plugin
-revokes access immediately. A manifest requesting either storage capability
-must declare an explicit `flag`; this keeps storage enablement and revocation
-defined while leaving `flag` optional for plugins that request no storage.
+Plugin storage is planned: no host passes a `PluginStorageService`, a
+`PluginSchedulerService` or a `PluginContext` to plugin code yet, so the types
+describe the intended contract only. A manifest may already request
+`plugin-storage:read` and `plugin-storage:write`, and must then declare an
+explicit `flag`. When storage ships, its methods take no organization or plugin
+id, because the host binds both scopes.
 
 The package follows the Owlat repository version while both remain pre-1.0. Its
 major version is the compatibility line for public plugin contracts.

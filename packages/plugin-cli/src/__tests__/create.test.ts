@@ -1,4 +1,5 @@
-import { chmod, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCreate } from '../commands/create';
@@ -150,11 +151,100 @@ describe('runCreate', () => {
 		await expect(readdir(join(root, scaffoldDir))).rejects.toMatchObject({ code: 'ENOENT' });
 	});
 
-	it('refuses a target directory that escapes the workspace', async () => {
+	it('refuses the checkout root and a directory that contains it', async () => {
 		const root = await createCliWorkspace();
 		const { io } = captureIo();
-		await expect(
-			runCreate(root, { idInput: 'my-plugin', dir: '../escape', dryRun: false }, io)
-		).rejects.toThrow(/outside the workspace/);
+		for (const dir of ['.', '..']) {
+			await expect(
+				runCreate(root, { idInput: 'my-plugin', dir, dryRun: false }, io)
+			).rejects.toThrow(/checkout root or contains it/);
+		}
+	});
+
+	describe('outside the checkout', () => {
+		const outsideRoots: string[] = [];
+		afterEach(async () => {
+			await Promise.all(
+				outsideRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))
+			);
+		});
+
+		async function standaloneCheckout(): Promise<{ root: string; dir: string }> {
+			const root = await createCliWorkspace();
+			await writeFile(
+				join(root, 'package.json'),
+				JSON.stringify({
+					workspaces: {
+						packages: ['packages/*'],
+						catalog: { '@types/node': '^26.6.6', typescript: '^6.0.3', vitest: '^5.1.0' },
+					},
+					devDependencies: { oxlint: '^1.93.0' },
+				})
+			);
+			await mkdir(join(root, 'packages', 'plugin-kit'), { recursive: true });
+			await writeFile(
+				join(root, 'packages', 'plugin-kit', 'package.json'),
+				JSON.stringify({ name: '@owlat/plugin-kit', version: '0.6.24' })
+			);
+			const outside = await mkdtemp(join(tmpdir(), 'owlat-plugin-outside-'));
+			outsideRoots.push(outside);
+			return { root, dir: join(outside, 'hello-owlat') };
+		}
+
+		it('writes a package that installs the kit from npm and reaches into no checkout', async () => {
+			const { root, dir } = await standaloneCheckout();
+			const { io, lines } = captureIo();
+			await runCreate(root, { idInput: 'hello-owlat', dir, dryRun: false }, io);
+
+			const packageJson = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
+			expect(packageJson.dependencies).toEqual({ '@owlat/plugin-kit': '^0.6.24' });
+			expect(packageJson.devDependencies).toEqual({
+				'@types/node': '^26.6.6',
+				oxlint: '^1.93.0',
+				typescript: '^6.0.3',
+				vitest: '^5.1.0',
+			});
+			expect(packageJson.scripts.lint).toBe('oxlint src');
+			for (const file of ['package.json', 'tsconfig.json', 'vitest.config.ts', 'README.md']) {
+				const content = await readFile(join(dir, file), 'utf8');
+				expect(content, file).not.toMatch(/workspace:|catalog:|\.\.\/|packages\/plugin-kit/);
+			}
+			const readme = await readFile(join(dir, 'README.md'), 'utf8');
+			expect(readme).toContain('bun publish --access public');
+			// The default name is in the Owlat scope, so the README renames it first.
+			expect(readme).toContain('npm pkg set name=@your-scope/plugin-hello-owlat');
+			expect(readme).toContain('bun add --exact @your-scope/plugin-hello-owlat@0.0.0');
+			expect(lines.at(-1)).toContain('run `bun install` in it first');
+		});
+
+		it('gives the send-provider template the same standalone wiring', async () => {
+			const { root, dir } = await standaloneCheckout();
+			const { io } = captureIo();
+			await runCreate(
+				root,
+				{ idInput: 'acme-mail', dir, template: 'send-provider', dryRun: false },
+				io
+			);
+			const readme = await readFile(join(dir, 'README.md'), 'utf8');
+			expect(readme).not.toContain('oxfmtrc.json');
+			expect(readme).toContain('bun publish --access public');
+			const packageJson = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
+			expect(packageJson.exports['./convex/transport']).toBe('./src/convex/transport.ts');
+		});
+
+		it('names what is missing when the checkout has no kit version to pin', async () => {
+			const root = await createCliWorkspace();
+			const outside = await mkdtemp(join(tmpdir(), 'owlat-plugin-outside-'));
+			outsideRoots.push(outside);
+			const { io } = captureIo();
+			await expect(
+				runCreate(
+					root,
+					{ idInput: 'hello-owlat', dir: join(outside, 'hello-owlat'), dryRun: false },
+					io
+				)
+			).rejects.toThrow(/packages\/plugin-kit\/package\.json/);
+			await expect(readdir(outside)).resolves.toEqual([]);
+		});
 	});
 });

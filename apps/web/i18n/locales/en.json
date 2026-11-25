@@ -10882,6 +10882,7 @@
 						"createContact": "Create a contact",
 						"endpoints": {
 							"blockSchema": "The JSON Schema of block content, for writing templates and saved blocks",
+							"brandKit": "Read the brand kit, or change some of its fields",
 							"contact": "Read, update, or delete a contact",
 							"contacts": "List or create contacts",
 							"domains": "Sending domains and the DNS records each needs",
@@ -10991,6 +10992,14 @@
 							"title": "Revoke API key"
 						},
 						"scopes": {
+							"brandKitRead": {
+								"description": "Read the brand kit: colours, fonts, button style, footer and logos.",
+								"label": "Brand kit — read"
+							},
+							"brandKitWrite": {
+								"description": "Change the colours, fonts, button style and footer every email starts from. The logos stay as they are.",
+								"label": "Brand kit — write"
+							},
 							"contactsRead": {
 								"description": "List and read contacts and their details.",
 								"label": "Contacts — read"

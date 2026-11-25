@@ -22,4 +22,6 @@ export const importProvider: PluginImportProviderModule = {
 		};
 	},
 };
+
+export default importProvider;
 // #endregion import-provider-module

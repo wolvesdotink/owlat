@@ -41,3 +41,6 @@ export function createDeliverabilityTipCron(
 		},
 	};
 }
+
+/** The generated module registry imports this contribution by default import. */
+export default createDeliverabilityTipCron();

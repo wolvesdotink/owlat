@@ -14,7 +14,7 @@ export interface RunDevOptions {
 }
 
 /**
- * The `owlat plugins dev` reactive core: regenerate once, then regenerate on
+ * The `owlat-plugins dev` reactive core: regenerate once, then regenerate on
  * every coalesced change event until the event stream ends. A codegen failure
  * (for example an invalid manifest saved mid-edit) is reported and the loop
  * keeps running, so a transient bad edit does not kill the dev session. The
@@ -41,7 +41,7 @@ async function runOnce(
 		await runCodegen();
 		io.log(successMessage);
 	} catch (cause) {
-		reportCliFailure(io, cause, 'Plugin codegen failed unexpectedly.');
+		reportCliFailure(io, cause);
 		io.error('Waiting for the next change...');
 	}
 }

@@ -64,9 +64,9 @@ catalogued and authorized" table in the
 
 ## Wiring it up (operator)
 
-Add the published package to `plugins.config.ts` (`owlat-plugins add <package>
---dry-run` previews the capability diff first), run `owlat-plugins
-codegen`, enable the `plugin.escalation-guard` flag, and grant the capabilities
+Add the published package to `plugins.config.ts` (`bun run owlat-plugins add
+<package> --dry-run` previews the capability diff first), run `bun run
+plugins:codegen`, enable the `plugin.escalation-guard` flag, and grant the capabilities
 you want. Removing the package and re-running codegen removes every
 contribution again; the stored settings survive so a re-add is lossless, and the
 plugin settings screen offers to purge them.

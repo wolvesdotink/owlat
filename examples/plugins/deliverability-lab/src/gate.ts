@@ -109,3 +109,6 @@ export function createDeliverabilityGate(
 
 /** The bundled, self-contained gate the manifest points at (pure Tier-1). */
 export const deliverabilityGate: PluginAutonomyGateModule = createDeliverabilityGate();
+
+/** The generated module registry imports this contribution by default import. */
+export default deliverabilityGate;

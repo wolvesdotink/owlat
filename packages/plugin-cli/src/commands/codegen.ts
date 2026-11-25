@@ -10,7 +10,7 @@ export interface CodegenOptions {
 /**
  * Regenerate (or check) the bundled plugin composition by delegating to the
  * PP-03 codegen. The CLI does not re-implement composition; it reuses the one
- * deterministic, provenance-gated generator so `owlat plugins codegen` and the
+ * deterministic, provenance-gated generator so `owlat-plugins codegen` and the
  * `plugins:codegen` build script always produce identical output.
  */
 export async function runCodegen(

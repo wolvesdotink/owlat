@@ -413,6 +413,7 @@ export function buildOpenApiDocument(
 			'Events',
 			'Transactional',
 			'Templates',
+			'Brand kit',
 			'Topics',
 			'Status',
 			'Domains',

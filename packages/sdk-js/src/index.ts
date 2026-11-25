@@ -98,6 +98,11 @@ export type {
 	TransactionalEmailWriteOptions,
 	TransactionalEmailWriteResult,
 	TranslatedBlockText,
+	// Brand kit
+	BrandKit,
+	BrandKitInput,
+	BrandKitLogo,
+	BrandKitSocialLink,
 	// Topics
 	Topic,
 	ListTopicsParams,

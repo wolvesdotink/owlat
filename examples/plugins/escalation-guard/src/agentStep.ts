@@ -76,3 +76,6 @@ export function createEscalationAgentStep(
 
 /** The bundled step the manifest points at. */
 export const escalationAgentStep: PluginAgentStepModule = createEscalationAgentStep();
+
+/** The generated module registry imports this contribution by default import. */
+export default escalationAgentStep;

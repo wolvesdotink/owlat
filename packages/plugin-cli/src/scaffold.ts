@@ -11,6 +11,31 @@ import { sendProviderNames } from './scaffoldSendProviderNames';
 export type ScaffoldFiles = ReadonlyMap<string, string>;
 
 /**
+ * Where the package lands.
+ *
+ *  - `workspace`  inside the checkout `create` runs in: a workspace member that
+ *                 resolves the kit through `workspace:*` and reaches the shared
+ *                 tsconfig and lint config by relative path.
+ *  - `standalone` outside it, for a plugin kept in its own repository: a
+ *                 self-contained package that installs `@owlat/plugin-kit` from
+ *                 npm, so it names real version ranges and no checkout path.
+ */
+export type ScaffoldLayout = 'workspace' | 'standalone';
+
+/**
+ * The version ranges a standalone package names, read from the checkout that
+ * runs `create`. The kit range is the checkout's own kit version, because the
+ * release that carries this checkout's code publishes the kit at that version.
+ */
+export interface StandaloneVersions {
+	readonly pluginKit: string;
+	readonly typesNode: string;
+	readonly typescript: string;
+	readonly vitest: string;
+	readonly oxlint: string;
+}
+
+/**
  * The templates `create` can emit.
  *
  *  - `minimal`       an empty manifest declaring nothing. The default, because
@@ -51,7 +76,11 @@ interface ScaffoldTemplateDefinition {
 	 */
 	readonly moduleExports: Readonly<Record<string, string>>;
 	/** The files this template adds on top of the shared package skeleton. */
-	readonly files: (id: PluginId, packageName: PluginPackageName) => ReadonlyMap<string, string>;
+	readonly files: (
+		id: PluginId,
+		packageName: PluginPackageName,
+		layout: ScaffoldLayout
+	) => ReadonlyMap<string, string>;
 	/** What `create` prints once the package is on disk. */
 	readonly completionHint: string;
 }
@@ -67,7 +96,8 @@ export const SCAFFOLD_TEMPLATE_DEFINITIONS: Readonly<
 	},
 	'send-provider': {
 		moduleExports: SEND_PROVIDER_MODULE_EXPORTS,
-		files: (id, packageName) => sendProviderFiles(sendProviderNames(id), packageName),
+		files: (id, packageName, layout) =>
+			sendProviderFiles(sendProviderNames(id), packageName, layout),
 		completionHint:
 			'Fill in the TODOs in src/convex/, then run its tests. See /developer/plugin-send-providers.',
 	},
@@ -83,25 +113,30 @@ export function parseScaffoldTemplate(input: string): ScaffoldTemplate {
 
 /**
  * Build the deterministic file set for a new plugin package. Content is a pure
- * function of the plugin id, package name, chosen template, and the target
- * directory's position within the workspace (which fixes the relative paths to
- * the shared tsconfig, lint config, and `@owlat/plugin-kit` source) — no
- * timestamps or randomness — so re-running `create` on an unchanged input yields
- * byte-identical files.
+ * function of the plugin id, package name, chosen template, and either the
+ * target directory's position within the workspace (which fixes the relative
+ * paths to the shared tsconfig, lint config, and `@owlat/plugin-kit` source) or,
+ * for a standalone package, the version ranges it names — no timestamps or
+ * randomness — so re-running `create` on an unchanged input yields
+ * byte-identical files. Passing `standalone` selects the standalone layout.
  */
 export function buildScaffold(
 	workspaceRoot: string,
 	targetDir: string,
 	id: PluginId,
 	packageName: PluginPackageName,
-	template: ScaffoldTemplate = DEFAULT_SCAFFOLD_TEMPLATE
+	template: ScaffoldTemplate = DEFAULT_SCAFFOLD_TEMPLATE,
+	standalone?: StandaloneVersions
 ): ScaffoldFiles {
 	const toRoot = toPosix(relative(targetDir, workspaceRoot)) || '.';
 	const definition = SCAFFOLD_TEMPLATE_DEFINITIONS[template];
+	const layout: ScaffoldLayout = standalone === undefined ? 'workspace' : 'standalone';
 	const files = new Map<string, string>();
 
 	const manifestJson = JSON.stringify(
-		packageJson(packageName, toRoot, definition.moduleExports),
+		standalone === undefined
+			? packageJson(packageName, toRoot, definition.moduleExports)
+			: standalonePackageJson(packageName, definition.moduleExports, standalone),
 		null,
 		'\t'
 	);
@@ -111,10 +146,16 @@ export function buildScaffold(
 	// these three as the skeleton and lists the template's own files separately, so
 	// what is emitted here and what is emitted below stay distinguishable.
 	files.set('package.json', `${manifestJson}\n`);
-	files.set('tsconfig.json', `${JSON.stringify(tsconfig(toRoot), null, '\t')}\n`);
-	files.set('vitest.config.ts', vitestConfig(toRoot));
+	files.set(
+		'tsconfig.json',
+		`${JSON.stringify(standalone === undefined ? tsconfig(toRoot) : standaloneTsconfig(), null, '\t')}\n`
+	);
+	files.set(
+		'vitest.config.ts',
+		standalone === undefined ? vitestConfig(toRoot) : STANDALONE_VITEST_CONFIG
+	);
 
-	for (const [path, content] of definition.files(id, packageName)) {
+	for (const [path, content] of definition.files(id, packageName, layout)) {
 		files.set(path, content);
 	}
 
@@ -129,12 +170,10 @@ function packageJson(
 	return {
 		name: packageName,
 		version: '0.0.0',
-		// PRIVATE AT EVERY TEMPLATE, because every template scaffolds INTO THIS
-		// WORKSPACE: `create` defaults to `examples/plugins/<id>` and `resolveTargetDir`
-		// refuses a directory outside the repository, so what the generator writes is
-		// always a workspace member. A non-private one would be version-bumped by
-		// `release:cut` and publishable alongside the real packages — a
-		// half-finished scaffold on npm under the workspace scope.
+		// PRIVATE AT EVERY TEMPLATE. A package scaffolded INTO THIS WORKSPACE (the
+		// default, `examples/plugins/<id>`) is a workspace member, and a non-private
+		// one would be version-bumped by `release:cut` and publishable alongside the
+		// real packages — a half-finished scaffold on npm under the workspace scope.
 		//
 		// It is also the honest state of the artifact: the manifest below carries
 		// `workspace:*` and `catalog:` specifiers, and the tsconfig and lint script
@@ -195,3 +234,70 @@ export default defineConfig({
 });
 `;
 }
+
+/**
+ * The standalone package names real ranges where the workspace one names
+ * `workspace:*` and `catalog:`. It stays private for the same reason as the
+ * workspace layout's README gives: publishing is a deliberate step, taken by
+ * deleting the flag.
+ */
+function standalonePackageJson(
+	packageName: PluginPackageName,
+	moduleExports: Readonly<Record<string, string>>,
+	versions: StandaloneVersions
+): Record<string, unknown> {
+	return {
+		name: packageName,
+		version: '0.0.0',
+		private: true,
+		type: 'module',
+		exports: { '.': './src/index.ts', ...moduleExports },
+		scripts: {
+			test: 'vitest run',
+			'test:watch': 'vitest watch',
+			lint: 'oxlint src',
+			typecheck: 'tsc --noEmit',
+		},
+		dependencies: { '@owlat/plugin-kit': versions.pluginKit },
+		devDependencies: {
+			'@types/node': versions.typesNode,
+			oxlint: versions.oxlint,
+			typescript: versions.typescript,
+			vitest: versions.vitest,
+		},
+	};
+}
+
+/** The workspace base config's checks, inlined: nothing here reaches a checkout. */
+function standaloneTsconfig(): Record<string, unknown> {
+	return {
+		compilerOptions: {
+			target: 'ESNext',
+			module: 'ESNext',
+			moduleResolution: 'bundler',
+			strict: true,
+			skipLibCheck: true,
+			esModuleInterop: true,
+			isolatedModules: true,
+			forceConsistentCasingInFileNames: true,
+			noUncheckedIndexedAccess: true,
+			noPropertyAccessFromIndexSignature: true,
+			useUnknownInCatchVariables: true,
+			types: ['node'],
+			lib: ['ES2023', 'DOM'],
+			noEmit: true,
+		},
+		include: ['src/**/*.ts'],
+		exclude: ['node_modules', 'dist'],
+	};
+}
+
+const STANDALONE_VITEST_CONFIG = `import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+	test: {
+		include: ['src/**/__tests__/**/*.test.ts'],
+		environment: 'node',
+	},
+});
+`;

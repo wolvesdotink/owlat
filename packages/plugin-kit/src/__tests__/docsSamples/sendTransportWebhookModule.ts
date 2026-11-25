@@ -15,4 +15,6 @@ export const webhook: PluginSendTransportWebhookModule = {
 		});
 	},
 };
+
+export default webhook;
 // #endregion send-transport-webhook-module

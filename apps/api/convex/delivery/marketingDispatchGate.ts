@@ -9,9 +9,16 @@
  * by a deferral. A hard bounce, complaint or manual block (the blocklist), or a
  * global unsubscribe or contact deletion (`lib/marketingEligibility.ts`) landing
  * in that window must still stop the message. So must the contact leaving the
- * topic an automation belongs to: the automation Send records its automation,
- * and the topic is read from there. A campaign envelope is not re-checked
- * against its topic; it records no topic.
+ * topic the mail is sent for (`topicIneligibility`, refused as
+ * `topic_unsubscribed`):
+ *   - an automation Send records its automation, and the topic is read from
+ *     there (`automationTopicIneligibility`);
+ *   - a campaign envelope whose audience is a topic carries its campaign, and
+ *     the topic is read from the campaign's send job, the audience snapshot the
+ *     walker resolved this envelope from (the campaign row when no job exists).
+ *     A segment campaign has no topic and is checked as before: a segment
+ *     selects from all contacts, so leaving some topic does not take a contact
+ *     out of it.
  *
  * A pause pulls an automation's queued mail back. An automation Send goes out
  * only while its automation has stayed active since the Send was written
@@ -27,7 +34,7 @@
  * Which envelopes are marketing:
  *   - every `campaign` envelope. A seed-probe shadow copy is addressed to an
  *     operator-owned seed mailbox, not the contact, so only its address is
- *     checked.
+ *     checked: neither the contact nor the topic.
  *   - a `transactional` envelope with `emailPurpose: 'marketing'` and a
  *     `sendId` — an automation email step.
  *
@@ -47,17 +54,19 @@
  *
  * Point reads only: one `blockedEmails.by_email` lookup, one contact get and the
  * `instanceSettings` singleton, plus for an automation Send the Send, its
- * automation and the topic membership. The automation read serves both the
- * pause and the topic check.
+ * automation and the topic membership, and for a topic campaign its send job
+ * and the topic membership. The automation read serves both the pause and the
+ * topic check.
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { isSuppressed } from '../lib/suppression';
 import {
 	automationTopicIneligibility,
 	contactMarketingIneligibility,
+	topicIneligibility,
 	type MarketingIneligibility,
 } from '../lib/marketingEligibility';
 import { readSendingHold, SENDING_HOLD_RECHECK_MS } from '../workspaces/abuseGate';
@@ -88,6 +97,23 @@ export function automationStayedActiveSince(
 	return automation.statusChangedAt === undefined || automation.statusChangedAt < queuedAt;
 }
 
+/**
+ * The topic a campaign was sent to, or `null` for a segment campaign. The send
+ * job holds the audience the walker resolved every page from; the campaign row
+ * answers only when no job exists. With neither, there is no topic to check.
+ */
+async function campaignTopicId(
+	ctx: QueryCtx,
+	campaignId: Id<'campaigns'>
+): Promise<Id<'topics'> | null> {
+	const job = await ctx.db
+		.query('campaignSendJobs')
+		.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+		.first();
+	const audience = job?.audience ?? (await ctx.db.get(campaignId))?.audience;
+	return audience?.kind === 'topic' ? audience.topicId : null;
+}
+
 /** What the worker's last gate answers for a marketing envelope, or `null` to send it. */
 export type MarketingDispatchVerdict = MarketingDispatchRefusal | { kind: 'held' };
 
@@ -103,6 +129,10 @@ export const checkMarketingDispatch = internalQuery({
 		// The Send of an automation envelope, whose automation may belong to a
 		// topic. Optional, so a worker built before it still gets an answer.
 		sendId: v.optional(v.id('transactionalSends')),
+		// The campaign of a campaign envelope that may have been sent to a topic.
+		// Absent for a segment campaign and a seed probe, which have no topic to
+		// check.
+		topicCampaignId: v.optional(v.id('campaigns')),
 		// Set for real transactional mail: the blocklist on that scope, nothing else.
 		scope: v.optional(v.literal('transactional')),
 	},
@@ -129,6 +159,13 @@ export const checkMarketingDispatch = internalQuery({
 			if (automation && contact) {
 				const leftTopic = await automationTopicIneligibility(ctx, automation, contact);
 				if (leftTopic !== null) return { kind: 'suppressed', reason: leftTopic.reason };
+			}
+		}
+		if (args.topicCampaignId !== undefined && contact) {
+			const topicId = await campaignTopicId(ctx, args.topicCampaignId);
+			if (topicId !== null) {
+				const reason = await topicIneligibility(ctx, contact, topicId);
+				if (reason !== null) return { kind: 'suppressed', reason };
 			}
 		}
 		return (await readSendingHold(ctx.db)) === null ? null : { kind: 'held' };
@@ -175,11 +212,19 @@ export function marketingDispatchRecipient(envelope: WorkerEnvelopeInput): {
 	email: string;
 	contactId?: Id<'contacts'>;
 	sendId?: Id<'transactionalSends'>;
+	topicCampaignId?: Id<'campaigns'>;
 } | null {
 	if (envelope.kind === 'campaign') {
-		const contactId =
-			envelope.seedProbeRef === undefined ? envelope.contactInfo.contactId : undefined;
-		return { email: envelope.to, ...(contactId !== undefined ? { contactId } : {}) };
+		if (envelope.seedProbeRef !== undefined) return { email: envelope.to };
+		const contactId = envelope.contactInfo.contactId;
+		// A segment campaign skips the read; an envelope that names no audience
+		// type lets the gate read it from the campaign.
+		const topicCampaignId = envelope.audienceType !== 'segment' ? envelope.campaignId : undefined;
+		return {
+			email: envelope.to,
+			...(contactId !== undefined ? { contactId } : {}),
+			...(topicCampaignId !== undefined ? { topicCampaignId } : {}),
+		};
 	}
 	if (envelope.emailPurpose === 'marketing' && envelope.sendId !== undefined) {
 		return {

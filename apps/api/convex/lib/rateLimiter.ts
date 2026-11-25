@@ -15,10 +15,10 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 15, // Allow burst up to 15 requests
 	},
 
-	// Writes to transactional emails and saved blocks through the API, per key.
-	// Each one renders the email and can rewrite every email linking a saved
-	// block, so they get a bucket of their own, apart from the request limit
-	// above and the send caps below.
+	// Writes to transactional emails, saved blocks and the brand kit through the
+	// API, per key. Each one renders the email and can rewrite every email
+	// linking a saved block, so they get a bucket of their own, apart from the
+	// request limit above and the send caps below.
 	apiTemplateWrite: {
 		kind: 'token bucket',
 		rate: 60,

@@ -8,6 +8,7 @@
  * types at compile time (`__tests__/typeAgreement.test.ts`).
  */
 
+export * from './brandKitTypes';
 export * from './deliveryStatus';
 export * from './domainSetup';
 export * from './errorReasons';

@@ -13,4 +13,6 @@ export const cron: PluginCronModule = {
 		services.logger.info('refreshed preflight rules', { length: summary.text.length });
 	},
 };
+
+export default cron;
 // #endregion cron-module

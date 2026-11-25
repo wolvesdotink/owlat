@@ -11,6 +11,7 @@ import {
 	parseScaffoldTemplate,
 	SCAFFOLD_TEMPLATE_DEFINITIONS,
 	type ScaffoldFiles,
+	type StandaloneVersions,
 } from '../scaffold';
 
 export interface CreateArgs {
@@ -37,9 +38,12 @@ export async function runCreate(workspaceRoot: string, args: CreateArgs, io: Cli
 	const template =
 		args.template === undefined ? DEFAULT_SCAFFOLD_TEMPLATE : parseScaffoldTemplate(args.template);
 	const relativeDir = args.dir ?? join('examples', 'plugins', id);
-	const targetDir = resolveTargetDir(workspaceRoot, relativeDir);
-	const displayDir = toPosix(relative(workspaceRoot, targetDir));
-	const files = buildScaffold(workspaceRoot, targetDir, id, packageName, template);
+	const { targetDir, insideWorkspace } = resolveTargetDir(workspaceRoot, relativeDir);
+	// A package outside the checkout is named by its absolute path: relative to
+	// the checkout it would read as a chain of `../`.
+	const displayDir = toPosix(insideWorkspace ? relative(workspaceRoot, targetDir) : targetDir);
+	const standalone = insideWorkspace ? undefined : await readStandaloneVersions(workspaceRoot);
+	const files = buildScaffold(workspaceRoot, targetDir, id, packageName, template, standalone);
 
 	if (args.dryRun) {
 		io.log(`Dry run: would scaffold plugin ${id} (${packageName}) in ${displayDir}:`);
@@ -69,6 +73,11 @@ export async function runCreate(workspaceRoot: string, args: CreateArgs, io: Cli
 	// beside the file set and the export map it belongs with, so a new template
 	// cannot ship printing another template's next step.
 	io.log(SCAFFOLD_TEMPLATE_DEFINITIONS[template].completionHint);
+	if (standalone !== undefined) {
+		io.log(
+			`${displayDir} is outside this checkout, so it installs @owlat/plugin-kit ${standalone.pluginKit} from npm: run \`bun install\` in it first.`
+		);
+	}
 }
 
 function parseId(input: string) {
@@ -86,15 +95,78 @@ function parseId(input: string) {
 	}
 }
 
-function resolveTargetDir(workspaceRoot: string, relativeDir: string): string {
-	const resolved = resolve(workspaceRoot, relativeDir);
-	const within = relative(resolve(workspaceRoot), resolved);
-	if (within === '' || within === '..' || within.startsWith(`..${sep}`) || isAbsolute(within)) {
+/**
+ * Where the package goes, and whether that is inside this checkout. Inside, it
+ * is a workspace member; outside, it gets the standalone layout. The checkout
+ * root itself and any directory that contains it are refused: a scaffold there
+ * would write its `package.json` over or around the workspace's own.
+ */
+function resolveTargetDir(
+	workspaceRoot: string,
+	relativeDir: string
+): { readonly targetDir: string; readonly insideWorkspace: boolean } {
+	const root = resolve(workspaceRoot);
+	const targetDir = resolve(root, relativeDir);
+	const within = relative(root, targetDir);
+	const rootFromTarget = relative(targetDir, root);
+	const containsRoot = !escapes(rootFromTarget);
+	if (containsRoot) {
 		throw new PluginCliError(
-			`Refusing to scaffold outside the workspace: ${relativeDir} resolves outside ${workspaceRoot}`
+			`Refusing to scaffold into ${relativeDir}: it is the checkout root or contains it`
 		);
 	}
-	return resolved;
+	return { targetDir, insideWorkspace: !escapes(within) };
+}
+
+/** Whether a `relative()` result leaves the directory it was measured from. */
+function escapes(path: string): boolean {
+	return path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path);
+}
+
+/**
+ * The ranges a standalone package names: this checkout's kit version, and the
+ * workspace catalog's versions of the tools its scripts run, so a standalone
+ * plugin builds with the toolchain the checkout tests the kit with.
+ */
+async function readStandaloneVersions(workspaceRoot: string): Promise<StandaloneVersions> {
+	const rootManifest = await readJsonObject(join(workspaceRoot, 'package.json'));
+	const kitManifest = await readJsonObject(
+		join(workspaceRoot, 'packages', 'plugin-kit', 'package.json')
+	);
+	const workspaces = rootManifest['workspaces'];
+	const catalog =
+		isRecord(workspaces) && isRecord(workspaces['catalog']) ? workspaces['catalog'] : {};
+	const devDependencies = isRecord(rootManifest['devDependencies'])
+		? rootManifest['devDependencies']
+		: {};
+	const pick = (source: Record<string, unknown>, name: string, where: string): string => {
+		const value = source[name];
+		if (typeof value === 'string' && value.length > 0) return value;
+		throw new PluginCliError(`Cannot scaffold a standalone plugin: ${where} names no ${name}`);
+	};
+	const kitVersion = pick(kitManifest, 'version', 'packages/plugin-kit/package.json');
+	return {
+		pluginKit: `^${kitVersion}`,
+		typesNode: pick(catalog, '@types/node', 'the workspace catalog'),
+		typescript: pick(catalog, 'typescript', 'the workspace catalog'),
+		vitest: pick(catalog, 'vitest', 'the workspace catalog'),
+		oxlint: pick(devDependencies, 'oxlint', "the root package.json's devDependencies"),
+	};
+}
+
+async function readJsonObject(path: string): Promise<Record<string, unknown>> {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(await readFile(path, 'utf8'));
+	} catch (cause) {
+		throw new PluginCliError(`Cannot read ${toPosix(path)}`, [], { cause });
+	}
+	if (!isRecord(parsed)) throw new PluginCliError(`${toPosix(path)} is not a JSON object`);
+	return parsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 async function readExistingFiles(
@@ -141,12 +213,12 @@ async function writeScaffold(
 
 /**
  * Create every missing directory from `directory` up to the first ancestor that
- * already exists (the workspace root always does), recording each into the
+ * already exists (the filesystem root always does), recording each into the
  * caller's `createdDirs` sink the instant `mkdir` succeeds — not only on a clean
  * return. A `mkdir` deeper in the same chain can fail (for example ENOSPC/EDQUOT,
  * or EACCES when a just-created parent is not writable); recording eagerly means
  * an outer directory this call already created is still rolled back rather than
- * orphaned. Containment inside the workspace is guaranteed by `resolveTargetDir`.
+ * orphaned.
  */
 async function ensureDirectories(directory: string, createdDirs: string[]): Promise<void> {
 	const missing: string[] = [];

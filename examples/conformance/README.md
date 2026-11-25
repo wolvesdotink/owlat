@@ -89,7 +89,7 @@ rather than three unrelated demos.
   acceptance criterion A7). The parity proof above asks whether a package _can_
   be a provider, against a fixture written by hand; this one asks whether the
   package Owlat _hands an author_ already is one. Its subject is the real output
-  of `owlat plugins create --template send-provider`:
+  of `owlat-plugins create --template send-provider`:
   [`src/fixtures/scaffolded/bundle.ts`](src/fixtures/scaffolded) calls the
   shipped `buildScaffold`, writes the emitted files to a throwaway directory,
   imports the emitted TypeScript, and composes it through the real host and
@@ -111,6 +111,16 @@ rather than three unrelated demos.
   last block reads every materialised file back off disk and compares it byte for
   byte with what the generator emitted, so a fixture that patched a `TODO` to
   make a case pass fails there.
+- **`authoringTutorial.test.ts`** — the plugin authoring tutorial run as
+  written: every shell command on `41.plugin-authoring.md`, in order, from
+  `create` to a codegen run that bundles the scaffolded plugin. The CLI and the
+  codegen script run for real in Bun child processes; `bun publish` and
+  `bun add` are modelled on what they leave on disk (`src/tutorial.ts`). It also
+  checks that `add` on the scaffolded folder prints step 6's commands, and that
+  the German page lists the same commands.
+- **`referencePackages.test.ts`** — the three references installed from their
+  own files (not the JSON stub below) and bundled by the codegen script, so a
+  reference that stops default-exporting its manifest fails here.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
@@ -151,6 +161,12 @@ exports. A workspace-linked example therefore can never be listed in the
 repository's own config. The harness in `src/workspace.ts` instead installs
 published-shaped copies of the **real** manifests into a throwaway root, so the
 suites exercise the genuine install contract rather than a mock of it.
+
+Those copies re-export the manifest as JSON, which lets the lifecycle suites
+vary manifests and versions freely. The suites that need a package's own root
+module install its real files through `src/registryInstall.ts` and run codegen in
+a Bun child process (`src/bunScripts.ts`): under Vitest a module's exports are
+accessors, and the loader never reads an accessor default export.
 
 ## Running
 

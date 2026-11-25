@@ -3,7 +3,7 @@
  * three executable halves of a bundle.
  *
  * EVERY NAME HERE IS THE ONE THE SCAFFOLD EMITS for this plugin id
- * (`owlat plugins create acme-relay --template send-provider`): the variable
+ * (`owlat-plugins create acme-relay --template send-provider`): the variable
  * names, the two signature headers and the credential keys. A reader diffing the
  * page against their scaffolded package is the most common way this sample is
  * read, and a sample that named variables no scaffolded bundle has would make

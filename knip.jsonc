@@ -375,6 +375,12 @@
 			"entry": ["src/index.ts", "scripts/*.ts", "src/**/__tests__/**/*.ts"],
 			"includeEntryExports": false,
 		},
+		// The reference plugins are shaped as published packages: their package
+		// exports (the manifest and each contribution module, by default export)
+		// are imported by a deployment's generated composition, not by this repo.
+		"examples/plugins/*": {
+			"includeEntryExports": false,
+		},
 		// Published to npm, same as plugin-kit. Single barrel; its one spec sits
 		// next to the module, not in __tests__.
 		"packages/provider-kit": {
@@ -419,6 +425,17 @@
 		"packages/sdk-java/**",
 		".semgrep/tests/**",
 	],
+	// The generated plugin composition imports a plugin's manifest and each
+	// contribution module by DEFAULT import, while the package's own barrel and
+	// tests import the same value by name, so these modules export it twice.
+	"ignoreIssues": {
+		"examples/plugins/*/src/*.ts": ["duplicates"],
+		"packages/plugin-kit/src/__tests__/docsSamples/*.ts": ["duplicates"],
+	},
+	// examples/conformance imports nothing from @owlat/docs: it reads the
+	// tutorial pages from disk, and declares the package so Turborepo's
+	// affected graph selects its suites when a page changes.
+	"ignoreDependencies": ["@owlat/docs"],
 	"ignoreBinaries": ["convex", "tauri", "playwright", "docker", "cargo"],
 	"ignoreWorkspaces": ["packages/sdk-java"],
 	"ignoreExportsUsedInFile": true,

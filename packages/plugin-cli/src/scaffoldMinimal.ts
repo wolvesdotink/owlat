@@ -12,15 +12,18 @@
 import type { PluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import { toCamelCase } from './names';
+import type { ScaffoldLayout } from './scaffold';
+import { bundlingReadmeSection } from './scaffoldReadme';
 
 /** Every file the minimal template adds on top of the shared skeleton. */
 export function minimalFiles(
 	id: PluginId,
-	packageName: PluginPackageName
+	packageName: PluginPackageName,
+	layout: ScaffoldLayout = 'workspace'
 ): ReadonlyMap<string, string> {
 	const exportName = `${toCamelCase(id)}Plugin`;
 	const files = new Map<string, string>();
-	files.set('README.md', readmeSource(id, packageName));
+	files.set('README.md', readmeSource(id, packageName, layout));
 	files.set('src/manifest.ts', manifestSource(id, exportName));
 	files.set('src/index.ts', indexSource(exportName));
 	files.set('src/__tests__/manifest.test.ts', manifestTestSource(id, exportName));
@@ -76,7 +79,11 @@ describe('${id} manifest', () => {
 `;
 }
 
-function readmeSource(id: PluginId, packageName: PluginPackageName): string {
+function readmeSource(
+	id: PluginId,
+	packageName: PluginPackageName,
+	layout: ScaffoldLayout
+): string {
 	return `# ${packageName}
 
 The \`${id}\` Owlat plugin.
@@ -96,8 +103,5 @@ bun run --cwd <path-to-this-package> lint
 bun run --cwd <path-to-this-package> test
 \`\`\`
 
-To bundle this plugin into a deployment, publish it and add its package name to
-the workspace \`plugins.config.ts\` with \`owlat plugins add ${packageName}\`,
-then regenerate the composition with \`owlat plugins codegen\`.
-`;
+${bundlingReadmeSection(packageName, layout)}`;
 }

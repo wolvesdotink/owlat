@@ -72,6 +72,8 @@ export default defineConfig({
 			// jobs from it: without the declaration, a PR that changes only
 			// `lib/sendProviders/routing.ts` would not select this workspace and the
 			// standing regression harness would replay a cached green.
+			// `@owlat/docs` is declared for the same reason: the tutorial suites run
+			// the commands the docs pages print, so a page edit has to select them.
 			//
 			// NO ALIAS MAY PREFIX ANOTHER. Vite matches a string `find` with
 			// `startsWith`, so a generated artifact aliased as

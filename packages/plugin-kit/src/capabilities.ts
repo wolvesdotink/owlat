@@ -7,7 +7,11 @@ export interface PluginCapabilityGrant {
 	readonly granted: boolean;
 }
 
-/** Capability checks exposed to hosted plugin code. */
+/**
+ * Capability checks over one plugin's declared and granted capabilities. The host
+ * builds one for its own checks (`@owlat/plugin-host`). Plugin code does not
+ * receive one yet: it belongs to the planned `PluginContext`.
+ */
 export interface PluginPermissionService {
 	has(capability: PluginCapability): boolean;
 	require(capability: PluginCapability): void;

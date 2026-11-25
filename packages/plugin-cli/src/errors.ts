@@ -1,8 +1,12 @@
-import { PluginCodegenError } from '@owlat/plugin-codegen';
+import {
+	formatPluginCodegenFailure,
+	PLUGIN_CODEGEN_ERROR_HINTS,
+	PluginCodegenError,
+} from '@owlat/plugin-codegen';
 import type { CliIo } from './io';
 
 /**
- * Every failure the `owlat plugins` CLI reports to an operator is a
+ * Every failure the `owlat-plugins` CLI reports to an operator is a
  * `PluginCliError`: a single human-readable headline plus optional indented
  * detail lines (for example the rollback guidance printed when a config edit
  * cannot be completed). Codegen and manifest-provenance failures raised deeper
@@ -21,23 +25,21 @@ export class PluginCliError extends Error {
 }
 
 /**
- * Render a failed CLI operation to the operator: the error's headline followed
- * by its indented detail lines. A `PluginCodegenError` raised deeper in
- * `@owlat/plugin-codegen` is unwrapped to the same message+details shape;
- * anything else prints only `fallback`, so an unexpected internal error never
- * leaks its `cause`, stack, or paths to the terminal. Both the entry point and
- * the `dev` loop report through this one function so the failure surface renders
- * identically regardless of where the failure originated.
+ * Render a failed CLI operation: the error's headline followed by its indented
+ * detail lines. When the failure started as a `PluginCodegenError`, the headline
+ * carries its code and a last line says what to do next, the same lines the
+ * codegen script prints. Anything else is a tooling bug and prints its first
+ * message line and the frame that threw (see `formatPluginCodegenFailure`).
+ * Both the entry point and the `dev` loop report through this one function so
+ * the failure surface renders identically regardless of where it originated.
  */
-export function reportCliFailure(io: CliIo, error: unknown, fallback: string): void {
-	const cliError =
-		error instanceof PluginCodegenError
-			? new PluginCliError(error.message, error.details, { cause: error })
-			: error;
-	if (cliError instanceof PluginCliError) {
-		io.error(cliError.message);
-		for (const detail of cliError.details) io.error(`  ${detail}`);
+export function reportCliFailure(io: CliIo, error: unknown): void {
+	if (error instanceof PluginCliError) {
+		const codegen = error.cause instanceof PluginCodegenError ? error.cause : undefined;
+		io.error(codegen ? `${error.message} [${codegen.code}]` : error.message);
+		for (const detail of error.details) io.error(`  ${detail}`);
+		if (codegen) io.error(`Next: ${PLUGIN_CODEGEN_ERROR_HINTS[codegen.code]}`);
 		return;
 	}
-	io.error(fallback);
+	for (const line of formatPluginCodegenFailure(error)) io.error(line);
 }

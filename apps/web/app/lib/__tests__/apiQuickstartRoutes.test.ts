@@ -10,9 +10,12 @@ import { API_QUICKSTART_ROUTES } from '../apiQuickstartRoutes';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V1_HTTP = join(HERE, '../../../../api/convex/publicApi/v1Http.ts');
 /** The contract's operation table and the modules of operations it splices in. */
-const OPERATIONS = ['operations.ts', 'templateOperations.ts', 'renderOperations.ts'].map((file) =>
-	join(HERE, '../../../../../packages/public-contract/src', file)
-);
+const OPERATIONS = [
+	'operations.ts',
+	'templateOperations.ts',
+	'renderOperations.ts',
+	'brandKitOperations.ts',
+].map((file) => join(HERE, '../../../../../packages/public-contract/src', file));
 
 /** A catalog's endpoint descriptions, read untyped: the full catalog type is huge. */
 function endpointDescriptions(locale: 'en' | 'de'): Record<string, string> {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	BRAND_FONTS,
 	DEFAULT_BRAND_KIT_DESIGN,
+	brandKitDesignIssue,
 	brandKitDesignProblem,
 	brandKitEmailTheme,
 	brandSwatches,
@@ -169,6 +170,33 @@ describe('brandKitDesignProblem', () => {
 		],
 	])('refuses %o as %s', (patch, problem) => {
 		expect(brandKitDesignProblem({ ...valid, ...patch })).toBe(problem);
+	});
+});
+
+describe('brandKitDesignIssue', () => {
+	const valid = configured();
+
+	it.each([
+		[{ linkColor: 'blue' }, 'linkColor'],
+		[{ swatches: ['#000000', '#12'] }, 'swatches.1'],
+		[{ headingFontFamily: 'Comic Sans MS' }, 'headingFontFamily'],
+		[{ buttonPaddingX: 2 }, 'buttonPaddingX'],
+		[{ baseWidth: 300 }, 'baseWidth'],
+		[
+			{
+				footerSocialLinks: [
+					{ platform: 'github' as const, url: 'https://github.com/owlat' },
+					{ platform: 'github' as const, url: 'ftp://example.com' },
+				],
+			},
+			'footerSocialLinks.1.url',
+		],
+	])('names the field of %o as %s', (patch, field) => {
+		expect(brandKitDesignIssue({ ...valid, ...patch })?.field).toBe(field);
+	});
+
+	it('is null for a valid design', () => {
+		expect(brandKitDesignIssue(valid)).toBeNull();
 	});
 });
 

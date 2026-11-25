@@ -69,6 +69,16 @@ const AVAILABLE_SCOPES = computed<
 		description: t('dashboard.admin.team.api.index.scopes.templatesWrite.description'),
 	},
 	{
+		value: 'brand-kit:read',
+		label: t('dashboard.admin.team.api.index.scopes.brandKitRead.label'),
+		description: t('dashboard.admin.team.api.index.scopes.brandKitRead.description'),
+	},
+	{
+		value: 'brand-kit:write',
+		label: t('dashboard.admin.team.api.index.scopes.brandKitWrite.label'),
+		description: t('dashboard.admin.team.api.index.scopes.brandKitWrite.description'),
+	},
+	{
 		value: 'domains:verify',
 		label: t('dashboard.admin.team.api.index.scopes.domainsVerify.label'),
 		description: t('dashboard.admin.team.api.index.scopes.domainsVerify.description'),
