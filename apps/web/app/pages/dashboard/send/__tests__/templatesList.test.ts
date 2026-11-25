@@ -214,6 +214,18 @@ describe('templates list', () => {
 			expect(listArgsFactory()).toEqual({ search: 'reset' });
 			expect(sortMenu(wrapper).attributes('disabled-label')).toBe('Sorted by relevance');
 		});
+
+		it('stays on for a blank search, which the server treats as none', async () => {
+			vi.useFakeTimers();
+			const wrapper = render();
+
+			wrapper.findComponent({ name: 'UiInput' }).vm.$emit('update:modelValue', '   ');
+			await vi.advanceTimersByTimeAsync(300);
+			await nextTick();
+
+			expect(listArgsFactory()).toEqual({ sortBy: 'updatedAt', sortOrder: 'desc' });
+			expect(sortMenu(wrapper).attributes('disabled-label')).toBeUndefined();
+		});
 	});
 
 	it('writes the chosen filter into the URL', async () => {

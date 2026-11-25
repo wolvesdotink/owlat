@@ -59,4 +59,17 @@ describe('0077_backfill_template_name_sort_key', () => {
 
 		expect(await t.mutation(migration.run, {})).toMatchObject({ started: false });
 	});
+
+	it('is started by its cron on an install that never ran it, and left alone once done', async () => {
+		const t = convexTest(schema, modules);
+		const id = await t.run((ctx) =>
+			ctx.db.insert('emailTemplates', createTestEmailTemplate({ name: 'Older' }))
+		);
+
+		expect(await t.mutation(migration.ensure, {})).toMatchObject({ started: true });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect((await t.run((ctx) => ctx.db.get(id)))?.nameSortKey).toBe('older');
+		expect(await t.mutation(migration.ensure, {})).toMatchObject({ started: false });
+	});
 });

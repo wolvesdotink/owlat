@@ -268,13 +268,6 @@ describe('ListPageShell', () => {
 		const trigger = (wrapper: ReturnType<typeof render>) =>
 			wrapper.get('[aria-haspopup="listbox"]');
 
-		it('names the current sort and opens its options', async () => {
-			const wrapper = render();
-			expect(trigger(wrapper).text()).toContain('Last modified');
-			await trigger(wrapper).trigger('click');
-			expect(wrapper.find('#test-sort-listbox').exists()).toBe(true);
-		});
-
 		it('is disabled and names the order instead while the rows cannot be sorted', async () => {
 			const wrapper = render({ sortDisabledLabel: 'Sorted by relevance' });
 			expect(trigger(wrapper).attributes('disabled')).toBeDefined();
@@ -288,6 +281,7 @@ describe('ListPageShell', () => {
 		it('closes an open menu when it becomes disabled', async () => {
 			const wrapper = render();
 			await trigger(wrapper).trigger('click');
+			expect(wrapper.find('#test-sort-listbox').exists()).toBe(true);
 			await wrapper.setProps({ sortDisabledLabel: 'Sorted by relevance' });
 			expect(wrapper.find('#test-sort-listbox').exists()).toBe(false);
 		});

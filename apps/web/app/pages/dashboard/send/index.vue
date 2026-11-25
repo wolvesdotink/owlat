@@ -150,7 +150,8 @@ const list = reactive(
 	useTemplateList<TemplateRow>({
 		// Type filter, search and sort all run on the server, before pagination.
 		// A search is relevance-ordered (its index cannot sort), so it sends no
-		// sort and the menu says so. A new sort is new args: the subscription
+		// sort and the menu says so. A blank term is no search: the server trims
+		// it and browses. A new sort is new args: the subscription
 		// starts over from the first page, with nothing on screen until it lands,
 		// so the old order never shows under the new label.
 		query: ({ search, sort }) => {
@@ -159,7 +160,7 @@ const list = reactive(
 					api.emailTemplates.emails.list,
 					() => ({
 						...(typeFilter.value === 'all' ? {} : { type: typeFilter.value }),
-						...(search.value
+						...(search.value.trim()
 							? { search: search.value }
 							: { sortBy: sort.value.sortBy, sortOrder: sort.value.sortOrder }),
 					}),
@@ -224,7 +225,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 		:sort-label="t('dashboard.send.index.sortLabel')"
 		sort-listbox-id="templates-sort-listbox"
 		:sort-disabled-label="
-			list.debouncedSearch ? t('dashboard.send.index.sortedByRelevance') : undefined
+			list.debouncedSearch.trim() ? t('dashboard.send.index.sortedByRelevance') : undefined
 		"
 		:empty-no-org="{
 			icon: MailIcon,
