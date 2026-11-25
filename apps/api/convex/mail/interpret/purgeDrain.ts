@@ -202,49 +202,55 @@ export function tiedPositionOf(row: { _id: string; _creationTime: number }): Tie
 	return { at: row._creationTime, key: row._id };
 }
 
-/** Which creation times of an index range to read: all, exactly one, or every later one. */
-export type CreationTimeBound = { eq: number } | { gt: number } | undefined;
+/**
+ * Which rows of an index range that ends in `_creationTime` to read: all, one
+ * creation time (from past one id of it, with `afterId`), or every later one.
+ */
+export type CreationTimeBound = { eq: number; afterId?: string } | { gt: number } | undefined;
 
 type CreationTimeRange = IndexRange & {
 	eq(field: '_creationTime', value: number): IndexRange;
 	gt(field: '_creationTime', value: number): IndexRange;
 };
 
-/** `range` narrowed to the creation times `bound` names. */
+/**
+ * Every index ends in `_creationTime` and then `_id`, and the database takes a
+ * range on that last field, as on any other (convex-test models it the same
+ * way, and convex-helpers' paginator seeks with it). The generated range
+ * builder stops its types at `_creationTime`, so the `_id` step is typed here.
+ */
+type IdRange = IndexRange & { gt(field: '_id', value: string): IndexRange };
+
+/** `range` narrowed to the rows `bound` names. */
 export function withinCreationTime(range: CreationTimeRange, bound: CreationTimeBound): IndexRange {
 	if (bound === undefined) return range;
-	return 'eq' in bound ? range.eq('_creationTime', bound.eq) : range.gt('_creationTime', bound.gt);
+	if ('gt' in bound) return range.gt('_creationTime', bound.gt);
+	const tie = range.eq('_creationTime', bound.eq);
+	return bound.afterId === undefined ? tie : (tie as IdRange).gt('_id', bound.afterId);
 }
 
 /**
  * The first `n` rows of an index range that ends in `_creationTime`, strictly
  * after `after`, for {@link scanRange}. Many rows can share one creation time
  * (an import batch, one millisecond), so the rest of that creation time is read
- * past the id first, then every later one. The index orders the rows of one
- * creation time by id, and the ids of one table compare as strings in that
- * order (as `lib/keysetMerge.ts` relies on). The rows passed over are charged,
- * as every fetched row is. A position without an id (a cursor a
- * creation-time-only walk wrote) reads its whole creation time again.
+ * first, from the index position just past the id, then every later one. A
+ * slice that resumes inside a tie seeks to it and fetches only the rows it
+ * returns, however much of the tie lies before it. A position without an id (a
+ * cursor a creation-time-only walk wrote) reads its whole creation time again.
  */
 export async function rowsAfterTied<Row extends { _id: string; _creationTime: number }>(
 	budget: DrainBudget,
 	after: RangePosition | undefined,
 	n: number,
-	query: (bound: CreationTimeBound) => AsyncIterable<Row> & { take(n: number): Promise<Row[]> }
+	query: (bound: CreationTimeBound) => { take(n: number): Promise<Row[]> }
 ): Promise<Row[]> {
 	if (after === undefined) return query(undefined).take(n);
-	const { at, key } = typeof after === 'object' ? after : { at: Number(after), key: '' };
-	const rows: Row[] = [];
-	for await (const row of query({ eq: at })) {
-		if (row._id <= key) {
-			budget.charge(row);
-			continue;
-		}
-		rows.push(row);
-		if (rows.length === n) return rows;
-	}
+	const tie: CreationTimeBound =
+		typeof after === 'object' ? { eq: after.at, afterId: after.key } : { eq: Number(after) };
+	const rows = await query(tie).take(n);
+	if (rows.length === n) return rows;
 	budget.range();
-	return [...rows, ...(await query({ gt: at }).take(n - rows.length))];
+	return [...rows, ...(await query({ gt: tie.eq }).take(n - rows.length))];
 }
 
 function cursorPosition(cursor: PurgeCursor | undefined): RangePosition | undefined {

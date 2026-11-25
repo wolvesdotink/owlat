@@ -6,7 +6,7 @@
  * fence lift included, before its last page.
  */
 
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import { mailMessageSources } from './purge';
@@ -17,6 +17,7 @@ import {
 	withinCreationTime,
 	type DrainBudget,
 	type PurgeRange,
+	type RangePosition,
 } from './purgeDrain';
 import { sourceVersionOf } from './sourceVersion';
 
@@ -44,6 +45,21 @@ async function isReadStale(
 	return false;
 }
 
+/** A thread's messages in creation order, strictly after `after` (`rowsAfterTied`). */
+export function messagesAfter(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	after: RangePosition | undefined,
+	n: number,
+	budget: DrainBudget
+) {
+	return rowsAfterTied(budget, after, n, (bound) =>
+		ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => withinCreationTime(q.eq('threadId', threadId), bound))
+	);
+}
+
 /** 0. The thread's messages, when the narrowed ones are not known (`isScanNeeded`). */
 export const narrowedReadsRange: PurgeRange = async (ctx, run) => {
 	if (!run.job.isScanNeeded || run.ref.kind !== 'mail') return { isDone: true };
@@ -51,12 +67,7 @@ export const narrowedReadsRange: PurgeRange = async (ctx, run) => {
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) =>
-			rowsAfterTied(run.budget, after, n, (bound) =>
-				ctx.db
-					.query('mailMessages')
-					.withIndex('by_thread', (q) => withinCreationTime(q.eq('threadId', threadId), bound))
-			),
+		(after, n) => messagesAfter(ctx, threadId, after, n, run.budget),
 		tiedPositionOf,
 		async (message) => {
 			if (!message.inboundSignatureInfo?.scope) return true;
