@@ -30,10 +30,33 @@ export function readFrameworkAliasFind(
 	if (!body.startsWith('^') || !body.endsWith('$')) {
 		throw new Error('Framework RegExp aliases must anchor one exact module specifier');
 	}
-	return {
-		matchKind: 'exact',
-		specifierPattern: decodeExactRegExpLiteral(body.slice(1, -1)),
-	};
+	const anchored = body.slice(1, -1);
+	const capture = /\((?:\.\+|\.\*)\)/.exec(anchored);
+	if (!capture) {
+		return { matchKind: 'exact', specifierPattern: decodeExactRegExpLiteral(anchored) };
+	}
+	// One `(.+)` or `(.*)` group between literal text is a wildcard rule: everything around
+	// the group is matched literally, and `$1` in the replacement carries the captured rest.
+	// Treating `(.+)` as `*` also matches an empty rest, which can only add findings.
+	const prefix = decodeExactRegExpLiteral(anchored.slice(0, capture.index));
+	const suffix = decodeExactRegExpLiteral(anchored.slice(capture.index + capture[0].length));
+	if (prefix.includes('*') || suffix.includes('*')) {
+		throw new Error('Framework RegExp wildcard aliases must not contain a literal *');
+	}
+	return { matchKind: 'wildcard', specifierPattern: `${prefix}*${suffix}` };
+}
+
+// A wildcard rule's replacement is applied with String.prototype.replace, so `$1` is the
+// captured text and the other `$` sequences are replacement patterns this scan does not model.
+export function readFrameworkWildcardReplacement(replacement: string): string {
+	if (replacement.includes('*')) {
+		throw new Error('Framework RegExp wildcard replacements must not contain a literal *');
+	}
+	const targetPattern = replacement.replaceAll('$1', '*');
+	if (/\$[$&`'<0-9]/.test(targetPattern)) {
+		throw new Error('Framework RegExp wildcard replacements may only use $1');
+	}
+	return targetPattern;
 }
 
 export function readFrameworkStaticValues(sourceFile: ts.SourceFile): FrameworkStaticValues {
@@ -221,13 +244,16 @@ export function readFrameworkStaticString(
 	throw new Error('Framework alias values must be static strings or safe path.resolve calls');
 }
 
+// The config directory is either CommonJS's unbound `__dirname` or a const, under any name,
+// whose initializer is the canonical ESM derivation of the config's own directory.
 function isSafeConfigDirectory(value: ts.Expression, staticValues: FrameworkStaticValues): boolean {
 	const expression = unwrapTypeOnlyExpression(value);
-	if (!ts.isIdentifier(expression) || expression.text !== '__dirname') return false;
-	if (!staticValues.bindingCounts.has('__dirname')) {
-		return !staticValues.mutatedBindings.has('__dirname');
+	if (!ts.isIdentifier(expression)) return false;
+	const name = expression.text;
+	if (name === '__dirname' && !staticValues.bindingCounts.has(name)) {
+		return !staticValues.mutatedBindings.has(name);
 	}
-	const initializer = staticValues.constants.get('__dirname');
+	const initializer = staticValues.constants.get(name);
 	return initializer ? isCanonicalEsmDirectory(initializer, staticValues) : false;
 }
 

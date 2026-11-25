@@ -7,6 +7,7 @@ import {
 	readFrameworkAliasFind,
 	readFrameworkStaticString,
 	readFrameworkStaticValues,
+	readFrameworkWildcardReplacement,
 	type FrameworkStaticValues,
 } from './frameworkAliasEvaluator';
 
@@ -66,8 +67,10 @@ export function createRepositoryPackageMatcher(
 	packageNames: readonly string[],
 	aliases: readonly RepositoryModuleAlias[]
 ): RepositoryPackageMatcher {
-	let matcherWork = 0;
+	// The comparison budget bounds one specifier's alias chain. A repository has thousands of
+	// import specifiers, and the source byte budget already bounds how many there are.
 	return (specifier: string, sourceFile?: string): boolean => {
+		let matcherWork = 0;
 		const pending = [specifier];
 		const visited = new Set<string>();
 		while (pending.length > 0) {
@@ -93,7 +96,7 @@ export function createRepositoryPackageMatcher(
 	};
 }
 
-function findConfigFiles(
+export function findConfigFiles(
 	workspaceRoot: string,
 	repositoryFiles: readonly string[]
 ): readonly string[] {
@@ -224,10 +227,9 @@ function collectFrameworkAliasValue(
 		}
 		const properties = readFrameworkAliasRule(element);
 		const find = readFrameworkAliasFind(properties.find.initializer, staticValues);
-		const targetPattern = readFrameworkStaticString(
-			properties.replacement.initializer,
-			staticValues
-		);
+		const replacement = readFrameworkStaticString(properties.replacement.initializer, staticValues);
+		const targetPattern =
+			find.matchKind === 'wildcard' ? readFrameworkWildcardReplacement(replacement) : replacement;
 		addAlias(aliases, { ...find, targetPattern });
 	}
 }
