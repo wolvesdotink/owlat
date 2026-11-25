@@ -24,11 +24,7 @@ export {
 export type { EditorShortcut, EditorShortcutGroup, HistoryState } from './composables';
 
 // Dialogs
-export {
-	UnsavedChangesDialog,
-	KeyboardShortcutsDialog,
-	VariableExampleField,
-} from './components/dialogs';
+export { UnsavedChangesDialog, KeyboardShortcutsDialog } from './components/dialogs';
 
 // Types
 export type {

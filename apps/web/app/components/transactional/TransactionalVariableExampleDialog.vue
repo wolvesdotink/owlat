@@ -6,7 +6,9 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { VariableExampleField } from '@owlat/email-builder';
+// The field alone: the package's barrel would pull the whole builder into
+// this lazily loaded dialog.
+import VariableExampleField from '@owlat/email-builder/variable-example-field';
 import type { DataVariableExampleValue } from '@owlat/shared/dataVariableExamples';
 
 const props = defineProps<{
