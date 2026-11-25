@@ -161,6 +161,13 @@ export async function applyRelease(
 		if (version) {
 			steps.push({ step: 'pin-version', ...(await pinConfiguredVersion(version)) });
 		}
+
+		// Step 7b: Name the release `.env` now pins in the install directory's
+		// VERSION file. Here and not after `up`, so every way the rollout can end
+		// from this point leaves the two in line; a rollback writes it again with
+		// the `.env` it restores. Reported, never fatal: the stack runs either way.
+		const recorded = await recordPinnedVersion('updater');
+		if (recorded) steps.push(recorded);
 	}
 
 	// Step 8: Apply — recreate changed containers now that the schema is live.
@@ -239,14 +246,6 @@ export async function applyRelease(
 		} catch (err) {
 			console.error('[update] could not record the release as confirmed:', err);
 		}
-	}
-
-	// Step 9b: Name the release `.env` now pins in the install directory's
-	// VERSION file. Past the rollback above, so a release that went back to its
-	// snapshot is never recorded. Reported, never fatal: the stack runs either way.
-	if (composeTemplate) {
-		const recorded = await recordPinnedVersion('updater');
-		if (recorded) steps.push(recorded);
 	}
 
 	// Step 10: Hand this container's own replacement to a helper that outlives

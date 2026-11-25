@@ -535,9 +535,9 @@ describe('POST /update', () => {
 			'convex-deploy',
 			'write-compose',
 			'pin-version',
+			'version-record',
 			'up',
 			'readiness',
-			'version-record',
 			'self-update',
 		]);
 		// pull/deploy ran against the STAGED file, not the live one
@@ -654,9 +654,9 @@ describe('POST /update', () => {
 			'convex-deploy',
 			'write-compose',
 			'pin-version',
+			'version-record',
 			'up',
 			'readiness',
-			'version-record',
 			'self-update',
 		]);
 		expect(json.steps?.find((s) => s.step === 'pin-version')?.ok).toBe(true);
@@ -733,6 +733,24 @@ describe('POST /update', () => {
 		const json = (await res.json()) as { steps?: Array<{ step: string; ok?: boolean }> };
 		expect(json.steps?.find((s) => s.step === 'pin-version')?.ok).toBe(false);
 		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.4\.19$/m);
+	});
+
+	it('names the release .env pins when recreating the containers fails with no snapshot', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.19\n');
+		writeFileSync(join(OWLAT_DIR, 'VERSION'), 'version=0.4.19\n');
+		withoutSnapshot();
+		commandMock.mockImplementation(
+			dockerFailing((cmd) => cmd.includes(' up -d'), 'error during connect: EOF')
+		);
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:0.6.24', ''].join(
+			'\n'
+		);
+
+		const res = await post('/update', { composeTemplate: template });
+
+		expect(res.status).toBe(500);
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain('OWLAT_VERSION=0.6.24');
+		expect(readFileSync(join(OWLAT_DIR, 'VERSION'), 'utf-8')).toMatch(/^version=0\.6\.24$/m);
 	});
 
 	it('leaves VERSION alone when the update stops before the release is applied', async () => {

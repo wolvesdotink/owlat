@@ -32,8 +32,8 @@ const metrics = startNodeMetrics({
 // staged is removed.
 await reconcileInterruptedUpdate();
 
-// After the rollout is settled, so its verdict decides whether `.env` can be
-// trusted. Logged, never fatal.
+// VERSION names what `.env` pins, whatever the last rollout's verdict. Logged,
+// never fatal.
 const versionRecord = await syncVersionRecord();
 if (versionRecord?.ok) log(versionRecord.stdout);
 else if (versionRecord) log('could not write VERSION:', versionRecord.stderr);

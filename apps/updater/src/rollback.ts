@@ -178,6 +178,8 @@ async function restoreAndStart(
 			stdout: `The data and configuration of snapshot ${snapshot.id} were already restored; starting the release they belong to again.`,
 			stderr: '',
 		});
+		// The earlier attempt may have stopped before it wrote VERSION.
+		await recordRestoredVersion();
 		return startRestored(snapshot, hostDir, preExisting, steps);
 	}
 
@@ -267,6 +269,8 @@ async function restoreAndStart(
 		fail('rollback-restore', reason);
 		return result('partial', `${reason}. The data is restored; convex and redis are stopped.`);
 	}
+	// Before the journal write, which can throw: `.env` is restored either way.
+	await recordRestoredVersion();
 	current = markSnapshot(current, 'starting');
 	const removed = current.absent.map((file) => `removed ${file}, which it did not have`);
 	steps.push({
@@ -278,6 +282,16 @@ async function restoreAndStart(
 		stderr: '',
 	});
 	return startRestored(current, hostDir, preExisting, steps);
+}
+
+/**
+ * The restored `.env` pins the snapshot's release, so VERSION goes back with
+ * it, for the automatic rollback and `owlat rollback` alike. Logged, never
+ * fatal.
+ */
+async function recordRestoredVersion(): Promise<void> {
+	const recorded = await recordPinnedVersion('rollback');
+	if (recorded && !recorded.ok) console.error('[rollback]', recorded.stderr);
 }
 
 /**
@@ -298,12 +312,6 @@ async function startRestored(
 		summary,
 		warnings,
 	});
-
-	// The restored `.env` pins the snapshot's release, so VERSION goes back with
-	// it: for the automatic rollback, `owlat rollback`, and a rollback resumed
-	// here after the configuration was restored by an earlier attempt.
-	const recorded = await recordPinnedVersion('rollback');
-	if (recorded && !recorded.ok) console.error('[rollback]', recorded.stderr);
 
 	// Read after the configuration is back, so it names the restored files.
 	const compose = composeArgvIn(hostDir);
