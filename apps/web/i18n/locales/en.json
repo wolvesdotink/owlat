@@ -13696,7 +13696,7 @@
 				"activeFilters": "Active filters",
 				"createFilter": "Create filter",
 				"deleteConfirm": "Delete filter",
-				"deleteDescription": "This filter will stop routing inbound mail. This action cannot be undone.",
+				"deleteDescription": "This filter will be deleted. This action cannot be undone.",
 				"deleteTitle": "Delete filter?",
 				"empty": "No filters yet. Create your first one to start routing mail.",
 				"intro": "Auto-route inbound mail to folders, apply labels, mark read, or forward.",

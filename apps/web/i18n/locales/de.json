@@ -13696,7 +13696,7 @@
 				"activeFilters": "Aktive Filter",
 				"createFilter": "Filter erstellen",
 				"deleteConfirm": "Filter löschen",
-				"deleteDescription": "Dieser Filter sortiert eingehende Mail nicht mehr. Diese Aktion kann nicht rückgängig gemacht werden.",
+				"deleteDescription": "Dieser Filter wird gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
 				"deleteTitle": "Filter löschen?",
 				"empty": "Noch keine Filter. Erstelle deinen ersten, um Mail zu sortieren.",
 				"intro": "Eingehende Mail automatisch in Ordner einsortieren, mit Labels versehen, als gelesen markieren oder weiterleiten.",
