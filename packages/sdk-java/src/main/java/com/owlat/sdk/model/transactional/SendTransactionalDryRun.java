@@ -95,7 +95,7 @@ public class SendTransactionalDryRun {
         return templateStatus;
     }
 
-    /** The recipient's contact, or {@code null} when a send would create one. */
+    /** The recipient's existing contact when a send would be queued; otherwise {@code null}. */
     public String getContactId() {
         return contactId;
     }

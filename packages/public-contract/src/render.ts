@@ -165,7 +165,8 @@ export const sendTransactionalDryRunSchema = z.strictObject({
 	slug: z.string(),
 	templateStatus: z.enum(TRANSACTIONAL_EMAIL_STATUSES),
 	contactId: z.string().nullable().meta({
-		description: "The recipient's contact, or null when a send would create one.",
+		description:
+			"The recipient's existing contact when a send would be queued; null when it would be refused, or would create the contact.",
 	}),
 	language: z.string(),
 	subject: z.string(),

@@ -115,7 +115,7 @@ export const SEND_TRANSACTIONAL_DRY_RUN_EXAMPLE = {
 		templateId: 'k57t3mpl4te0000000000000000000',
 		slug: 'order-confirmation',
 		templateStatus: 'published',
-		contactId: 'k57c0ntact00000000000000000000',
+		contactId: null,
 		language: 'en',
 		subject: 'Your order A-1001',
 		html: HTML.replace('Ada', ''),

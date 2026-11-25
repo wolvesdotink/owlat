@@ -138,7 +138,7 @@ export interface SendTransactionalDryRun {
 	templateId: string;
 	slug: string;
 	templateStatus: TransactionalEmailStatus;
-	/** The recipient's contact, or `null` when a send would create one. */
+	/** The recipient's existing contact when a send would be queued; otherwise `null`. */
 	contactId: string | null;
 	language: string;
 	subject: string;

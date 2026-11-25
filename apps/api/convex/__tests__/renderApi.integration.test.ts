@@ -630,6 +630,22 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 		const { key } = await seedKey(t, ALL);
 		await saveOrder(t, key);
 		await publishOrder(t, key);
+		// A first send creates the contact, so the refused dry run below has one to hide.
+		const first = await request(t, key, 'POST', '/api/v1/transactional', {
+			email: 'ada@example.com',
+			slug: 'order',
+			dataVariables: DATA,
+		});
+		expect(first.status).toBe(202);
+		const accepted = await dryRunOk(
+			await request(t, key, 'POST', '/api/v1/transactional', {
+				email: 'ada@example.com',
+				slug: 'order',
+				dataVariables: DATA,
+				dryRun: true,
+			})
+		);
+		expect(accepted.contactId).toBe((await first.json()).data.contactId);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
@@ -651,6 +667,28 @@ describe('POST /api/v1/transactional with dryRun: true', () => {
 			retryAfter: null,
 		});
 		expect(dry.html).toContain('Hi Ada');
+		expect(dry.contactId).toBeNull();
+
+		// A list too long to compose does not hide the send's first refusal.
+		const bigLine = text('b-line', `<p>${'x'.repeat(4000)} {{item.name}}</p>`, {
+			repeat: { variable: 'items', itemAlias: 'item' },
+		});
+		const putBig = await request(t, key, 'PUT', '/api/v1/transactional-emails/big', {
+			name: 'Big',
+			blocks: [bigLine],
+			dataVariablesSchema: { items: 'array' },
+		});
+		expect(putBig.status).toBe(200);
+		expect((await request(t, key, 'POST', '/api/v1/transactional-emails/big/publish')).status).toBe(
+			200
+		);
+		const big = await request(t, key, 'POST', '/api/v1/transactional', {
+			email: 'ada@example.com',
+			slug: 'big',
+			dataVariables: { items: Array.from({ length: 300 }, (_, i) => ({ name: `n${i}` })) },
+			dryRun: true,
+		});
+		await expectRefusal('sendTransactional', big, 422, 'recipient_blocked');
 	});
 
 	it('reports a spent daily cap with its retry time and charges nothing', async () => {

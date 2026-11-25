@@ -17,11 +17,7 @@ import { findContactByIdentifier } from '../contacts/resolution';
 import { composeForSend } from '../delivery/sendComposition';
 import { dataVariablesRecord } from '../lib/convexValidators';
 import { missingDataVariables, selectSendContent } from './dispatchContent';
-import {
-	decideTemplate,
-	oversizedVariablesRefusal,
-	type DispatchRefusal,
-} from './dispatchDecision';
+import { oversizedVariablesRefusal, type DispatchRefusal } from './dispatchDecision';
 import { checkIntake, loadRequestedTemplate } from './intakeChecks';
 
 export type DryRunOutcome =
@@ -40,7 +36,11 @@ export type DryRunOutcome =
 			subject: string;
 			html: string;
 			text: string;
-			/** The recipient's contact, or `null` when a send would create it. */
+			/**
+			 * The recipient's existing contact when a send would be queued, which
+			 * a send then names too; `null` otherwise, so a refused dry run says no
+			 * more about the address than a refused send.
+			 */
 			contactId: Id<'contacts'> | null;
 			/** Delivery appends the unsubscribe footer, which a dry run leaves out. */
 			unsubscribeFooter: boolean;
@@ -79,15 +79,15 @@ export const dryRunForApi = internalQuery({
 		if (template.status !== 'published' && !args.canReadUnpublished) {
 			return { ok: false, refusal: refusal! };
 		}
-		if (!template.htmlContent) {
-			const noContent = decideTemplate(args.templateLookup, { ...template, status: 'published' });
-			return { ok: false, refusal: noContent.ok ? refusal! : noContent };
-		}
+		// With nothing to compose, the answer is the send's own first refusal:
+		// a template without HTML is always refused by `checkIntake`, as
+		// unpublished or as having no content.
+		if (!template.htmlContent) return { ok: false, refusal: refusal! };
 
 		const contact = await findContactByIdentifier(ctx, 'email', args.email);
 		const content = selectSendContent(template, args.language, contact?.contact.language);
 		const oversized = oversizedVariablesRefusal(content, args.dataVariables);
-		if (oversized) return { ok: false, refusal: oversized };
+		if (oversized) return { ok: false, refusal: refusal ?? oversized };
 
 		// The envelope a send hands the worker carries exactly this template
 		// part (`planTransactionalSend`), and the worker composes it so.
@@ -109,7 +109,7 @@ export const dryRunForApi = internalQuery({
 			subject: composed.subject,
 			html: composed.html,
 			text: composed.text,
-			contactId: contact?.contact._id ?? null,
+			contactId: refusal === null ? (contact?.contact._id ?? null) : null,
 			unsubscribeFooter: template.showUnsubscribe === true,
 			missingVariables: missingDataVariables(
 				content,

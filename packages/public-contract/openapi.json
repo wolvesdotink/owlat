@@ -1716,7 +1716,7 @@
 										"templateId": "k57t3mpl4te0000000000000000000",
 										"slug": "order-confirmation",
 										"templateStatus": "published",
-										"contactId": "k57c0ntact00000000000000000000",
+										"contactId": null,
 										"language": "en",
 										"subject": "Your order A-1001",
 										"html": "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>Your order A-1001</title></head><body style=\"margin:0;padding:0;background-color:#f4f4f5\"><div style=\"display:none\">Arriving Thursday</div><h1>Thanks for your order, </h1></body></html>",
@@ -9286,7 +9286,7 @@
 						"enum": ["draft", "pending_review", "published"]
 					},
 					"contactId": {
-						"description": "The recipient's contact, or null when a send would create one.",
+						"description": "The recipient's existing contact when a send would be queued; null when it would be refused, or would create the contact.",
 						"type": ["string", "null"]
 					},
 					"language": {
