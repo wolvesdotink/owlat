@@ -52,7 +52,22 @@ const owlat = new Owlat({
 });
 ```
 
-> **No `baseUrl`:** the client sends requests and your API key to `https://api.owlat.app`, which is not your instance, and logs a warning. `new Owlat('lm_live_...')` does the same and is deprecated. `baseUrl` will become required.
+`baseUrl` is required. The constructor throws a `TypeError` that says where to find it when `baseUrl` is missing, blank, or not an absolute `http` or `https` URL. A path prefix is kept (`https://example.com/owlat`), a trailing slash is dropped, and a query string or fragment is refused.
+
+### Upgrading from a key-only client
+
+`new Owlat('lm_live_...')` and a config without `baseUrl` sent requests and your API key to `https://api.owlat.app`, which is not your instance. Both are gone: pass a config with your instance's API URL.
+
+```typescript
+// Before
+const owlat = new Owlat('lm_live_xxxxxxxx');
+
+// After
+const owlat = new Owlat({
+	apiKey: 'lm_live_xxxxxxxx',
+	baseUrl: 'https://rest.api.example.com', // Your API base URL, from Settings → API → API quickstart
+});
+```
 
 ## API Reference
 

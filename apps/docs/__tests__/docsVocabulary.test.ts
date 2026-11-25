@@ -68,6 +68,7 @@ const EXTERNAL_NAMES: Readonly<Record<string, string>> = {
 	SendRawEmailCommand: 'AWS SDK class',
 	SetIdentityMailFromDomain: 'Amazon SES API action',
 	StandardMetric: 'Google Postmaster Tools API type',
+	TypeError: 'JavaScript built-in error',
 	UserIdentity: 'Convex auth type',
 	VerifyDomainDkim: 'Amazon SES API action',
 	VerifyDomainIdentity: 'Amazon SES API action',
