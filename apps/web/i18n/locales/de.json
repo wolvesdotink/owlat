@@ -5374,8 +5374,8 @@
 				"listLabel": "Emoji"
 			},
 			"postboxFilterRuleBuilder": {
-				"actionNeverRuns": "Diese Aktion läuft in einem synchronisierten Postfach nie. „Auf vorhandene E-Mails anwenden“ leitet nicht weiter, verschiebt nicht in den Papierkorb und verwirft nichts.",
-				"connectedNotice": "Dieses Postfach wird von deinem Anbieter synchronisiert, deshalb läuft dieser Filter nicht bei neuer Mail. Er greift nur, wenn du „Auf vorhandene E-Mails anwenden“ nutzt, und das leitet nie weiter, verschiebt nie in den Papierkorb und verwirft nie.",
+				"actionNeverRuns": "Diese Aktion läuft in einem synchronisierten Postfach nie. „Auf vorhandene E-Mails anwenden“ überspringt „Weiterleiten an…“, „In den Papierkorb verschieben“ und „Verwerfen“.",
+				"connectedNotice": "Dieses Postfach wird von deinem Anbieter synchronisiert, deshalb läuft dieser Filter nicht bei neuer Mail. Er greift nur, wenn du „Auf vorhandene E-Mails anwenden“ nutzt, und das überspringt „Weiterleiten an…“, „In den Papierkorb verschieben“ und „Verwerfen“.",
 				"actions": {
 					"addLabel": "Label hinzufügen",
 					"delete": "In den Papierkorb verschieben",
@@ -13714,6 +13714,8 @@
 				"connectedNotice": "{address} wird von deinem Anbieter synchronisiert, deshalb laufen Filter, die du hier baust, nicht bei neuer Mail. Richte Filter für neue Mail bei deinem Anbieter ein. „Auf vorhandene E-Mails anwenden“ wendet einen Filter auf die Mail an, die schon im Postfach liegt. Regeln in deinen Worten laufen bei neuer Mail weiter.",
 				"connectedTeamNotice": "{address} wird von deinem Anbieter synchronisiert, deshalb läuft bei neuer Mail kein Filter und keine Regel. Richte Filter für neue Mail bei deinem Anbieter ein. „Auf vorhandene E-Mails anwenden“ wendet einen Filter auf die Mail an, die schon im Postfach liegt.",
 				"appliedFilters": "Filter, die du selbst anwendest",
+				"introConnected": "Filter hier wirken auf Mail, die schon in diesem Postfach liegt, wenn du sie ausführst. Sie können verschieben, labeln, als gelesen markieren, mit Stern versehen oder in einen Bereich anheften.",
+				"neverRuns": "Läuft hier nie",
 				"runsOnApply": "Läuft nur, wenn du ihn anwendest"
 			},
 			"forwarding": {

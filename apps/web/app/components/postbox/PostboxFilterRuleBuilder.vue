@@ -440,7 +440,10 @@ function removeAction(idx: number) {
 			</div>
 		</section>
 
+		<!-- A run applies one filter at a time, so on a connected mailbox there are
+		     no later filters to stop; a saved value is kept as it is. -->
 		<UiCheckbox
+			v-if="onNewMail.editorFilters"
 			v-model="local.stopProcessing"
 			:label="t('components.postbox.postboxFilterRuleBuilder.stopProcessing')"
 		/>

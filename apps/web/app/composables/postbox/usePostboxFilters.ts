@@ -89,7 +89,7 @@ export function filtersOnNewMail(mailbox: FilterMailbox): {
 } {
 	return {
 		editorFilters: mailbox.kind !== 'external',
-		plainRules: mailbox.scope !== 'shared',
+		plainRules: (mailbox.scope ?? 'personal') === 'personal',
 	};
 }
 

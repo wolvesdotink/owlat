@@ -19,6 +19,7 @@ import { usePostboxSettingsMailbox } from '~/composables/postbox/usePostboxSetti
 import PreferencesMailboxPicker from '~/components/preferences/PreferencesMailboxPicker.vue';
 import PostboxPlainRules from '~/components/postbox/PostboxPlainRules.vue';
 import PostboxFilterReachNotice from '~/components/postbox/PostboxFilterReachNotice.vue';
+import PostboxFilterRunsOnApplyBadge from '~/components/postbox/PostboxFilterRunsOnApplyBadge.vue';
 import VacationPage from '../vacation.vue';
 import SignaturesPage from '../signatures.vue';
 import ForwardingPage from '../forwarding.vue';
@@ -224,7 +225,12 @@ function mountPage(page: Component) {
 	return mount(page, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { PreferencesMailboxPicker, PostboxPlainRules, PostboxFilterReachNotice },
+			components: {
+				PreferencesMailboxPicker,
+				PostboxPlainRules,
+				PostboxFilterReachNotice,
+				PostboxFilterRunsOnApplyBadge,
+			},
 			stubs: {
 				UiInput: {
 					props: ['modelValue'],
@@ -614,6 +620,26 @@ describe('filters on a connected mailbox, where synced mail skips the editor fil
 		await flushPromises();
 		expect(notice(wrapper).exists()).toBe(false);
 		expect(rowState(wrapper).exists()).toBe(false);
+	});
+
+	it('says a filter with only forward, delete or discard never runs there', async () => {
+		filterRows.value = [
+			{ ...EDITOR_FILTER, actions: [{ type: 'forward', forwardTo: 'a@b.test' }] },
+		];
+		openMailboxId.value = 'mb_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(rowState(wrapper).text()).toBe('Never runs here');
+	});
+
+	it('hides the Stop badge, since a run applies one filter at a time', async () => {
+		filterRows.value = [{ ...EDITOR_FILTER, stopProcessing: true }];
+		openMailboxId.value = 'mb_gmail';
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(wrapper.text()).not.toContain('Stop');
 	});
 
 	it('marks a switched-off filter as off, not as waiting to be applied', async () => {

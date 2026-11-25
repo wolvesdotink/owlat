@@ -60,6 +60,7 @@ describe('the filter editor, per mailbox kind', () => {
 			expect.arrayContaining(['forward', 'delete', 'discard'])
 		);
 		expect(wrapper.find('[data-testid="connected-mailbox-notice"]').exists()).toBe(false);
+		expect(wrapper.findComponent({ name: 'UiCheckbox' }).exists()).toBe(true);
 	});
 
 	it('leaves forward, delete and discard out on a connected mailbox and says why', () => {
@@ -72,6 +73,8 @@ describe('the filter editor, per mailbox kind', () => {
 		expect(wrapper.get('[data-testid="connected-mailbox-notice"]').text()).toContain(
 			'does not run on new mail'
 		);
+		// A run applies one filter at a time, so there is nothing later to stop.
+		expect(wrapper.findComponent({ name: 'UiCheckbox' }).exists()).toBe(false);
 	});
 
 	it('keeps a saved forward editable on a connected mailbox and says it does nothing', () => {

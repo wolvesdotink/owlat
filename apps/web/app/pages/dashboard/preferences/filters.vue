@@ -95,12 +95,18 @@ const manualFilters = computed(() => filters.value.filter((f) => !isPlainLanguag
 const ruleIds = computed(() =>
 	filters.value.filter((f) => isPlainLanguageRule(f)).map((f) => f._id)
 );
-// Which of the two kinds of rule this mailbox's new mail goes through.
+// Which kinds of rule run on this mailbox's new mail, and the copy that follows.
 const onNewMail = computed(() => filtersOnNewMail(currentMailbox.value ?? {}));
-const listHeading = computed(() =>
+const listCopy = computed(() =>
 	onNewMail.value.editorFilters
-		? t('dashboard.preferences.filters.activeFilters')
-		: t('dashboard.preferences.filters.appliedFilters')
+		? {
+				intro: t('dashboard.preferences.filters.intro'),
+				heading: t('dashboard.preferences.filters.activeFilters'),
+			}
+		: {
+				intro: t('dashboard.preferences.filters.introConnected'),
+				heading: t('dashboard.preferences.filters.appliedFilters'),
+			}
 );
 
 function startCreate() {
@@ -304,7 +310,7 @@ async function confirmRemove() {
 			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 		>
 			<p class="text-text-secondary">
-				{{ t('dashboard.preferences.filters.intro') }}
+				{{ listCopy.intro }}
 			</p>
 			<UiButton v-if="mailboxId && !editor" type="button" class="shrink-0" @click="startCreate">
 				<PlusIcon class="w-4 h-4 mr-1.5" />
@@ -352,7 +358,7 @@ async function confirmRemove() {
 
 		<section v-if="mailboxId" class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
-				<h2 class="font-semibold">{{ listHeading }}</h2>
+				<h2 class="font-semibold">{{ listCopy.heading }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
@@ -404,15 +410,12 @@ async function confirmRemove() {
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="font-medium break-words">{{ f.name }}</span>
 								<UiBadge v-if="!f.isEnabled" variant="neutral">{{ t('common.disabled') }}</UiBadge>
-								<!-- Switched on, but synced mail never reaches it: only a run applies it. -->
-								<UiBadge
+								<PostboxFilterRunsOnApplyBadge
 									v-else-if="!onNewMail.editorFilters"
-									variant="warning"
-									data-testid="filter-runs-on-apply"
-									>{{ t('dashboard.preferences.filters.runsOnApply') }}</UiBadge
-								>
+									:actions="f.actions as FilterAction[]"
+								/>
 								<UiBadge
-									v-if="f.stopProcessing"
+									v-if="f.stopProcessing && onNewMail.editorFilters"
 									variant="neutral"
 									:title="t('dashboard.preferences.filters.stopTitle')"
 									>{{ t('dashboard.preferences.filters.stopBadge') }}</UiBadge
