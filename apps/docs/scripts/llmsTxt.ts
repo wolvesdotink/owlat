@@ -16,7 +16,7 @@
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 export const DOCS_ORIGIN = 'https://docs.owlat.app';
 
@@ -95,7 +95,8 @@ export function readPages(englishRoot: string): Page[] {
 		readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
 			const path = join(directory, entry.name);
 			if (entry.isDirectory()) return walk(path);
-			return entry.name.endsWith('.md') ? [relative(englishRoot, path)] : [];
+			// Content paths use `/` on every platform; `relative` uses the OS separator.
+			return entry.name.endsWith('.md') ? [relative(englishRoot, path).split(sep).join('/')] : [];
 		});
 	return walk(englishRoot)
 		.sort(compareFiles)
