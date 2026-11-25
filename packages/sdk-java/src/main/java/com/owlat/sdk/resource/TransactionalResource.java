@@ -2,10 +2,13 @@ package com.owlat.sdk.resource;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.owlat.sdk.RequestOptions;
+import com.owlat.sdk.exception.NotFoundException;
+import com.owlat.sdk.exception.OwlatException;
 import com.owlat.sdk.internal.HttpClient;
 import com.owlat.sdk.model.ApiResponse;
 import com.owlat.sdk.model.CursorPaginatedResponse;
 import com.owlat.sdk.model.transactional.ListTransactionalSendsParams;
+import com.owlat.sdk.model.transactional.SendTransactionalDryRun;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.owlat.sdk.model.transactional.SendTransactionalResponse;
 import com.owlat.sdk.model.transactional.TransactionalSendStatus;
@@ -39,6 +42,37 @@ public class TransactionalResource extends BaseResource {
         return httpClient
                 .post(BASE_PATH, params, new TypeReference<ApiResponse<SendTransactionalResponse>>() {}, options)
                 .getData();
+    }
+
+    /**
+     * Compose a transactional email for one recipient and answer what a send
+     * of the same parameters would do, without sending: the subject, HTML and
+     * text a send would deliver, and the refusal it would meet now. Nothing is
+     * sent, stored or counted against a limit, and no idempotency key is used.
+     * A draft is composed too when the key also has {@code templates:read}.
+     * Needs the {@code transactional:send} scope.
+     *
+     * @throws NotFoundException if the template does not exist (reason
+     *         {@code template_not_found}), or if the instance predates dry runs
+     *         and has no such route: it then answers 404 and sends nothing
+     */
+    public SendTransactionalDryRun dryRun(SendTransactionalParams params) {
+        try {
+            return httpClient
+                    .post(BASE_PATH + "/dry-run", params,
+                            new TypeReference<ApiResponse<SendTransactionalDryRun>>() {})
+                    .getData();
+        } catch (OwlatException e) {
+            // The server's own 404s name a reason; a bare one is a server
+            // without this route, which sent nothing.
+            if (e.getStatusCode() == 404 && e.getReason() == null) {
+                throw new NotFoundException(
+                        "This Owlat instance does not support dry runs: it has no POST "
+                                + "/api/v1/transactional/dry-run. Nothing was sent.",
+                        e.getRateLimit());
+            }
+            throw e;
+        }
     }
 
     /**

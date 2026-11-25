@@ -114,10 +114,10 @@ const dataVariableExampleSchema = z.union(
 
 const dataVariableExamplesDescription = `Sample data per variable, for the editor preview and test sends: a string for string, a number for number, true or false for boolean, an ISO date such as 2026-11-25 for date, and for array a list of at most ${MAX_REPEAT_ITEMS} entries, each a plain value or a flat object of them. At most ${MAX_DATA_VARIABLE_EXAMPLES_BYTES / 1000} KB as JSON in total. A real send never uses them: a request still has to pass every required variable. Store sample data only, never a real recipient's.`;
 
-const languageCode = (message: string) =>
+export const languageCode = (message: string) =>
 	z.string({ error: message }).regex(LANGUAGE_CODE_PATTERN, { error: message });
 
-const transactionalEmailInputShape = {
+export const transactionalEmailInputShape = {
 	name: requiredString('name is required', 'name must be a string').max(TEMPLATE_NAME_MAX_LENGTH, {
 		error: `name must be at most ${TEMPLATE_NAME_MAX_LENGTH} characters`,
 	}),

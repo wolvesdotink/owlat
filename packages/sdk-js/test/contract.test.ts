@@ -14,6 +14,7 @@ import {
 	type PublicOperationId,
 } from '@owlat/public-contract/schemas';
 import type { Owlat } from '../src';
+import { NotFoundError } from '../src';
 import { createTestClient, mockFetch } from './helpers';
 
 afterEach(() => {
@@ -169,6 +170,16 @@ const CALLS: Record<
 		path: `/api/v1/saved-blocks/${BLOCK_ID}`,
 		result: example('updateSavedBlock').response.data,
 	},
+	dryRunTransactional: {
+		call: (client) => client.transactional.dryRun(example('dryRunTransactional').request),
+		path: '/api/v1/transactional/dry-run',
+		result: example('dryRunTransactional').response.data,
+	},
+	renderEmail: {
+		call: (client) => client.render.email(example('renderEmail').request),
+		path: '/api/v1/render',
+		result: example('renderEmail').response.data,
+	},
 	getStatus: {
 		call: (client) => client.status.get(),
 		path: '/api/v1/status',
@@ -214,6 +225,44 @@ describe('SDK calls against the public contract', () => {
 		} else {
 			expect(init?.body ?? undefined).toBeUndefined();
 		}
+	});
+
+	it('a dry run against a server without the route fails with the 404, which sent nothing', async () => {
+		// What a Convex router answers for a path it does not have.
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response('No matching routes found', { status: 404 })
+		);
+		const failure = createTestClient().transactional.dryRun(example('dryRunTransactional').request);
+		await expect(failure).rejects.toBeInstanceOf(NotFoundError);
+		await expect(failure).rejects.toThrow(/does not support dry runs/);
+	});
+
+	it('send() refuses a dryRun parameter before anything goes on the wire', async () => {
+		const spy = mockFetch({ status: 202, body: example('sendTransactional').response });
+		const params = { ...example('sendTransactional').request, dryRun: true };
+		await expect(createTestClient().transactional.send(params)).rejects.toMatchObject({
+			code: 'invalid_input',
+		});
+		expect(spy).not.toHaveBeenCalled();
+	});
+
+	it('a dry run of an unknown template keeps the server’s own 404', async () => {
+		mockFetch({
+			status: 404,
+			body: {
+				error: {
+					category: 'not_found',
+					message: 'Transactional email with slug "nope" not found',
+					data: { reason: 'template_not_found' },
+				},
+			},
+		});
+		await expect(
+			createTestClient().transactional.dryRun({ email: 'ada@example.com', slug: 'nope' })
+		).rejects.toMatchObject({
+			reason: 'template_not_found',
+			message: expect.stringContaining('nope'),
+		});
 	});
 
 	it('sends the send list filters under the names the contract documents', async () => {

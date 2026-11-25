@@ -23,21 +23,17 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
-import { findContactByIdentifier } from '../contacts/resolution';
-import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteOrHoldFromDb } from '../lib/sendProviders/route';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
 import type { MutationCtx } from '../_generated/server';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
-import { runSendIntakeGates } from '../delivery/sendIntakeGates';
 import { dataVariablesRecord } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
-import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { claimPendingUploads } from './pendingUploads';
-import { chargeTransactionalSendCaps } from './sendCaps';
+import { chargeSendCaps } from './sendCaps';
 import { templateSlugOfSend } from './sendStatus';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
@@ -46,22 +42,14 @@ import {
 	storedTransactionalResponse,
 	writeReceipt,
 } from '../auth/apiRequestReceipts';
-import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import {
 	validateDataVariables,
 	resolveLanguage,
 	selectContent,
-	selectSendContent,
 	mergeAttachments,
 } from './dispatchContent';
-import {
-	decideSenderAndVariables,
-	decideTemplate,
-	decideSender,
-	planTransactionalSend,
-	type DispatchOutcome,
-} from './dispatchDecision';
-import { transactionalSenderInputs } from './senderResolution';
+import { planTransactionalSend, type DispatchOutcome } from './dispatchDecision';
+import { checkIntake } from './intakeChecks';
 
 // The outcome types live with the decisions; re-exported for existing importers.
 export type { DispatchOutcome, DispatchRejectionReason } from './dispatchDecision';
@@ -114,33 +102,6 @@ async function resolveIntakeRoute(
 	return routing.route;
 }
 
-/**
- * The language stored on the recipient's contact, read before the contact
- * upsert so a refused request writes nothing. The upsert never overwrites a
- * stored language, so the plan resolves the same one after it.
- */
-async function storedLanguage(ctx: MutationCtx, email: string): Promise<string | undefined> {
-	return (await findContactByIdentifier(ctx, 'email', email))?.contact.language;
-}
-
-/**
- * The template a request names, by id or by slug. A malformed id, or one from
- * another table, reads as no template, the same as an unknown one.
- */
-async function loadRequestedTemplate(
-	ctx: MutationCtx,
-	lookup: Parameters<typeof decideTemplate>[0]
-): Promise<Parameters<typeof decideTemplate>[1]> {
-	if (lookup.kind === 'slug') {
-		return await ctx.db
-			.query('transactionalEmails')
-			.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
-			.first();
-	}
-	const templateId = ctx.db.normalizeId('transactionalEmails', lookup.id);
-	return templateId ? await ctx.db.get(templateId) : null;
-}
-
 // ============================================================
 // Internal mutation — the intake entry point
 // ============================================================
@@ -185,62 +146,18 @@ export const dispatch = internalMutation({
 			}
 		}
 
-		// 1. The shared pre-row gate sequence (abuse → provider-ready →
-		//    suppression, `delivery/sendIntakeGates.ts`) on the settings row read
-		//    once here, since the sender defaults and counters need it again.
-		//    SUPPRESSION SCOPE `'transactional'`: a bounce or a complaint blocks, a
-		//    marketing-hygiene suppression does not, so receipts, password resets
-		//    and double-opt-in confirmations still reach someone who ignores the
-		//    newsletter.
-		const settings = await ctx.db.query('instanceSettings').first();
-		// The `transactional` feature floor, resolved from the row just read so
-		// the singleton is not fetched twice. Nothing is written while it is off.
-		const flags = resolveStoredFeatureFlags((settings?.featureFlags ?? {}) as FeatureFlagState);
-		if (!flags.transactional) {
-			return {
-				ok: false,
-				reason: 'feature_disabled',
-				detail: featureDisabledMessage('transactional'),
-			};
-		}
-		const gates = await runSendIntakeGates(ctx, {
-			email: args.email,
-			suppressionScope: 'transactional',
-			settings: settings ?? null,
-			// The route resolution here is address-aware and needs the sender
-			// settled below, so the gate asks the route-INDEPENDENT question — can
-			// this message type deliver at all — and the route is resolved later.
-			providerReadiness: { kind: 'message_type', messageType: 'transactional' },
-			noDeliveryProviderDetail:
-				'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.',
-		});
-		if (!gates.ok) return gates;
-
-		// 2. Template lookup + publish + has-HTML checks.
-		const found = decideTemplate(
-			args.templateLookup,
-			await loadRequestedTemplate(ctx, args.templateLookup)
-		);
-		if (!found.ok) return found;
-		const { template } = found;
-		if (found.isHtmlStale) {
+		// 1–4. Every refusal that writes nothing, in the order a send meets
+		//      them (`./intakeChecks.ts`): the feature floor, the shared gates
+		//      (abuse → provider-ready → suppression), the template's lookup,
+		//      publish and has-HTML checks, the sender's verified domain, the
+		//      variables, then the volume caps. Nothing is written before this.
+		const check = await checkIntake(ctx, args);
+		if (!check.ok) return check.refusal;
+		const { settings, template, sender } = check;
+		if (template.htmlRenderState?.stale === true) {
 			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
-
-		// 3–4. The resolved sender's domain must be verified, then the variables must match;
-		//      then the volume caps (`./sendCaps.ts`).
-		const sender = decideSender(transactionalSenderInputs(settings, template));
-		if (!sender.ok) return sender;
-		const refusal = decideSenderAndVariables({
-			fromEmail: sender.fromEmail,
-			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
-			dataVariables: args.dataVariables,
-			template,
-			content: selectSendContent(template, args.language, await storedLanguage(ctx, args.email)),
-		});
-		if (refusal) return refusal;
-		const capped = await chargeTransactionalSendCaps(ctx, template, args, settings);
-		if (capped) return capped;
+		await chargeSendCaps(ctx, check.capCharges);
 
 		// 5. Contact resolution, through the Contact resolution module in
 		//    `upsert` mode; the contact is read back for its stored language.

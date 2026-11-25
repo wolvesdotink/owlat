@@ -78,22 +78,30 @@ export async function readBucketUsage(
 	return { used: USAGE_CEILING - current.value, windowStart: current.ts };
 }
 
+/** One cap a send is charged against once it is accepted. */
+export interface SendCapCharge {
+	name: string;
+	key: string;
+	config: RateLimitConfig;
+}
+
 /**
- * Charge one send against the caps in force, or return the refusal when one is
- * spent. Both are checked before either is charged, so a request refused by the
- * daily cap does not also use up the recipient's allowance. A cap that is off,
- * or the per-recipient cap of an exempt template, is neither checked nor
- * charged.
+ * Whether one more send fits the caps in force: the refusal when one is spent,
+ * else the charges an accepted send makes. Both are checked before either is
+ * charged, so a request refused by the daily cap does not also use up the
+ * recipient's allowance. A cap that is off, or the per-recipient cap of an
+ * exempt template, is neither checked nor charged. Reads only: the dry run
+ * asks it from a query.
  */
-export async function chargeTransactionalSendCaps(
-	ctx: MutationCtx,
+export async function checkTransactionalSendCaps(
+	ctx: QueryCtx,
 	template: Pick<Doc<'transactionalEmails'>, '_id' | 'isRecipientCapExempt'>,
 	request: { email: string; apiKeyId?: Id<'apiKeys'> },
 	settings: Pick<Doc<'instanceSettings'>, 'transactionalSendCaps'> | null
-): Promise<DispatchRefusal | null> {
+): Promise<{ ok: false; refusal: DispatchRefusal } | { ok: true; charges: SendCapCharge[] }> {
 	const caps = effectiveSendCaps(settings?.transactionalSendCaps);
 	const now = Date.now();
-	const charges: Array<{ name: string; key: string; config: RateLimitConfig }> = [];
+	const charges: SendCapCharge[] = [];
 
 	const { perRecipient, perApiKeyDaily } = caps;
 	if (perRecipient.isEnabled && template.isRecipientCapExempt !== true) {
@@ -109,9 +117,12 @@ export async function chargeTransactionalSendCaps(
 		if (!verdict.ok) {
 			return {
 				ok: false,
-				reason: 'recipient_rate_limited',
-				detail: `Too many emails from this transactional template to this recipient: the limit is ${perRecipient.count} per ${describeWindow(perRecipient.windowMs)}. The instance admin can change or switch off this limit, or exempt the template from it.`,
-				retryAfterMs: verdict.retryAfterMs,
+				refusal: {
+					ok: false,
+					reason: 'recipient_rate_limited',
+					detail: `Too many emails from this transactional template to this recipient: the limit is ${perRecipient.count} per ${describeWindow(perRecipient.windowMs)}. The instance admin can change or switch off this limit, or exempt the template from it.`,
+					retryAfterMs: verdict.retryAfterMs,
+				},
 			};
 		}
 		charges.push({ name: PER_RECIPIENT_BUCKET, key, config });
@@ -130,16 +141,41 @@ export async function chargeTransactionalSendCaps(
 		if (!verdict.ok) {
 			return {
 				ok: false,
-				reason: 'daily_send_limit',
-				detail: `This API key has reached its daily transactional send limit of ${perApiKeyDaily.count}. The instance admin can change or switch off this limit.`,
-				retryAfterMs: verdict.retryAfterMs,
+				refusal: {
+					ok: false,
+					reason: 'daily_send_limit',
+					detail: `This API key has reached its daily transactional send limit of ${perApiKeyDaily.count}. The instance admin can change or switch off this limit.`,
+					retryAfterMs: verdict.retryAfterMs,
+				},
 			};
 		}
 		charges.push({ name: PER_API_KEY_DAILY_BUCKET, key: keyId, config });
 	}
+	return { ok: true, charges };
+}
 
+/** Charge an accepted send against the caps {@link checkTransactionalSendCaps} returned. */
+export async function chargeSendCaps(
+	ctx: MutationCtx,
+	charges: readonly SendCapCharge[]
+): Promise<void> {
 	for (const charge of charges) {
 		await rateLimiter.limit(ctx, charge.name, { key: charge.key, config: charge.config });
 	}
+}
+
+/**
+ * Charge one send against the caps in force, or return the refusal when one is
+ * spent (see {@link checkTransactionalSendCaps}).
+ */
+export async function chargeTransactionalSendCaps(
+	ctx: MutationCtx,
+	template: Pick<Doc<'transactionalEmails'>, '_id' | 'isRecipientCapExempt'>,
+	request: { email: string; apiKeyId?: Id<'apiKeys'> },
+	settings: Pick<Doc<'instanceSettings'>, 'transactionalSendCaps'> | null
+): Promise<DispatchRefusal | null> {
+	const check = await checkTransactionalSendCaps(ctx, template, request, settings);
+	if (!check.ok) return check.refusal;
+	await chargeSendCaps(ctx, check.charges);
 	return null;
 }

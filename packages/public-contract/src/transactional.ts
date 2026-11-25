@@ -75,7 +75,7 @@ const DATA_VARIABLES_SHAPE =
  * primitive or a flat object of primitives, and the list is capped at the
  * entries one repeated Block renders.
  */
-const dataVariablesSchema = z
+export const transactionalDataVariablesSchema = z
 	.record(
 		z.string(),
 		z.union(
@@ -117,7 +117,7 @@ export const sendTransactionalRequestSchema = requestBody({
 	email: requiredString('email is required', 'email must be a string'),
 	transactionalId: z.string({ error: 'transactionalId must be a string' }).nullish(),
 	slug: z.string({ error: 'slug must be a string' }).nullish(),
-	dataVariables: dataVariablesSchema.optional(),
+	dataVariables: transactionalDataVariablesSchema.optional(),
 	language: z
 		.string({ error: 'language must be a string' })
 		.regex(LANGUAGE_PATTERN, {

@@ -21,7 +21,7 @@
  */
 
 import type { Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { isSuppressed, type SuppressionScope } from '../lib/suppression';
 import { isDeliveryConfigured, selectedSendProviderReady } from '../lib/sendProviders/capability';
@@ -116,7 +116,8 @@ interface SendIntakeGateInput {
 
 /**
  * Run the three shared gates in order. Returns the typed rejection, or the
- * passed marker carrying whatever the provider probe resolved.
+ * passed marker carrying whatever the provider probe resolved. The gates only
+ * read, so the transactional dry run asks them from a query.
  *
  * The ORDER is load-bearing and is why this is one function rather than three
  * exported predicates: the cheapest and most absolute refusal answers first (a
@@ -128,7 +129,7 @@ interface SendIntakeGateInput {
  * gate has passed, so a suspended instance pays for no route reads.
  */
 export async function runSendIntakeGates(
-	ctx: MutationCtx,
+	ctx: QueryCtx | MutationCtx,
 	input: SendIntakeGateInput
 ): Promise<SendIntakeRejection | SendIntakeGatesPassed> {
 	// 1. Abuse gate. A suspended or banned instance sends nothing.
@@ -169,7 +170,7 @@ export async function runSendIntakeGates(
 }
 
 async function probeProviderReadiness(
-	ctx: MutationCtx,
+	ctx: QueryCtx | MutationCtx,
 	probe: ProviderReadinessProbe
 ): Promise<{ isReady: boolean; route: ResolvedRoute | null }> {
 	if (probe.kind === 'message_type') {

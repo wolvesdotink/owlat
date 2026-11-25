@@ -1,12 +1,107 @@
 import { BaseResource } from './base';
 import type {
 	ListTransactionalSendsParams,
+	SendTransactionalDryRun,
 	SendTransactionalParams,
 	SendTransactionalResponse,
 	TransactionalSendStatus,
 } from '../types/transactional';
 import type { ApiResponse, CursorPaginatedResponse, RequestOptions } from '../types/common';
-import { ValidationError } from '../errors';
+import { NotFoundError, OwlatError, ValidationError } from '../errors';
+
+/**
+ * The checks a send's parameters get before they go on the wire: a template
+ * named, and attachments within the limits the API enforces.
+ */
+function checkSendParams(params: SendTransactionalParams): void {
+	// Validate that either transactionalId or slug is provided
+	if (!params.transactionalId && !params.slug) {
+		throw new ValidationError('Either transactionalId or slug is required', 'invalid_input');
+	}
+
+	// Validate attachments
+	if (params.attachments) {
+		if (params.attachments.length > 10) {
+			throw new ValidationError('Maximum 10 attachments allowed', 'invalid_input');
+		}
+
+		const DANGEROUS_MIME_TYPES = new Set([
+			'application/x-msdownload',
+			'application/x-executable',
+			'application/x-msdos-program',
+			'application/x-sh',
+			'application/x-bat',
+			'application/x-cmd',
+		]);
+
+		let totalSizeBytes = 0;
+		const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10 MiB of decoded bytes
+
+		for (const attachment of params.attachments) {
+			if (!attachment.filename) {
+				throw new ValidationError('Each attachment must have a filename', 'invalid_input');
+			}
+			if (attachment.content && attachment.url) {
+				throw new ValidationError(
+					'Attachment must have either content or url, not both',
+					'invalid_input'
+				);
+			}
+			if (!attachment.content && !attachment.url) {
+				throw new ValidationError('Attachment must have either content or url', 'invalid_input');
+			}
+
+			// Validate base64 content format
+			if (attachment.content) {
+				if (!/^[A-Za-z0-9+/]*={0,2}$/.test(attachment.content)) {
+					// MIME-style base64 wraps lines every 76 characters; name
+					// that case, since the bare message does not say what is wrong.
+					const hint = /[\r\n]/.test(attachment.content)
+						? ': it contains line breaks; send plain base64 without line breaks'
+						: '';
+					throw new ValidationError(
+						`Attachment "${attachment.filename}" has invalid base64 content${hint}`,
+						'invalid_input'
+					);
+				}
+				// Track the exact decoded size (3 bytes per 4 characters, less
+				// the padding), the figure the API checks against 10 MiB.
+				const padding = attachment.content.endsWith('==')
+					? 2
+					: attachment.content.endsWith('=')
+						? 1
+						: 0;
+				totalSizeBytes += Math.floor((attachment.content.length * 3) / 4) - padding;
+			}
+
+			// Reject dangerous MIME types
+			if (
+				attachment.contentType &&
+				DANGEROUS_MIME_TYPES.has(attachment.contentType.toLowerCase())
+			) {
+				throw new ValidationError(
+					`Attachment "${attachment.filename}" has a disallowed content type: ${attachment.contentType}`,
+					'invalid_input'
+				);
+			}
+
+			// Require HTTPS for URL-based attachments
+			if (attachment.url && !attachment.url.startsWith('https://')) {
+				throw new ValidationError(
+					`Attachment "${attachment.filename}" URL must use HTTPS`,
+					'invalid_input'
+				);
+			}
+		}
+
+		if (totalSizeBytes > MAX_TOTAL_SIZE) {
+			throw new ValidationError(
+				`Total attachment size (~${Math.round(totalSizeBytes / 1024 / 1024)}MB) exceeds 10MB limit`,
+				'invalid_input'
+			);
+		}
+	}
+}
 
 /**
  * Resource for sending transactional emails.
@@ -68,93 +163,15 @@ export class TransactionalResource extends BaseResource {
 		params: SendTransactionalParams,
 		options?: RequestOptions
 	): Promise<SendTransactionalResponse> {
-		// Validate that either transactionalId or slug is provided
-		if (!params.transactionalId && !params.slug) {
-			throw new ValidationError('Either transactionalId or slug is required', 'invalid_input');
+		// An older server ignores an unknown field and would send: a caller
+		// who passes dryRun meant not to, so nothing goes on the wire.
+		if (Object.prototype.hasOwnProperty.call(params, 'dryRun')) {
+			throw new ValidationError(
+				'dryRun is not a parameter of send(), so nothing was sent. Use transactional.dryRun() to try a send.',
+				'invalid_input'
+			);
 		}
-
-		// Validate attachments
-		if (params.attachments) {
-			if (params.attachments.length > 10) {
-				throw new ValidationError('Maximum 10 attachments allowed', 'invalid_input');
-			}
-
-			const DANGEROUS_MIME_TYPES = new Set([
-				'application/x-msdownload',
-				'application/x-executable',
-				'application/x-msdos-program',
-				'application/x-sh',
-				'application/x-bat',
-				'application/x-cmd',
-			]);
-
-			let totalSizeBytes = 0;
-			const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10 MiB of decoded bytes
-
-			for (const attachment of params.attachments) {
-				if (!attachment.filename) {
-					throw new ValidationError('Each attachment must have a filename', 'invalid_input');
-				}
-				if (attachment.content && attachment.url) {
-					throw new ValidationError(
-						'Attachment must have either content or url, not both',
-						'invalid_input'
-					);
-				}
-				if (!attachment.content && !attachment.url) {
-					throw new ValidationError('Attachment must have either content or url', 'invalid_input');
-				}
-
-				// Validate base64 content format
-				if (attachment.content) {
-					if (!/^[A-Za-z0-9+/]*={0,2}$/.test(attachment.content)) {
-						// MIME-style base64 wraps lines every 76 characters; name
-						// that case, since the bare message does not say what is wrong.
-						const hint = /[\r\n]/.test(attachment.content)
-							? ': it contains line breaks; send plain base64 without line breaks'
-							: '';
-						throw new ValidationError(
-							`Attachment "${attachment.filename}" has invalid base64 content${hint}`,
-							'invalid_input'
-						);
-					}
-					// Track the exact decoded size (3 bytes per 4 characters, less
-					// the padding), the figure the API checks against 10 MiB.
-					const padding = attachment.content.endsWith('==')
-						? 2
-						: attachment.content.endsWith('=')
-							? 1
-							: 0;
-					totalSizeBytes += Math.floor((attachment.content.length * 3) / 4) - padding;
-				}
-
-				// Reject dangerous MIME types
-				if (
-					attachment.contentType &&
-					DANGEROUS_MIME_TYPES.has(attachment.contentType.toLowerCase())
-				) {
-					throw new ValidationError(
-						`Attachment "${attachment.filename}" has a disallowed content type: ${attachment.contentType}`,
-						'invalid_input'
-					);
-				}
-
-				// Require HTTPS for URL-based attachments
-				if (attachment.url && !attachment.url.startsWith('https://')) {
-					throw new ValidationError(
-						`Attachment "${attachment.filename}" URL must use HTTPS`,
-						'invalid_input'
-					);
-				}
-			}
-
-			if (totalSizeBytes > MAX_TOTAL_SIZE) {
-				throw new ValidationError(
-					`Total attachment size (~${Math.round(totalSizeBytes / 1024 / 1024)}MB) exceeds 10MB limit`,
-					'invalid_input'
-				);
-			}
-		}
+		checkSendParams(params);
 
 		const response = await this.http.post<ApiResponse<SendTransactionalResponse>>(
 			'/api/v1/transactional',
@@ -163,6 +180,50 @@ export class TransactionalResource extends BaseResource {
 			options
 		);
 		return response.data.data;
+	}
+
+	/**
+	 * Compose a transactional email for one recipient and answer what a send
+	 * of the same parameters would do, without sending: the subject, HTML and
+	 * text a send would deliver, and the refusal it would meet now
+	 * (`wouldQueue`, `refusal`). Nothing is sent, stored or counted against a
+	 * limit, and no idempotency key is used. A draft is composed too when the
+	 * key also has `templates:read`. Needs the `transactional:send` scope.
+	 *
+	 * @throws {NotFoundError} If the template does not exist (`reason`
+	 *   `template_not_found`), or if the instance predates dry runs and has no
+	 *   such route: then it answers 404 and nothing is sent.
+	 *
+	 * @example
+	 * ```typescript
+	 * const preview = await owlat.transactional.dryRun({
+	 *   email: 'user@example.com',
+	 *   slug: 'order-confirmation',
+	 *   dataVariables: { orderNumber: 'A-1001' },
+	 * });
+	 * if (!preview.wouldQueue) console.warn(preview.refusal?.message);
+	 * ```
+	 */
+	async dryRun(params: SendTransactionalParams): Promise<SendTransactionalDryRun> {
+		checkSendParams(params);
+		try {
+			const response = await this.http.post<ApiResponse<SendTransactionalDryRun>>(
+				'/api/v1/transactional/dry-run',
+				params
+			);
+			return response.data.data;
+		} catch (error) {
+			// The server's own 404s name a reason; a bare one is a server
+			// without this route, which sent nothing.
+			if (error instanceof OwlatError && error.statusCode === 404 && error.reason === undefined) {
+				throw new NotFoundError(
+					'This Owlat instance does not support dry runs: it has no POST /api/v1/transactional/dry-run. Nothing was sent.',
+					'not_found',
+					error.rateLimit
+				);
+			}
+			throw error;
+		}
 	}
 
 	/**

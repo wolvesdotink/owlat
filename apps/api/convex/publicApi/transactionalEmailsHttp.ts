@@ -116,12 +116,28 @@ type PreparedWrite =
 	  }
 	| { ok: false; response: Response };
 
+/** The content of a decoded body, checked and serialised as the row stores it. */
+export type PreparedContent =
+	| {
+			ok: true;
+			defaultLanguage: string;
+			/** The sanitised blocks the content check returned, as stored JSON. */
+			content: string;
+			/** The translation overlays as stored JSON. */
+			translations: string;
+			issues: TransactionalEmailWriteResult['issues'];
+	  }
+	| { ok: false; response: Response };
+
 /**
- * Check a decoded body the way the editor would before saving it, and serialise
- * it as the row stores it. Refuses a block the content check finds an error in,
- * naming the block, and content too large to store.
+ * Check the blocks and translations of a body the way the editor would before
+ * saving them, and serialise them as the row stores them. Refuses a block the
+ * content check finds an error in, naming the block, and content too large to
+ * store. A write and the render (`renderHttp.ts`) both start here.
  */
-function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
+export function prepareContent(
+	body: Pick<TransactionalEmailInput, 'blocks' | 'translations' | 'defaultLanguage'>
+): PreparedContent {
 	const defaultLanguage = body.defaultLanguage ?? 'en';
 	const translations = body.translations ?? {};
 	if (Object.prototype.hasOwnProperty.call(translations, defaultLanguage)) {
@@ -132,21 +148,6 @@ function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
 				`translations.${defaultLanguage}`
 			),
 		};
-	}
-
-	// Checked here as well as by the write, so a field name Convex cannot store
-	// is a 400 naming the variable rather than a refused mutation argument.
-	if (body.dataVariableExamples !== undefined) {
-		const fault = dataVariableExamplesFault(body.dataVariablesSchema, body.dataVariableExamples);
-		if (fault) {
-			return {
-				ok: false,
-				response: invalidInputResponse(
-					fault.message,
-					fault.variable ? `dataVariableExamples.${fault.variable}` : 'dataVariableExamples'
-				),
-			};
-		}
 	}
 
 	const check = checkContent(body.blocks);
@@ -192,23 +193,54 @@ function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
 
 	return {
 		ok: true,
+		defaultLanguage,
+		content: JSON.stringify(check.blocks),
+		translations: translationsJson,
+		issues: check.issues,
+	};
+}
+
+/**
+ * Check a decoded body the way the editor would before saving it, and
+ * serialise it as the row stores it.
+ */
+function prepareWrite(body: TransactionalEmailInput): PreparedWrite {
+	// Checked here as well as by the write, so a field name Convex cannot store
+	// is a 400 naming the variable rather than a refused mutation argument.
+	if (body.dataVariableExamples !== undefined) {
+		const fault = dataVariableExamplesFault(body.dataVariablesSchema, body.dataVariableExamples);
+		if (fault) {
+			return {
+				ok: false,
+				response: invalidInputResponse(
+					fault.message,
+					fault.variable ? `dataVariableExamples.${fault.variable}` : 'dataVariableExamples'
+				),
+			};
+		}
+	}
+
+	const content = prepareContent(body);
+	if (!content.ok) return content;
+	return {
+		ok: true,
 		fields: {
 			name: body.name.trim(),
 			subject: body.subject ?? '',
-			content: JSON.stringify(check.blocks),
-			translations: translationsJson,
-			defaultLanguage,
+			content: content.content,
+			translations: content.translations,
+			defaultLanguage: content.defaultLanguage,
 			dataVariablesSchema: { ...body.dataVariablesSchema },
 			...(body.dataVariableExamples !== undefined && {
 				dataVariableExamples: { ...body.dataVariableExamples },
 			}),
 			showUnsubscribe: body.showUnsubscribe ?? false,
 		},
-		issues: check.issues,
+		issues: content.issues,
 	};
 }
 
-async function readJson(request: Request): Promise<unknown | Response> {
+export async function readJson(request: Request): Promise<unknown | Response> {
 	try {
 		return await request.json();
 	} catch {

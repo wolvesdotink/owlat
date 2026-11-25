@@ -24,6 +24,7 @@ import {
 } from '../contacts/api';
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
+import { dryRunTransactional } from '../transactional/dryRunHttp';
 import { getTransactionalSend, listTransactionalSends } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
@@ -45,6 +46,7 @@ import {
 	listSavedBlocks,
 	updateSavedBlock,
 } from './savedBlocksHttp';
+import { renderEmail } from './renderHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -150,6 +152,12 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: handleCors,
 	});
 
+	http.route({
+		path: '/api/v1/render',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
 	// Status API
 	http.route({
 		path: '/api/v1/status',
@@ -245,6 +253,14 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: sendTransactional,
 	});
 
+	// POST /api/v1/transactional/dry-run - What a send would do, without sending.
+	// An exact path: the `/api/v1/transactional/` prefix only answers GET.
+	http.route({
+		path: '/api/v1/transactional/dry-run',
+		method: 'POST',
+		handler: dryRunTransactional,
+	});
+
 	// GET /api/v1/transactional - List sends, by recipient, status or window
 	http.route({
 		path: '/api/v1/transactional',
@@ -324,6 +340,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		pathPrefix: '/api/v1/saved-blocks/',
 		method: 'PUT',
 		handler: updateSavedBlock,
+	});
+
+	// POST /api/v1/render - Render blocks without storing them
+	http.route({
+		path: '/api/v1/render',
+		method: 'POST',
+		handler: renderEmail,
 	});
 
 	// ============ STATUS API ENDPOINTS ============

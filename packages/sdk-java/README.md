@@ -194,6 +194,15 @@ send.getErrorCode(); // e.g. "MTA_UNREACHABLE" once it failed
 // within at most the last 30 days.
 CursorPaginatedResponse<TransactionalSendStatus> sends = owlat.transactional().list(
     ListTransactionalSendsParams.builder().email("user@example.com").build());
+
+// A dry run (POST /api/v1/transactional/dry-run): what the send would deliver
+// and whether it would be accepted, without sending, storing or counting
+// anything. A server older than the dry run answers 404 and sends nothing; the
+// SDK throws a NotFoundException saying the instance does not support dry runs.
+SendTransactionalDryRun preview = owlat.transactional().dryRun(
+    SendTransactionalParams.builder("user@example.com").slug("welcome-email").build());
+preview.isWouldQueue();
+preview.getHtml();
 ```
 
 ### Events
@@ -271,6 +280,14 @@ owlat.transactionalEmails().upsert(email.getSlug(), email.toInput(),
         TransactionalEmailWriteOptions.ifRevision(email.getRevision()).whilePublished());
 owlat.transactionalEmails().publish("order-confirmation");
 CursorPaginatedResponse<SavedBlockSummary> savedBlocks = owlat.savedBlocks().list();
+
+// Render blocks as the instance would store them, without storing anything.
+RenderResult rendered = owlat.render().email(RenderParams.builder(email.getBlocks())
+        .subject(email.getSubject())
+        .dataVariables(Map.of("orderNumber", "A-1001"))
+        .build());
+rendered.getHtml();
+rendered.getIssues();
 ```
 
 ## Error Handling

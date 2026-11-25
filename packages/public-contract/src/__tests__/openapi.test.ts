@@ -193,9 +193,11 @@ describe('error reasons', () => {
 	});
 
 	it('lists the deletion refusal on every operation that writes, and on no read', () => {
+		// A render and a dry run are POSTs that store nothing.
+		const reads = new Set<string>(['renderEmail', 'dryRunTransactional']);
 		for (const operation of PUBLIC_OPERATIONS) {
 			const listed = reasonsListed(operation.operationId, 422);
-			if (operation.method === 'GET') {
+			if (operation.method === 'GET' || reads.has(operation.operationId)) {
 				expect(listed, operation.operationId).not.toContain('workspace_deletion_in_progress');
 			} else {
 				expect(listed, operation.operationId).toContain('workspace_deletion_in_progress');
@@ -295,6 +297,17 @@ describe('examples', () => {
 			);
 			expect(result.error?.issues, operation.operationId).toBeUndefined();
 		}
+	});
+
+	it('a dry run answers on its own path and status, and a send body has no dryRun field', () => {
+		const dryRun = publicOperation('dryRunTransactional');
+		const send = publicOperation('sendTransactional');
+		expect(dryRun.path).not.toBe(send.path);
+		expect(dryRun.success.status).not.toBe(send.success.status);
+		expect(
+			successBodySchema(dryRun).safeParse(OPERATION_EXAMPLES.sendTransactional.response).success
+		).toBe(false);
+		expect(Object.keys(sendTransactionalRequestSchema.shape)).not.toContain('dryRun');
 	});
 
 	it('a response with an undocumented field is not a valid body', () => {

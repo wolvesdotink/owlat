@@ -11,6 +11,7 @@
 export * from './deliveryStatus';
 export * from './domainSetup';
 export * from './errorReasons';
+export * from './renderTypes';
 export * from './sendLimits';
 export * from './sendList';
 export * from './templateTypes';

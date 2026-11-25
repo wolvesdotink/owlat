@@ -48,6 +48,11 @@ import type {
 	transactionalEmailSummarySchema,
 	transactionalEmailWriteResultSchema,
 } from '../templates';
+import type {
+	renderRequestSchema,
+	renderResultSchema,
+	sendTransactionalDryRunSchema,
+} from '../render';
 import type * as T from '../types';
 import type {
 	deliverabilityAlertRaisedWebhookSchema,
@@ -111,6 +116,10 @@ describe('schema and type agreement', () => {
 		expectTypeOf<
 			z.output<typeof savedBlockWriteResultSchema>
 		>().toEqualTypeOf<T.SavedBlockWriteResult>();
+		expectTypeOf<z.output<typeof renderResultSchema>>().toEqualTypeOf<T.RenderResult>();
+		expectTypeOf<
+			z.output<typeof sendTransactionalDryRunSchema>
+		>().toEqualTypeOf<T.SendTransactionalDryRun>();
 	});
 
 	it('requests agree with their types', () => {
@@ -143,6 +152,9 @@ describe('schema and type agreement', () => {
 		>().toEqualTypeOf<true>();
 		expectTypeOf<
 			RequestAgrees<T.SavedBlockInput, typeof savedBlockUpdateRequestSchema>
+		>().toEqualTypeOf<true>();
+		expectTypeOf<
+			RequestAgrees<T.RenderRequest, typeof renderRequestSchema>
 		>().toEqualTypeOf<true>();
 	});
 

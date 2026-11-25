@@ -24,6 +24,7 @@ import {
 import { domainCheckRequestSchema, sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { sendLimitsSchema } from './limits';
+import { RENDER_OPERATIONS } from './renderOperations';
 import { TEMPLATE_OPERATIONS } from './templateOperations';
 import { deliveryStatusSchema } from './status';
 import {
@@ -229,7 +230,8 @@ export const PUBLIC_OPERATIONS = [
 		method: 'POST',
 		path: '/api/v1/transactional',
 		tag: 'Transactional',
-		summary: 'Queue a transactional email for one recipient.',
+		summary:
+			'Queue a transactional email for one recipient. A body with a dryRun field is refused with 400: try a send at /api/v1/transactional/dry-run.',
 		scope: 'transactional:send',
 		pathParameters: [],
 		queryParameters: [],
@@ -288,6 +290,7 @@ export const PUBLIC_OPERATIONS = [
 		reasons: ['feature_disabled'],
 	},
 	...TEMPLATE_OPERATIONS,
+	...RENDER_OPERATIONS,
 	{
 		operationId: 'listTopics',
 		method: 'GET',

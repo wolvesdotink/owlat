@@ -10,6 +10,7 @@ import { DomainsResource } from './resources/domains';
 import { LimitsResource } from './resources/limits';
 import { TransactionalEmailsResource } from './resources/transactionalEmails';
 import { SavedBlocksResource } from './resources/savedBlocks';
+import { RenderResource } from './resources/render';
 
 const DEFAULT_TIMEOUT = 30000;
 
@@ -84,6 +85,11 @@ export class Owlat {
 	readonly savedBlocks: SavedBlocksResource;
 
 	/**
+	 * Render block content without storing it, as this instance would.
+	 */
+	readonly render: RenderResource;
+
+	/**
 	 * Create a new Owlat client.
 	 *
 	 * @param config - API key, your instance's API URL, and optional settings
@@ -107,5 +113,6 @@ export class Owlat {
 		this.limits = new LimitsResource(http);
 		this.transactionalEmails = new TransactionalEmailsResource(http);
 		this.savedBlocks = new SavedBlocksResource(http);
+		this.render = new RenderResource(http);
 	}
 }

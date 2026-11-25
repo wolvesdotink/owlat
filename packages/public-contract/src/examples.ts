@@ -9,6 +9,7 @@
  */
 
 import { DOMAIN_AND_LIMIT_EXAMPLES } from './domainAndLimitExamples';
+import { RENDER_EXAMPLES } from './renderExamples';
 import type { PublicOperationId } from './operations';
 import type {
 	AddContactToTopicRequest,
@@ -421,4 +422,5 @@ export const OPERATION_EXAMPLES = {
 		} satisfies ApiResponse<DeliveryStatus>,
 	},
 	...DOMAIN_AND_LIMIT_EXAMPLES,
+	...RENDER_EXAMPLES,
 } satisfies Record<PublicOperationId, OperationExample>;

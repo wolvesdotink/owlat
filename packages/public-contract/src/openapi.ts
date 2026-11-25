@@ -15,6 +15,7 @@ import {
 	type PublicOperation,
 } from './operations';
 import { sendingDomainSetupSchema } from './domains';
+import { emailHealthSchema, sendRefusalSchema } from './render';
 import { sendingHoldLiftSchema } from './status';
 import { contentIssueSchema, emailBlockSchema, emailTranslationSchema } from './templates';
 import { transactionalAttachmentSchema } from './transactional';
@@ -386,6 +387,8 @@ export function buildOpenApiDocument(
 			['SendingDomainSetup', sendingDomainSetupSchema],
 			['SendingHoldLift', sendingHoldLiftSchema],
 			...operations.map((operation) => [operation.success.name, operation.success.data] as const),
+			['SendRefusal', sendRefusalSchema],
+			['EmailHealth', emailHealthSchema],
 		],
 		'output'
 	);
