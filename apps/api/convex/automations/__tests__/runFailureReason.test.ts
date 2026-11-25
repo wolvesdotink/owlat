@@ -228,6 +228,24 @@ describe('the reason a failed run failed', () => {
 		expect(failure?.detail).toMatch(/emailTemplateId must be a string/);
 	});
 
+	it('invalid_step_config: a condition step whose inner condition does not parse', async () => {
+		const t = await setup();
+		const { automationId, stepIds } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(stepIds[0]!, {
+				stepType: 'condition',
+				config: { condition: { kind: 'topic_membership', topicId: '', operator: 'equals' } },
+			});
+		});
+		const { runId } = await seedRun(t, automationId);
+
+		await runUntilFailed(t, runId);
+
+		const failure = await failureOf(t, automationId, runId);
+		expect(failure?.reason).toBe('invalid_step_config');
+		expect(failure?.detail).toMatch(/topicId must be a non-empty string/);
+	});
+
 	it('step_limit: the run hit the step-execution cap', async () => {
 		const t = await setup();
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);

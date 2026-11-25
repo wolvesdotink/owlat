@@ -199,6 +199,7 @@ export const claimStepRun = internalMutation({
 			if (stepRun.stepType === 'email') {
 				if (emailSendId !== null) {
 					await completeSentStepAndAdvance(ctx, stepRun, emailSendId);
+					await releaseAfterWaitedSend(ctx, stepRun, emailSendId);
 					return { kind: 'dropped' };
 				}
 			}

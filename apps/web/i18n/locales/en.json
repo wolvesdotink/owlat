@@ -12018,6 +12018,14 @@
 						"trigger": "Trigger",
 						"loadError": "Couldn't load the step funnel"
 					},
+					"health": {
+						"waitingTitle": "{count} run is waiting for the sending setup | {count} runs are waiting for the sending setup",
+						"waitingTitleMore": "More than {count} runs are waiting for the sending setup",
+						"failedTitle": "{count} run failed in the last 7 days | {count} runs failed in the last 7 days",
+						"latestFailure": "The latest failure:",
+						"showWaiting": "Show waiting runs",
+						"showFailed": "Show failed runs"
+					},
 					"loading": "Loading automation...",
 					"notFoundDescription": "This automation may have been deleted or you don't have access to it.",
 					"notFoundTitle": "Automation not found",
@@ -12068,7 +12076,8 @@
 							"sendingNotAllowed": "Waiting for sending to be resumed on this instance. The email goes out once it is, or the run gives up on {date}.",
 							"unknown": "Waiting for sending to work again. The email goes out once it does, or the run gives up on {date}."
 						},
-						"waitingBadge": "Waiting"
+						"waitingBadge": "Waiting",
+						"waitingNote": "Runs whose email waits for the sending setup to be fixed. Each one sends once it is, or gives up a day after it started waiting."
 					},
 					"stats": {
 						"completed": "Completed",
@@ -12097,7 +12106,9 @@
 					"cardLabel": "7 days:",
 					"entered": "{count} entered",
 					"failed": "{count} failed",
-					"stalled": "{count} stalled"
+					"stalled": "{count} stalled",
+					"waiting": "{count} waiting",
+					"waitingMore": "{count}+ waiting"
 				},
 				"newAutomation": "New automation",
 				"noResults": {

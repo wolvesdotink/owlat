@@ -12018,6 +12018,14 @@
 						"trigger": "Auslöser",
 						"loadError": "Schritt-Trichter konnte nicht geladen werden"
 					},
+					"health": {
+						"waitingTitle": "{count} Durchlauf wartet auf die Versand-Einrichtung | {count} Durchläufe warten auf die Versand-Einrichtung",
+						"waitingTitleMore": "Mehr als {count} Durchläufe warten auf die Versand-Einrichtung",
+						"failedTitle": "{count} Durchlauf ist in den letzten 7 Tagen fehlgeschlagen | {count} Durchläufe sind in den letzten 7 Tagen fehlgeschlagen",
+						"latestFailure": "Der letzte Fehler:",
+						"showWaiting": "Wartende Durchläufe anzeigen",
+						"showFailed": "Fehlgeschlagene Durchläufe anzeigen"
+					},
 					"loading": "Automation wird geladen …",
 					"notFoundDescription": "Diese Automation wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
 					"notFoundTitle": "Automation nicht gefunden",
@@ -12068,7 +12076,8 @@
 							"sendingNotAllowed": "Wartet darauf, dass der Versand auf dieser Instanz wieder freigegeben ist. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf.",
 							"unknown": "Wartet darauf, dass der Versand wieder funktioniert. Dann geht die E-Mail raus, sonst gibt der Durchlauf am {date} auf."
 						},
-						"waitingBadge": "Wartet"
+						"waitingBadge": "Wartet",
+						"waitingNote": "Durchläufe, deren E-Mail darauf wartet, dass die Versand-Einrichtung behoben ist. Jeder sendet, sobald das der Fall ist, oder gibt einen Tag nach Beginn des Wartens auf."
 					},
 					"stats": {
 						"completed": "Abgeschlossen",
@@ -12097,7 +12106,9 @@
 					"cardLabel": "7 Tage:",
 					"entered": "{count} gestartet",
 					"failed": "{count} fehlgeschlagen",
-					"stalled": "{count} hängen geblieben"
+					"stalled": "{count} hängen geblieben",
+					"waiting": "{count} wartend",
+					"waitingMore": "{count}+ wartend"
 				},
 				"newAutomation": "Neue Automation",
 				"noResults": {
