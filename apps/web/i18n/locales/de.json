@@ -4227,6 +4227,22 @@
 				"saveOperation": "Return-Path-Host setzen",
 				"syncError": "Der Bounce-Host konnte auf dem Mailserver nicht aktualisiert werden — bearbeiten und erneut versuchen."
 			},
+			"dkimEd25519": {
+				"rowLabel": "{label} (optional)",
+				"absent": "Optional: Mails dieser Domain zusätzlich mit einem Ed25519-Schlüssel signieren (RFC 8463). Empfänger, die das unterstützen, prüfen auch diese Signatur; alle anderen ignorieren sie, und die RSA-Signatur bleibt, wie sie ist.",
+				"present": "Mails dieser Domain tragen zusätzlich eine Ed25519-Signatur, sobald der Eintrag oben veröffentlicht ist. Empfänger ohne Ed25519-Unterstützung ignorieren sie; die RSA-Signatur bleibt immer.",
+				"add": "Ed25519-Schlüssel hinzufügen",
+				"remove": "Ed25519-Schlüssel entfernen",
+				"confirmRemove": {
+					"title": "Ed25519-Schlüssel entfernen?",
+					"description": "Mails von {domain} tragen dann keine Ed25519-Signatur mehr; die RSA-Signatur bleibt unverändert. Lösche den Eintrag danach aus deinem DNS. Fügst du wieder einen Schlüssel hinzu, entsteht ein neuer mit einem neuen Eintrag.",
+					"confirm": "Schlüssel entfernen"
+				},
+				"operations": {
+					"add": "Ed25519-DKIM-Schlüssel hinzufügen",
+					"remove": "Ed25519-DKIM-Schlüssel entfernen"
+				}
+			},
 			"sendingDnsSection": {
 				"authentication": {
 					"description": "SPF und DKIM belegen, dass Owlat als diese Domain senden darf; DMARC sagt Empfängern, was mit einer Nachricht passiert, die diese Prüfungen nicht besteht.",

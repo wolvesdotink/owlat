@@ -55,6 +55,11 @@ export type ChecklistEntry = {
 	record: DnsRecordPanelRecord;
 	verification: ChecklistVerification | undefined;
 	status: ChecklistStatus;
+	/**
+	 * A record the domain does not need: the optional second DKIM key
+	 * (Ed25519). Shown with its own state, never counted as outstanding.
+	 */
+	optional: boolean;
 };
 
 const statusOf = (verification: ChecklistVerification | undefined): ChecklistStatus =>
@@ -65,9 +70,12 @@ const entry = (
 	label: string,
 	group: ChecklistGroup,
 	record: DnsRecordPanelRecord | null,
-	verification: ChecklistVerification | undefined
+	verification: ChecklistVerification | undefined,
+	optional = false
 ): ChecklistEntry[] =>
-	record ? [{ id, label, group, record, verification, status: statusOf(verification) }] : [];
+	record
+		? [{ id, label, group, record, verification, status: statusOf(verification), optional }]
+		: [];
 
 /**
  * Every record the domain asks the operator to publish, in display order. The
@@ -83,6 +91,7 @@ export function buildSendingChecklist(domain: {
 	if (!records) return [];
 
 	const dkim = records.dkim ?? [];
+	const requiredDkim = dkim.filter((record) => record.optional !== true);
 	const mailFrom = records.mailFrom ?? [];
 	return [
 		...entry('spf', 'SPF', 'authentication', normalizeDnsRecord(records.spf, 'TXT'), results?.spf),
@@ -90,11 +99,17 @@ export function buildSendingChecklist(domain: {
 			entry(
 				`dkim-${i}`,
 				// A single selector needs no number; several do, or "DKIM ✗" is
-				// exactly the ambiguity this list exists to remove.
-				dkim.length > 1 ? `DKIM ${i + 1}` : 'DKIM',
+				// exactly the ambiguity this list exists to remove. The optional
+				// Ed25519 record is named by its algorithm and numbers none.
+				record.optional === true
+					? 'DKIM Ed25519'
+					: requiredDkim.length > 1
+						? `DKIM ${requiredDkim.indexOf(record) + 1}`
+						: 'DKIM',
 				'authentication',
 				normalizeDnsRecord(record, 'CNAME'),
-				results?.dkim?.[i]
+				results?.dkim?.[i],
+				record.optional === true
 			)
 		),
 		...entry(
@@ -126,14 +141,16 @@ export type ChecklistSummary = {
 	allVerified: boolean;
 };
 
+/** Counts the records the domain needs; an optional record never counts. */
 export function summarizeChecklist(entries: readonly ChecklistEntry[]): ChecklistSummary {
-	const verified = entries.filter((e) => e.status === 'verified').length;
+	const required = entries.filter((e) => !e.optional);
+	const verified = required.filter((e) => e.status === 'verified').length;
 	return {
-		total: entries.length,
+		total: required.length,
 		verified,
-		outstanding: entries.filter((e) => e.status !== 'verified'),
-		checked: entries.some((e) => e.status !== 'unchecked'),
-		allVerified: entries.length > 0 && verified === entries.length,
+		outstanding: required.filter((e) => e.status !== 'verified'),
+		checked: required.some((e) => e.status !== 'unchecked'),
+		allVerified: required.length > 0 && verified === required.length,
 	};
 }
 
