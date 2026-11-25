@@ -1094,12 +1094,27 @@ describe('transactionalEmails.updateSchema', () => {
 		await expect(
 			t.mutation(api.transactional.emails.updateSchema, {
 				id: emailId!,
-				dataVariablesSchema: { name: 'array' } as unknown as Record<
+				dataVariablesSchema: { name: 'object' } as unknown as Record<
 					string,
 					'string' | 'number' | 'boolean' | 'date'
 				>,
 			})
 		).rejects.toThrow(/Invalid type/);
+	});
+
+	it('accepts a List variable for a repeated block', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await t.run((ctx) =>
+			ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ slug: 'list-type' }))
+		);
+
+		await t.mutation(api.transactional.emails.updateSchema, {
+			id: emailId,
+			dataVariablesSchema: { items: 'array' },
+		});
+
+		const email = await t.run((ctx) => ctx.db.get(emailId));
+		expect(email?.dataVariablesSchema).toEqual({ items: 'array' });
 	});
 
 	it('should throw for non-existent email', async () => {

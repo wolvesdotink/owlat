@@ -5,7 +5,6 @@ import {
 	conditionRegionStart,
 	evaluateBlockCondition,
 	hasSendRegions,
-	repeatItems,
 	repeatVariablesIn,
 	repeatRegionStart,
 	resolveSendRegions,
@@ -58,14 +57,13 @@ describe('evaluateBlockCondition', () => {
 	});
 });
 
-describe('repeatItems', () => {
-	it('reads a list, or text holding a JSON list, and nothing else', () => {
-		expect(repeatItems([1, 2])).toEqual([1, 2]);
-		expect(repeatItems('[{"a":1}]')).toEqual([{ a: 1 }]);
-		expect(repeatItems('{"a":1}')).toEqual([]);
-		expect(repeatItems('not json')).toEqual([]);
-		expect(repeatItems(undefined)).toEqual([]);
-		expect(repeatItems(3)).toEqual([]);
+describe('the list a repeat iterates', () => {
+	it('is a list, or text holding a JSON list, and nothing else', () => {
+		const body = eachRegion({ variable: 'v', itemAlias: 'i' }, '#;');
+		const resolve = (v: unknown) => resolveSendRegions(body, { v }, tagged);
+		expect(resolve([1, 2])).toBe('0:;1:;');
+		expect(resolve('[{"name":"a"}]')).toBe('0:a;');
+		for (const v of ['{"a":1}', 'not json', undefined, 3]) expect(resolve(v)).toBe('');
 	});
 });
 

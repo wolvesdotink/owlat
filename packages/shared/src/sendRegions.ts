@@ -101,7 +101,7 @@ export const MAX_REPEAT_ITEMS = 500;
  * The entries a repeat iterates: a list, or (as the preview takes it) text
  * holding a JSON list. Anything else renders the region zero times.
  */
-export function repeatItems(value: unknown): readonly unknown[] {
+function repeatItems(value: unknown): readonly unknown[] {
 	if (Array.isArray(value)) return value;
 	if (typeof value !== 'string' || value === '') return [];
 	try {
