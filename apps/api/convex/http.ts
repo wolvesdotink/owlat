@@ -4,7 +4,7 @@ import { authComponent, createAuth } from './auth/auth';
 import { withVerifiedClientIp } from './auth/ipAddress';
 import { trackOpen, trackClick, trackProbe } from './delivery/trackingHttp';
 import { seedAdmin } from './auth/seedAdminHttp';
-import { seedDemoHttp, seedDemoSendingHttp } from './seedDemo/indexHttp';
+import { registerSeedDemoRoutes } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
 import { registerPublicApiRoutes } from './publicApi/v1Http';
 import { registerBookingRoutes } from './booking/publicHttp';
@@ -448,20 +448,7 @@ http.route({
 	handler: seedAdmin,
 });
 
-// POST /seed/demo - Seed realistic demo content (dev/selfhost only, idempotent)
-http.route({
-	path: '/seed/demo',
-	method: 'POST',
-	handler: seedDemoHttp,
-});
-
-// POST /seed/demo/sending - Suspend or lift sending on a dev instance, or report it (dev only)
-http.route({
-	path: '/seed/demo/sending',
-	method: 'POST',
-	handler: seedDemoSendingHttp,
-});
-
+registerSeedDemoRoutes(http); // POST /seed/demo{,/sending} (dev only) — see seedDemo/indexHttp.ts
 registerSampleDataRoutes(http); // POST /sample-data/{install,remove,status} — see sampleData/manageHttp.ts
 registerBookingRoutes(http); // /booking/{page,book,manage,cancel,reschedule}/ — see booking/publicHttp.ts
 

@@ -20,13 +20,14 @@
  */
 
 import { httpAction } from '../_generated/server';
+import type { HttpRouter } from 'convex/server';
 import { internal } from '../_generated/api';
 import { requireInstanceSecret } from '../lib/instanceSecret';
 import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
 
-export const seedDemoHttp = httpAction(async (ctx, request) => {
+const seedDemoHttp = httpAction(async (ctx, request) => {
 	const devResp = devDeploymentResponseOrNull();
 	if (devResp) return devResp;
 
@@ -61,7 +62,7 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
  *          without it, only reports the current state.
  * Same guards as `/seed/demo`.
  */
-export const seedDemoSendingHttp = httpAction(async (ctx, request) => {
+const seedDemoSendingHttp = httpAction(async (ctx, request) => {
 	const devResp = devDeploymentResponseOrNull();
 	if (devResp) return devResp;
 
@@ -87,3 +88,13 @@ export const seedDemoSendingHttp = httpAction(async (ctx, request) => {
 		return errorResponse('internal', 'Internal error');
 	}
 });
+
+/**
+ * Register the demo seed's routes. Kept here rather than as `http.route`
+ * blocks in `http.ts`, which sits at the 500-LOC ratchet
+ * (`scripts/check-file-size.sh`).
+ */
+export function registerSeedDemoRoutes(http: HttpRouter): void {
+	http.route({ path: '/seed/demo', method: 'POST', handler: seedDemoHttp });
+	http.route({ path: '/seed/demo/sending', method: 'POST', handler: seedDemoSendingHttp });
+}
