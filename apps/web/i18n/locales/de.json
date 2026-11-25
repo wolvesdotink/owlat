@@ -12392,7 +12392,7 @@
 					},
 					"linksCount": "1 Link | {count} Links",
 					"loadingLabel": "Bericht wird geladen …",
-					"moreLinks": "+{count} weitere Links",
+					"moreLinks": "+{count} weiterer Link | +{count} weitere Links",
 					"noEmail": "Keine E-Mail",
 					"notFoundDescription": "Diese Kampagne wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
 					"notFoundTitle": "Kampagne nicht gefunden",
@@ -12404,7 +12404,7 @@
 						"previous": "Zurück",
 						"range": "{from}-{to} von {total}"
 					},
-					"recipients": "{count} Empfänger",
+					"recipients": "{count} Empfänger | {count} Empfänger",
 					"scheduledFor": "Versand am {date}",
 					"sentAt": "Gesendet {date}",
 					"sentBadge": "Versendet",
