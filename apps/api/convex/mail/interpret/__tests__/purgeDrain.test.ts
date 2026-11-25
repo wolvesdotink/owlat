@@ -201,15 +201,15 @@ describe.each(READERS)('rowsAfterTied over a thread’s $name', (reader) => {
 		expect(run.visits).toEqual(range.map((row) => row._id));
 	});
 
-	it('visits a row inserted into the tie between slices once, if it sorts after the cursor', async () => {
+	// convex-test hands out increasing ids, so the inserted row sorts after the cursor.
+	it('visits a row inserted into the tie between slices once', async () => {
 		const t = convexTest(schema, modules);
-		const { threadId, messageId, tieAt, tied } = await seedTie(t, reader, {
+		const { threadId, messageId, tieAt } = await seedTie(t, reader, {
 			before: 2,
 			tie: 3 * SLICE_ROWS,
 			after: 2,
 		});
 		let inserted: string | undefined;
-		let isAfterCursor = false;
 		const run = await walk(t, reader, threadId, SLICE_ROWS, {
 			between: async (slice, cursor) => {
 				if (slice !== 1) return;
@@ -219,18 +219,14 @@ describe.each(READERS)('rowsAfterTied over a thread’s $name', (reader) => {
 					t.run((ctx) => reader.insert(ctx, threadId, messageId))
 				);
 				const order = (await t.run((ctx) => reader.all(ctx, threadId))).map((row) => row._id);
-				isAfterCursor = order.indexOf(inserted) > order.indexOf(cursor!.key!);
+				expect(order.indexOf(inserted)).toBeGreaterThan(order.indexOf(cursor!.key!));
 			},
 		});
 		const counts = new Map<string, number>();
 		for (const id of run.visits) counts.set(id, (counts.get(id) ?? 0) + 1);
 		const range = await t.run((ctx) => reader.all(ctx, threadId));
-		for (const row of range) {
-			if (row._id === inserted) continue;
-			expect(counts.get(row._id)).toBe(1);
-		}
-		expect(tied.every((id) => counts.get(id) === 1)).toBe(true);
-		expect(counts.get(inserted!) ?? 0).toBe(isAfterCursor ? 1 : 0);
+		expect(range.map((row) => row._id)).toContain(inserted);
+		for (const row of range) expect(counts.get(row._id)).toBe(1);
 	});
 });
 

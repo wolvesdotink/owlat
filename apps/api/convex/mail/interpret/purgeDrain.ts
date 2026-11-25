@@ -234,8 +234,8 @@ export function withinCreationTime(range: CreationTimeRange, bound: CreationTime
  * after `after`, for {@link scanRange}. Many rows can share one creation time
  * (an import batch, one millisecond), so the rest of that creation time is read
  * first, from the index position just past the id, then every later one. A
- * slice that resumes inside a tie seeks to it and fetches only the rows it
- * returns, however much of the tie lies before it. A position without an id (a
+ * slice that resumes inside a tie seeks to it, so it is handed and charged only
+ * the rows it asked for, however much of the tie lies before it. A position without an id (a
  * cursor a creation-time-only walk wrote) reads its whole creation time again.
  */
 export async function rowsAfterTied<Row extends { _id: string; _creationTime: number }>(
