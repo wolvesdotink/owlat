@@ -1,16 +1,24 @@
 <script setup lang="ts">
 // The builder's first node: the trigger card (with its summary and the Edit
 // link back to the trigger picker), then the "+" that adds a step at the top.
-import type { Doc } from '@owlat/api/dataModel';
+import type { Doc, Id } from '@owlat/api/dataModel';
 import { triggerEditorModuleFor, type TriggerKind } from '~/composables/automations/triggers';
 import type { StepKind } from '~/composables/automations/steps';
 import { getIconColorClass, getTriggerInfo } from '~/composables/automations/editorDisplay';
 import { useLocalized } from '~/composables/useLocalized';
 import type { LocalizedText } from '~/utils/localizedText';
 import AddStepMenu from '~/components/automations/editor/AddStepMenu.vue';
+import MailTopicSetting from '~/components/automations/editor/MailTopicSetting.vue';
 
 const props = defineProps<{
-	automation: { _id: string; triggerType: string; triggerConfig?: unknown; status?: string };
+	automation: {
+		_id: Id<'automations'>;
+		triggerType: string;
+		triggerConfig?: unknown;
+		status?: string;
+		topicId?: Id<'topics'> | null;
+		mailTopic?: { topicId: Id<'topics'>; topic: { name: string } | null } | null;
+	};
 	topics: Doc<'topics'>[] | undefined;
 	addStepOpen: boolean;
 	stepTypes: ReadonlyArray<{ id: StepKind; label: string; description: string; color: string }>;
@@ -75,6 +83,8 @@ const triggerSummary = computed(() => {
 					{{ t('common.edit') }}
 				</NuxtLink>
 			</div>
+			<!-- Who stops getting this automation's emails by leaving a topic -->
+			<MailTopicSetting :automation="automation" :topics="topics" />
 		</div>
 
 		<!-- Connector Line -->

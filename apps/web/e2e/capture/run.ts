@@ -2,18 +2,20 @@
  * `bun run capture`: before/after screenshots of the real app, for a PR that
  * changes the UI.
  *
- *   bun run capture <label> --surface <name>[,<name>...] [--path /route ...]
+ *   bun run capture <label> --surface <name>[,<name>...] [--path /route [steps] ...]
  *       [--out <dir>] [--theme light|dark] [--viewport 1440x900] [--full-page]
+ *       [--locale en|de] [--as owner|admin|member | --signed-out]
  *       [--url http://localhost:3000] [--force]
  *   bun run capture --list
  *
  * Runs against this checkout's `bun run dev:stack` (started and seeded first),
- * signs in as the seeded owner through the login form, and writes
- * `<label>-<shot>.png` into a directory outside the checkout (default
+ * signs in as a seeded account through the login form (or not at all), and
+ * writes `<label>-<shot>.png` into a directory outside the checkout (default
  * ~/.cache/owlat-captures/<checkout>). The first run in a directory records the
- * theme, viewport and app clock in capture.json; later runs reuse them, so a
- * "before" and an "after" differ only by the change. Nothing is written unless
- * every shot was captured. docs/operations/development.md is the runbook.
+ * theme, viewport, language, account and app clock in capture.json, plus the
+ * steps of each `--path` shot; later runs reuse them, so a "before" and an
+ * "after" differ only by the change. Nothing is written unless every shot was
+ * captured. docs/operations/development.md is the runbook.
  */
 
 import {
@@ -26,17 +28,55 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureCredentials, shootAll } from './browser';
-import { CaptureUsageError, parseCaptureArgs, resolveAppUrl, resolveOutputDir } from './options';
+import { shootAll } from './browser';
+import {
+	captureCredentials,
+	CaptureUsageError,
+	parseCaptureArgs,
+	resolveAppUrl,
+	resolveOutputDir,
+} from './options';
 import { runCapture } from './pipeline';
 import { CaptureFailure, SURFACE_NAMES, SURFACES } from './surfaces';
 
 const root = realpathSync(fileURLToPath(new URL('../../../../', import.meta.url)));
 
-const USAGE = `Usage: bun run capture <label> --surface <name>[,<name>...] [--path /route ...]
+const USAGE = `Usage: bun run capture <label> --surface <name>[,<name>...] [--path /route [steps] ...]
     [--out <dir>] [--theme light|dark] [--viewport WIDTHxHEIGHT] [--full-page]
+    [--locale en|de] [--as owner|admin|member | --signed-out]
     [--url http://localhost:<port>] [--force]
   bun run capture --list`;
+
+const HELP = `Shots:
+  --surface <name>      a named surface (below); English and signed in only
+  --path /route         any app route, captured as path-<route>
+
+Steps, applied in order to the --path before them, before the shot:
+  --name <name>         call the shot path-<name> (two shots of one route)
+  --click <selector>    click an element
+  --fill <selector>=<value>
+                        type a value into a field
+  --press <key>         press a key (Escape, Enter, Control+K)
+  --wait-for <selector> wait until an element is visible
+  A selector is a Playwright selector: role=button[name="New campaign"] finds a
+  control by role and its whole accessible name, name=/campaign/i by part of
+  it, and "#card >> role=button[name=Save]" looks inside an element; CSS
+  works too. It must match exactly one element.
+
+Pair settings, recorded by the first run in the directory and reused after:
+  --theme light|dark    default light
+  --viewport WxH        default 1440x900
+  --full-page           the whole page, not the viewport
+  --locale en|de        the app's language, default en
+  --as owner|admin|member
+                        the seeded account to sign in as, default owner
+  --signed-out          do not sign in (the login page, a signup link)
+
+Other:
+  --out <dir>           outside the checkout; default ~/.cache/owlat-captures/<checkout>
+  --url <url>           a local app other than this checkout's dev:stack
+  --force               replace this label's existing PNGs
+  --list                list the surfaces`;
 
 function describeSurfaces(): string {
 	const width = Math.max(...SURFACE_NAMES.map((name) => name.length));
@@ -58,7 +98,7 @@ async function reachable(url: string): Promise<boolean> {
 async function main(argv: string[]): Promise<number> {
 	const request = parseCaptureArgs(argv);
 	if (request.help) {
-		console.info(`${USAGE}\n\nSurfaces:\n${describeSurfaces()}`);
+		console.info(`${USAGE}\n\n${HELP}\n\nSurfaces:\n${describeSurfaces()}`);
 		return 0;
 	}
 	if (request.list) {
@@ -80,7 +120,7 @@ async function main(argv: string[]): Promise<number> {
 		outDir,
 		SURFACE_NAMES,
 		(shots, manifest) =>
-			shootAll(appUrl, captureCredentials(process.env), shots, manifest, (line) =>
+			shootAll(appUrl, captureCredentials(process.env, manifest.account), shots, manifest, (line) =>
 				console.info(line)
 			),
 		{
@@ -97,7 +137,8 @@ async function main(argv: string[]): Promise<number> {
 	console.info(
 		`\n${result.manifestCreated ? 'Recorded' : 'Reused'} the pair's settings: ${manifest.theme}, ` +
 			`${manifest.viewport.width}x${manifest.viewport.height}${manifest.fullPage ? ' full page' : ''}, ` +
-			`clock ${manifest.clock} (${join(outDir, 'capture.json')}).`
+			`${manifest.locale}, ${manifest.account}, clock ${manifest.clock} ` +
+			`(${join(outDir, 'capture.json')}).`
 	);
 	for (const file of result.files) console.info(`  ${file}`);
 	return 0;

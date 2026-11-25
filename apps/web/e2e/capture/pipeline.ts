@@ -11,12 +11,11 @@ import { join } from 'node:path';
 import {
 	MANIFEST_FILE,
 	parseManifest,
-	planShots,
 	settleManifest,
+	settleShots,
 	type CaptureManifest,
-	type CaptureRequest,
-	type PlannedShot,
-} from './options';
+} from './manifest';
+import { planShots, type CaptureRequest, type PlannedShot } from './options';
 
 export interface CaptureIO {
 	exists(file: string): boolean;
@@ -49,14 +48,19 @@ export async function runCapture(
 	const recorded = io.exists(manifestFile)
 		? parseManifest(io.readText(manifestFile), manifestFile)
 		: null;
-	const { manifest, created } = settleManifest(recorded, request, io.now());
-	const shots = planShots(request, outDir, knownSurfaces, (file) => io.exists(file));
+	const settledManifest = settleManifest(recorded, request, io.now());
+	const created = settledManifest.created;
+	const planned = planShots(request, outDir, knownSurfaces, (file) => io.exists(file));
+	const { manifest, shots, changed } = settleShots(settledManifest.manifest, planned);
+	const writeManifest = created || changed;
 	const images = await shoot(shots, manifest);
 	if (images.length !== shots.length) {
 		throw new Error(`Expected ${shots.length} captures, got ${images.length}.`);
 	}
 	io.writeAll(outDir, [
-		...(created ? [{ file: manifestFile, data: `${JSON.stringify(manifest, null, '\t')}\n` }] : []),
+		...(writeManifest
+			? [{ file: manifestFile, data: `${JSON.stringify(manifest, null, '\t')}\n` }]
+			: []),
 		...shots.map((shot, index) => ({ file: shot.file, data: images[index]! })),
 	]);
 	return { files: shots.map((shot) => shot.file), manifest, manifestCreated: created };

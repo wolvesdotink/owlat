@@ -338,6 +338,21 @@ const itemsRange: PurgeRange = (ctx, run: RangeRun) => {
 	);
 };
 
+/** A mail thread's facts in creation order, strictly after `after` (`rowsAfterTied`). */
+export function factsAfter(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	after: RangePosition | undefined,
+	n: number,
+	budget: DrainBudget
+) {
+	return rowsAfterTied(budget, after, n, (bound) =>
+		ctx.db
+			.query('threadFacts')
+			.withIndex('by_mail_thread', (q) => withinCreationTime(q.eq('mailThreadId', threadId), bound))
+	);
+}
+
 /** 5. The thread's facts (mail threads only). */
 export const factsRange: PurgeRange = async (ctx, run) => {
 	if (run.ref.kind !== 'mail') return { isDone: true };
@@ -346,14 +361,7 @@ export const factsRange: PurgeRange = async (ctx, run) => {
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) =>
-			rowsAfterTied(run.budget, after, n, (bound) =>
-				ctx.db
-					.query('threadFacts')
-					.withIndex('by_mail_thread', (q) =>
-						withinCreationTime(q.eq('mailThreadId', threadId), bound)
-					)
-			),
+		(after, n) => factsAfter(ctx, threadId, after, n, run.budget),
 		tiedPositionOf,
 		async (fact) => {
 			const fate = await stripFact(ctx, fact, purged, redactedTextOf(run.job.kind));
