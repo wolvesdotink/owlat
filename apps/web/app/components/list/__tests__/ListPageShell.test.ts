@@ -88,6 +88,7 @@ const baseProps = {
 	sort: 'updatedAt-desc',
 	sortLabel: 'Sort templates',
 	sortListboxId: 'test-sort-listbox',
+	sortDisabledLabel: undefined as string | undefined,
 	viewMode: 'list' as const,
 	emptyNoOrg: { icon: MailIcon, title: 'No team selected', description: 'Pick a team.' },
 	empty: { icon: MailIcon, title: 'No templates yet', description: 'Create one.' },
@@ -261,6 +262,35 @@ describe('ListPageShell', () => {
 		const wrapper = render();
 		await wrapper.get('input[type="text"]').setValue('welcome');
 		expect(wrapper.emitted('update:search')).toEqual([['welcome']]);
+	});
+
+	describe('sort menu', () => {
+		const trigger = (wrapper: ReturnType<typeof render>) =>
+			wrapper.get('[aria-haspopup="listbox"]');
+
+		it('names the current sort and opens its options', async () => {
+			const wrapper = render();
+			expect(trigger(wrapper).text()).toContain('Last modified');
+			await trigger(wrapper).trigger('click');
+			expect(wrapper.find('#test-sort-listbox').exists()).toBe(true);
+		});
+
+		it('is disabled and names the order instead while the rows cannot be sorted', async () => {
+			const wrapper = render({ sortDisabledLabel: 'Sorted by relevance' });
+			expect(trigger(wrapper).attributes('disabled')).toBeDefined();
+			expect(trigger(wrapper).text()).toContain('Sorted by relevance');
+			expect(trigger(wrapper).text()).not.toContain('Last modified');
+			expect(trigger(wrapper).attributes('aria-label')).toBe('Sort templates: Sorted by relevance');
+			await trigger(wrapper).trigger('click');
+			expect(wrapper.find('#test-sort-listbox').exists()).toBe(false);
+		});
+
+		it('closes an open menu when it becomes disabled', async () => {
+			const wrapper = render();
+			await trigger(wrapper).trigger('click');
+			await wrapper.setProps({ sortDisabledLabel: 'Sorted by relevance' });
+			expect(wrapper.find('#test-sort-listbox').exists()).toBe(false);
+		});
 	});
 
 	describe('delete dialog', () => {

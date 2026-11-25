@@ -221,4 +221,11 @@ export const MIGRATION_MANIFEST: readonly MigrationManifestEntry[] = [
 		startsItself: true,
 		run: internal.migrations['0076_backfill_member_profiles'].run,
 	},
+	{
+		migration: '0077_backfill_template_name_sort_key',
+		introducedIn: '0.6.26',
+		dependsOn: [],
+		isSteppingStone: false,
+		run: internal.migrations['0077_backfill_template_name_sort_key'].run,
+	},
 ];

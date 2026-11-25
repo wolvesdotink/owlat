@@ -8,7 +8,7 @@ import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
 import { restoreTemplate } from './deletion';
 import { listResources } from '../lib/listing';
-import { emailTemplateListing } from './listing';
+import { emailTemplateListing, templateNameSortKey } from './listing';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { recordListingCounter } from '../lib/listingCounters';
@@ -97,12 +97,14 @@ export const update = authedMutation({
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
+		const patch = await buildEditablePatch(ctx, template, args, {
+			noun: 'Template',
+			variableType: 'personalization',
+			searchableFields: ['name', 'subject'],
+		});
 		const updates = {
-			...(await buildEditablePatch(ctx, template, args, {
-				noun: 'Template',
-				variableType: 'personalization',
-				searchableFields: ['name', 'subject'],
-			})),
+			...patch,
+			...(patch.name !== undefined && { nameSortKey: templateNameSortKey(patch.name) }),
 			...(args.previewText !== undefined && { previewText: args.previewText.trim() }),
 		};
 
@@ -331,8 +333,9 @@ export const changeType = authedMutation({
  * List email templates.
  */
 // List email templates (paginated, uniform { page, … } contract). Search is
-// relevance-ordered; otherwise updatedAt-descending with index-native type
-// filtering. The old shell `.collect()`-ed the whole table per call.
+// relevance-ordered and ignores `sortBy`/`sortOrder`; otherwise the sort runs
+// on its own index before pagination (updatedAt-descending when omitted), with
+// index-native type filtering.
 // all-members: the template library every role picks from when it builds a
 // campaign; writing it needs templates:manage.
 export const list = authedQuery({
@@ -340,12 +343,16 @@ export const list = authedQuery({
 		type: v.optional(emailTemplateTypeValidator),
 		status: v.optional(v.union(v.literal('draft'), v.literal('published'))),
 		search: v.optional(v.string()),
+		sortBy: v.optional(v.union(v.literal('updatedAt'), v.literal('createdAt'), v.literal('name'))),
+		sortOrder: v.optional(v.union(v.literal('asc'), v.literal('desc'))),
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, args) =>
 		listResources(ctx.db, emailTemplateListing, {
 			search: args.search,
 			filters: { type: args.type, status: args.status },
+			sort: args.sortBy,
+			order: args.sortOrder,
 			paginationOpts: args.paginationOpts,
 		}),
 });

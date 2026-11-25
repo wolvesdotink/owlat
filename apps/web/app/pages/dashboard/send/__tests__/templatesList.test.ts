@@ -4,9 +4,9 @@
  * transactional-typed template to separate, and exactly one create button.
  * Saved blocks and the media library are tabs beside it.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import PageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import SegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
@@ -25,6 +25,8 @@ const TEMPLATES = [
 ];
 
 let listArgs: unknown[];
+let listArgsFactory: () => unknown;
+let listOptions: Record<string, unknown>;
 let push: ReturnType<typeof vi.fn>;
 let replace: ReturnType<typeof vi.fn>;
 let query: Record<string, string>;
@@ -67,8 +69,14 @@ function render(templates = TEMPLATES, stubs: Record<string, unknown> = {}): Vue
 			if (name === 'emailBlocks/blocks:getStatsByTeam') return queryResult({ total: 4 });
 			return queryResult(undefined);
 		},
-		useOrganizationPaginatedQuery: (_reference: unknown, args: () => unknown) => {
+		useOrganizationPaginatedQuery: (
+			_reference: unknown,
+			args: () => unknown,
+			options: Record<string, unknown>
+		) => {
 			listArgs.push(args());
+			listArgsFactory = args;
+			listOptions = options;
 			const result = paginatedResult(templates);
 			result.error.value = listError as never;
 			return { ...result, refetch: refetchList };
@@ -159,10 +167,53 @@ describe('templates list', () => {
 
 	it('queries all types by default and one type when filtered', () => {
 		render();
-		expect(listArgs.at(-1)).toEqual({});
+		expect(listArgs.at(-1)).toEqual({ sortBy: 'updatedAt', sortOrder: 'desc' });
 		query = { type: 'transactional' };
 		render();
-		expect(listArgs.at(-1)).toEqual({ type: 'transactional' });
+		expect(listArgs.at(-1)).toEqual({
+			type: 'transactional',
+			sortBy: 'updatedAt',
+			sortOrder: 'desc',
+		});
+	});
+
+	describe('sort', () => {
+		const names = (wrapper: VueWrapper) =>
+			wrapper.findAll('[data-testid="template-list"] [data-row="edit"]').map((row) => row.text());
+		const sortMenu = (wrapper: VueWrapper) => wrapper.findComponent({ name: 'ListSortMenu' });
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it('runs on the server and starts over from the first page when it changes', async () => {
+			// The server's order, which is not the order a name sort in the browser
+			// would give: the page must show it as it is.
+			const wrapper = render([TEMPLATES[1]!, TEMPLATES[0]!]);
+			expect(listArgsFactory()).toEqual({ sortBy: 'updatedAt', sortOrder: 'desc' });
+
+			sortMenu(wrapper).vm.$emit('update:modelValue', 'name-desc');
+			await nextTick();
+
+			// New args reopen the subscription from the first page, and without
+			// `keepPreviousData` nothing of the old order stays on screen meanwhile.
+			expect(listArgsFactory()).toEqual({ sortBy: 'name', sortOrder: 'desc' });
+			expect(listOptions['keepPreviousData']).toBeFalsy();
+			expect(names(wrapper)).toEqual(['Password reset', 'September newsletter']);
+		});
+
+		it('is disabled during a search, which is ordered by relevance', async () => {
+			vi.useFakeTimers();
+			const wrapper = render();
+			expect(sortMenu(wrapper).attributes('disabled-label')).toBeUndefined();
+
+			wrapper.findComponent({ name: 'UiInput' }).vm.$emit('update:modelValue', 'reset');
+			await vi.advanceTimersByTimeAsync(300);
+			await nextTick();
+
+			expect(listArgsFactory()).toEqual({ search: 'reset' });
+			expect(sortMenu(wrapper).attributes('disabled-label')).toBe('Sorted by relevance');
+		});
 	});
 
 	it('writes the chosen filter into the URL', async () => {

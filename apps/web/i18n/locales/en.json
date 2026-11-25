@@ -14171,6 +14171,7 @@
 				"pageTitle": "Templates — Owlat",
 				"searchPlaceholder": "Search templates...",
 				"sortLabel": "Sort templates",
+				"sortedByRelevance": "Sorted by relevance",
 				"subtitle": "Email designs you reuse in campaigns and automations.",
 				"toasts": {
 					"duplicated": "Template duplicated successfully"

@@ -14,7 +14,6 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 import { useTemplateList } from '~/composables/useTemplateList';
 import { formatDate } from '~/utils/formatters';
-import { sortTemplateRows } from '~/utils/templateListSort';
 import {
 	TEMPLATE_TYPE_FILTERS,
 	parseTemplateTypeFilter,
@@ -149,24 +148,25 @@ let pager: { status: { readonly value: string }; loadMore: (numItems: number) =>
 // `reactive` unwraps the composable's refs, so the template reads `list.items`.
 const list = reactive(
 	useTemplateList<TemplateRow>({
-		// Type filter + full-text search run server-side through the Listing engine;
-		// the sort is applied client-side over the loaded page, and a
-		// search keeps the engine's relevance order.
+		// Type filter, search and sort all run on the server, before pagination.
+		// A search is relevance-ordered (its index cannot sort), so it sends no
+		// sort and the menu says so. A new sort is new args: the subscription
+		// starts over from the first page, with nothing on screen until it lands,
+		// so the old order never shows under the new label.
 		query: ({ search, sort }) => {
 			const { results, status, loadMore, isLoading, error, refetch } =
 				useOrganizationPaginatedQuery(
 					api.emailTemplates.emails.list,
 					() => ({
 						...(typeFilter.value === 'all' ? {} : { type: typeFilter.value }),
-						search: search.value || undefined,
+						...(search.value
+							? { search: search.value }
+							: { sortBy: sort.value.sortBy, sortOrder: sort.value.sortOrder }),
 					}),
 					{ initialNumItems: 50 }
 				);
 			pager = { status, loadMore };
-			const rows = computed(() =>
-				search.value ? results.value : sortTemplateRows(results.value, sort.value)
-			);
-			return { rows, isLoading, error, refetch };
+			return { rows: results, isLoading, error, refetch };
 		},
 		defaultViewMode: 'grid',
 		editPath: (template) => editPath(template._id),
@@ -223,6 +223,9 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 		:sort="list.currentSort.value"
 		:sort-label="t('dashboard.send.index.sortLabel')"
 		sort-listbox-id="templates-sort-listbox"
+		:sort-disabled-label="
+			list.debouncedSearch ? t('dashboard.send.index.sortedByRelevance') : undefined
+		"
 		:empty-no-org="{
 			icon: MailIcon,
 			title: t('dashboard.send.index.emptyNoTeam.title'),
