@@ -136,8 +136,8 @@ export async function webhookOutcome(
 }
 
 /**
- * Active webhooks subscribed to raised alerts: the ones that receive them now,
- * and the ones whose stored `http` URL no longer may (`webhooks/urlPolicy.ts`),
+ * Active webhooks that receive raised alerts now, and the ones subscribed to
+ * either alert event whose stored `http` URL no longer may (`webhooks/urlPolicy.ts`),
  * which the Center names so the operator does not take them for a channel.
  */
 export async function subscribedAlertWebhookCount(
@@ -150,7 +150,11 @@ export async function subscribedAlertWebhookCount(
 		.query('webhooks')
 		.withIndex('by_active', (q) => q.eq('isActive', true))
 		.collect(); // bounded: active webhooks (org-scale config)
-	const subscribed = webhooks.filter((webhook) => webhook.events.includes(RAISED));
-	const count = subscribed.filter((webhook) => isEventAllowedOverUrl(RAISED, webhook.url)).length;
-	return { isFeatureOn: true, count, cleartextCount: subscribed.length - count };
+	const count = webhooks.filter(
+		(webhook) => webhook.events.includes(RAISED) && isEventAllowedOverUrl(RAISED, webhook.url)
+	).length;
+	const cleartextCount = webhooks.filter((webhook) =>
+		webhook.events.some((event) => !isEventAllowedOverUrl(event, webhook.url))
+	).length;
+	return { isFeatureOn: true, count, cleartextCount };
 }

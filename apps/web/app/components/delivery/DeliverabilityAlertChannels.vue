@@ -58,10 +58,13 @@ const summary = computed(() => {
 		pushReaches.value ? t(`${K}.summary.push`, c.push.deviceCount) : t(`${K}.summary.noPush`),
 		c.webhook.count > 0
 			? t(`${K}.summary.webhook`, c.webhook.count)
-			: c.webhook.cleartextCount > 0
-				? t(`${K}.summary.webhookCleartext`)
-				: t(`${K}.summary.noWebhook`),
-	].join(' · ');
+			: c.webhook.cleartextCount === 0
+				? t(`${K}.summary.noWebhook`)
+				: null,
+		c.webhook.cleartextCount > 0 ? t(`${K}.summary.webhookCleartext`) : null,
+	]
+		.filter((part) => part !== null)
+		.join(' · ');
 });
 
 const emailDetail = computed(() => {

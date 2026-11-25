@@ -8973,7 +8973,7 @@
 						"red": "SNDS rates {ip} red for {day}: Outlook.com and Hotmail filter most of its mail. Owlat sends Microsoft mail from this address at a reduced rate until SNDS rates it green again. Other addresses and providers are not affected.",
 						"yellow": "SNDS rates {ip} yellow for {day}: Microsoft filters some of its mail. Nothing is held back yet.",
 						"action": "How to recover a red address",
-						"trapHits": "SNDS counted {count} spam-trap hit for {ip} on {day}. A trap hit means your list holds an address that never signed up. Waiting does not fix this: find the list or import it came from and remove addresses without a confirmed sign-up. | SNDS counted {count} spam-trap hits for {ip} on {day}. A trap hit means your list holds addresses that never signed up. Waiting does not fix this: find the list or import they came from and remove addresses without a confirmed sign-up.",
+						"trapHits": "SNDS counted {count} spam-trap hit for {ip} on {day}. Your list holds an address that never signed up, or one abandoned long ago and turned into a trap. Waiting does not fix this: find the list or import it came from, and remove contacts that never confirmed or have not engaged in a long time. | SNDS counted {count} spam-trap hits for {ip} on {day}. Your list holds addresses that never signed up, or ones abandoned long ago and turned into traps. Waiting does not fix this: find the list or import they came from, and remove contacts that never confirmed or have not engaged in a long time.",
 						"trapAction": "How to clean up after trap hits"
 					}
 				},

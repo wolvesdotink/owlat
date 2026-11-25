@@ -7,6 +7,8 @@
  * pool state: the event re-runs those checks at once instead of waiting for the
  * hourly or daily sweep, so a check that had passed regresses and raises its
  * alert (email, in-app notice, push, webhook) the way every other check does.
+ * The pool check fails at once on the quarantine; the DNS-backed checks keep
+ * their retry ladder and fail after its last retry, as on any other run.
  * The checks keep their own rules: none runs on a deployment that does not
  * send through the built-in MTA, and none alerts while IPv6 is off.
  */

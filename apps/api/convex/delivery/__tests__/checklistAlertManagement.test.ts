@@ -361,11 +361,16 @@ describe('deliverability alert channels', () => {
 				featureFlags: { webhooks: true },
 				createdAt: 1,
 			});
-			for (const url of ['http://oncall.example.com/hook', 'https://chat.example.com/hook']) {
+			const subscriptions = [
+				['http://oncall.example.com/hook', 'deliverability.alert_raised'],
+				['http://closed.example.com/hook', 'deliverability.alert_resolved'],
+				['https://chat.example.com/hook', 'deliverability.alert_raised'],
+			] as const;
+			for (const [url, event] of subscriptions) {
 				await ctx.db.insert('webhooks', {
 					name: url,
 					url,
-					events: ['deliverability.alert_raised', 'deliverability.alert_resolved'],
+					events: [event],
 					secret: 'whsec_test',
 					isActive: true,
 					createdAt: 1,
@@ -375,7 +380,7 @@ describe('deliverability alert channels', () => {
 		});
 
 		const channels = await t.query(api.delivery.checklistAlertChannels.getChannels, {});
-		expect(channels.webhook).toEqual({ isFeatureOn: true, count: 1, cleartextCount: 1 });
+		expect(channels.webhook).toEqual({ isFeatureOn: true, count: 1, cleartextCount: 2 });
 
 		const result = await t.action(api.delivery.checklistAlertTest.sendTestAlert, {});
 		expect(result.webhook).toMatchObject({ status: 'queued' });

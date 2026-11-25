@@ -170,6 +170,9 @@ describe('DeliverabilityAlertChannels', () => {
 			...READY,
 			webhook: { isFeatureOn: true, count: 1, cleartextCount: 2 },
 		});
+		expect(mixed.get('[data-testid="alert-channels-summary"]').text()).toContain(
+			'Webhook to 1 endpoint · Webhook needs HTTPS'
+		);
 		expect(mixed.get('[data-testid="alert-channel-webhook"]').text()).toBe(
 			'Sent to 1 webhook, signed and retried. 2 webhooks subscribed to alerts have an http:// URL and get no alerts until their URLs start with https://.'
 		);
