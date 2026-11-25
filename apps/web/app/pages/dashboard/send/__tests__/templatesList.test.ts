@@ -31,11 +31,13 @@ let push: ReturnType<typeof vi.fn>;
 let replace: ReturnType<typeof vi.fn>;
 let query: Record<string, string>;
 let typeCounts: Record<string, number>;
+let nameSortReady: boolean | undefined;
 let listError: Error | null;
 let refetchList: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
 	typeCounts = { total: 2, marketing: 1, transactional: 1 };
+	nameSortReady = true;
 	listArgs = [];
 	push = vi.fn();
 	replace = vi.fn();
@@ -67,6 +69,7 @@ function render(templates = TEMPLATES, stubs: Record<string, unknown> = {}): Vue
 				return queryResult(typeCounts);
 			}
 			if (name === 'emailBlocks/blocks:getStatsByTeam') return queryResult({ total: 4 });
+			if (name === 'emailTemplates/emails:isNameSortReady') return queryResult(nameSortReady);
 			return queryResult(undefined);
 		},
 		useOrganizationPaginatedQuery: (
@@ -213,6 +216,22 @@ describe('templates list', () => {
 
 			expect(listArgsFactory()).toEqual({ search: 'reset' });
 			expect(sortMenu(wrapper).attributes('disabled-label')).toBe('Sorted by relevance');
+		});
+
+		it('offers the name sorts only once every template has its sort key', async () => {
+			nameSortReady = false;
+			const wrapper = render();
+			const offered = () =>
+				(wrapper.findComponent(ListPageShell).props('sortOptions') as { value: string }[]).map(
+					(option) => option.value
+				);
+			expect(offered()).not.toContain('name-asc');
+
+			// A name sort picked anyway is served, and shown, as the default.
+			sortMenu(wrapper).vm.$emit('update:modelValue', 'name-asc');
+			await nextTick();
+			expect(listArgsFactory()).toEqual({ sortBy: 'updatedAt', sortOrder: 'desc' });
+			expect(wrapper.findComponent(ListPageShell).props('sort')).toBe('updatedAt-desc');
 		});
 
 		it('stays on for a blank search, which the server treats as none', async () => {

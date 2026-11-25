@@ -72,4 +72,35 @@ describe('0077_backfill_template_name_sort_key', () => {
 		expect((await t.run((ctx) => ctx.db.get(id)))?.nameSortKey).toBe('older');
 		expect(await t.mutation(migration.ensure, {})).toMatchObject({ started: false });
 	});
+
+	it('leaves a moving walk to its chain and resumes a stalled one from its cursor', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < PAGE_SIZE + 1; i++) {
+				await ctx.db.insert('emailTemplates', createTestEmailTemplate({ name: `T ${i}` }));
+			}
+		});
+		const ledger = () =>
+			t.run((ctx) =>
+				ctx.db
+					.query('migrationRuns')
+					.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
+					.unique()
+			);
+		// One page runs, then its chain dies: the next page is never run.
+		const begun = await t.mutation(migration.run, {});
+		await t.mutation(migration.processPage, { cursor: null, generation: begun.generation! });
+		const cursor = (await ledger())?.cursor;
+		expect(cursor).toBeTruthy();
+
+		expect(await t.mutation(migration.ensure, {})).toMatchObject({ started: false });
+
+		vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+		const resumed = await t.mutation(migration.ensure, {});
+		expect(resumed).toMatchObject({ started: true });
+		expect((await ledger())?.cursor).toBe(cursor);
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(await ledger()).toMatchObject({ status: 'completed', changedCount: PAGE_SIZE + 1 });
+	});
 });

@@ -1023,6 +1023,19 @@ describe('emailTemplates.list — sorted pages', () => {
 		}
 	);
 
+	it('reports the name sort ready only when no live template lacks its key', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		expect(await t.query(api.emailTemplates.emails.isNameSortReady, {})).toBe(true);
+
+		// A template in Recently deleted is not listed, so it does not count.
+		await seedTemplate(t, { deletedAt: 1, deletedBy: 'user-alice' });
+		expect(await t.query(api.emailTemplates.emails.isNameSortReady, {})).toBe(true);
+
+		await seedTemplate(t, { name: 'Older' });
+		expect(await t.query(api.emailTemplates.emails.isNameSortReady, {})).toBe(false);
+	});
+
 	it('sorts a renamed template under its new name', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seed(t);

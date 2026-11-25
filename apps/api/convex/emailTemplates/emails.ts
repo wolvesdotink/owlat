@@ -358,6 +358,25 @@ export const list = authedQuery({
 });
 
 /**
+ * Whether the name sort covers every live template: false while a template
+ * from before `nameSortKey` existed still lacks it (migration 0077 fills it),
+ * since such a row sorts ahead of every named one. One indexed read.
+ */
+// all-members: the same template library `list` shows every role.
+export const isNameSortReady = authedQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => {
+		const keyless = await ctx.db
+			.query('emailTemplates')
+			.withIndex('by_deleted_at_and_name_sort_key', (q) =>
+				q.eq('deletedAt', undefined).eq('nameSortKey', undefined)
+			)
+			.first();
+		return keyless === null;
+	},
+});
+
+/**
  * Create a new email template.
  */
 export const create = authedMutation({
