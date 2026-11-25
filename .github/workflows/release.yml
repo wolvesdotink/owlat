@@ -112,9 +112,9 @@ jobs:
           draft: true # published by the `publish` job once both cores succeed
           prerelease: ${{ needs.resolve.outputs.channel != 'stable' }}
           body_path: ${{ runner.temp }}/release-body.md
-          # The installer of this exact commit, so
-          # releases/latest/download/install.sh serves the script that belongs
-          # to the release it installs.
+          # The installer from the tagged commit, so
+          # releases/latest/download/install.sh serves the latest release's
+          # own copy of the script.
           files: install.sh
 
   server:
