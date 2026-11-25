@@ -134,12 +134,12 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 
 	// Determine the highest reached status in the progression
 	const currentStatusIndex = progressionOrder.indexOf(props.status);
-	// A failed, bounced or complained send has ended: the steps it has not
-	// reached will never come, so the timeline lists only the reached ones and
-	// ends at that state instead of showing the rest as not yet reached. A soft
-	// bounce ends it too: the MTA reports one only after its own retries ran
-	// out, and Owlat never sends that row again. An open or click recorded on a
-	// soft-bounced or complained send still sets its timestamp and is shown.
+	// A failed, bounced or complained send has ended, so the timeline lists only
+	// the steps that carry a timestamp and ends at that state instead of showing
+	// the rest as not yet reached. A soft bounce ends it too: the MTA reports one
+	// only after its own retries ran out, and Owlat never sends that row again.
+	// Evidence recorded later (a late delivery callback, an open or click on a
+	// soft-bounced or complained send) sets its timestamp and is shown then.
 	const isError = errorStatuses.includes(props.status);
 
 	// Build normal progression events
