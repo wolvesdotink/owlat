@@ -19,6 +19,7 @@ export type AutomationHealth = FunctionReturnType<typeof api.automations.health.
  * counts load (or for an automation past the first page) it shows a dash.
  */
 import type { Id } from '@owlat/api/dataModel';
+import { defineAsyncComponent } from 'vue';
 import { formatNumber } from '~/utils/formatters';
 
 const props = defineProps<{
