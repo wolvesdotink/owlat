@@ -11,6 +11,7 @@
 
 import type { Id } from '@owlat/api/dataModel';
 import {
+	filtersOnNewMail,
 	hasRetroactiveActions,
 	type FilterMatchType,
 	type MailFilterCondition,
@@ -94,8 +95,19 @@ const manualFilters = computed(() => filters.value.filter((f) => !isPlainLanguag
 const ruleIds = computed(() =>
 	filters.value.filter((f) => isPlainLanguageRule(f)).map((f) => f._id)
 );
-// Plain-language rules exist for personal mailboxes only.
-const isPersonalMailbox = computed(() => currentMailbox.value?.scope !== 'shared');
+// Which kinds of rule run on this mailbox's new mail, and the copy that follows.
+const onNewMail = computed(() => filtersOnNewMail(currentMailbox.value ?? {}));
+const listCopy = computed(() =>
+	onNewMail.value.editorFilters
+		? {
+				intro: t('dashboard.preferences.filters.intro'),
+				heading: t('dashboard.preferences.filters.activeFilters'),
+			}
+		: {
+				intro: t('dashboard.preferences.filters.introConnected'),
+				heading: t('dashboard.preferences.filters.appliedFilters'),
+			}
+);
 
 function startCreate() {
 	editor.value = {
@@ -298,7 +310,7 @@ async function confirmRemove() {
 			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 		>
 			<p class="text-text-secondary">
-				{{ t('dashboard.preferences.filters.intro') }}
+				{{ listCopy.intro }}
 			</p>
 			<UiButton v-if="mailboxId && !editor" type="button" class="shrink-0" @click="startCreate">
 				<PlusIcon class="w-4 h-4 mr-1.5" />
@@ -306,8 +318,10 @@ async function confirmRemove() {
 			</UiButton>
 		</header>
 
+		<PostboxFilterReachNotice v-if="currentMailbox && !editor" :mailbox="currentMailbox" />
+
 		<PostboxPlainRules
-			v-if="mailboxId && isPersonalMailbox && !editor"
+			v-if="mailboxId && onNewMail.plainRules && !editor"
 			:mailbox-id="mailboxId"
 			:filters="filters"
 			@toggle="setEnabled"
@@ -316,7 +330,11 @@ async function confirmRemove() {
 		/>
 
 		<section v-if="editor" ref="editorSection" class="card p-5 mb-6 scroll-mt-6">
-			<PostboxFilterRuleBuilder v-model="editor" :mailbox-id="mailboxId!" />
+			<PostboxFilterRuleBuilder
+				v-model="editor"
+				:mailbox-id="mailboxId!"
+				:mailbox="currentMailbox ?? {}"
+			/>
 			<div class="flex items-center justify-end gap-2 mt-5">
 				<UiButton variant="ghost" type="button" :disabled="saving" @click="editor = null">
 					{{ t('common.cancel') }}
@@ -340,7 +358,7 @@ async function confirmRemove() {
 
 		<section v-if="mailboxId" class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
-				<h2 class="font-semibold">{{ t('dashboard.preferences.filters.activeFilters') }}</h2>
+				<h2 class="font-semibold">{{ listCopy.heading }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
@@ -392,8 +410,12 @@ async function confirmRemove() {
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="font-medium break-words">{{ f.name }}</span>
 								<UiBadge v-if="!f.isEnabled" variant="neutral">{{ t('common.disabled') }}</UiBadge>
+								<PostboxFilterRunsOnApplyBadge
+									v-else-if="!onNewMail.editorFilters"
+									:actions="f.actions as FilterAction[]"
+								/>
 								<UiBadge
-									v-if="f.stopProcessing"
+									v-if="f.stopProcessing && onNewMail.editorFilters"
 									variant="neutral"
 									:title="t('dashboard.preferences.filters.stopTitle')"
 									>{{ t('dashboard.preferences.filters.stopBadge') }}</UiBadge

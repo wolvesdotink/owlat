@@ -5402,6 +5402,8 @@
 				"listLabel": "Emoji"
 			},
 			"postboxFilterRuleBuilder": {
+				"actionNeverRuns": "This action never runs in a synced mailbox. Run on existing mail skips Forward to, Move to trash and Discard.",
+				"connectedNotice": "This mailbox is synced from your provider, so this filter does not run on new mail. It applies only when you use Run on existing mail, which skips Forward to, Move to trash and Discard.",
 				"actions": {
 					"addLabel": "Add label",
 					"delete": "Move to trash",
@@ -13776,7 +13778,7 @@
 				"activeFilters": "Active filters",
 				"createFilter": "Create filter",
 				"deleteConfirm": "Delete filter",
-				"deleteDescription": "This filter will stop routing inbound mail. This action cannot be undone.",
+				"deleteDescription": "This filter will be deleted. This action cannot be undone.",
 				"deleteTitle": "Delete filter?",
 				"empty": "No filters yet. Create your first one to start routing mail.",
 				"intro": "Auto-route inbound mail to folders, apply labels, mark read, or forward.",
@@ -13790,7 +13792,13 @@
 				"ruleSummaryAny": "Any of {conditions} condition(s) · {actions} action(s)",
 				"moveUp": "Move {name} earlier",
 				"moveDown": "Move {name} later",
-				"fromSenderName": "Mail from {sender}"
+				"fromSenderName": "Mail from {sender}",
+				"connectedNotice": "{address} is synced from your provider, so filters built here do not run on its new mail. Set up filters for new mail at your provider. Run on existing mail applies a filter to the mail already in this mailbox. Rules in your words still run on new mail.",
+				"connectedTeamNotice": "{address} is synced from your provider, so no filter or rule runs on its new mail. Set up filters for new mail at your provider. Run on existing mail applies a filter to the mail already in this mailbox.",
+				"appliedFilters": "Filters you apply yourself",
+				"introConnected": "Filters here apply to mail already in this mailbox when you run them. They can move, label, mark read, star or pin mail to a section.",
+				"neverRuns": "Never runs here",
+				"runsOnApply": "Runs only when you apply it"
 			},
 			"forwarding": {
 				"connectedNotice": "{address} is synced from your provider, so Owlat cannot forward its mail. Set forwarding up at your provider.",
