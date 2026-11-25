@@ -16,6 +16,7 @@ import {
 } from './operations';
 import { sendingDomainSetupSchema } from './domains';
 import { sendingHoldLiftSchema } from './status';
+import { contentIssueSchema, emailBlockSchema, emailTranslationSchema } from './templates';
 import { transactionalAttachmentSchema } from './transactional';
 import type { ApiErrorReason } from './types';
 
@@ -26,8 +27,8 @@ const STATUS_TEXT: Record<number, string> = {
 	401: 'The API key is missing, malformed or unknown.',
 	403: 'The API key lacks the scope this operation needs, or the feature is disabled.',
 	404: 'A resource the request names does not exist.',
-	409: 'The request conflicts with existing data or reuses an Idempotency-Key.',
-	422: 'The workspace is not in a state that can carry out the request.',
+	409: 'The request conflicts with existing data, reuses an Idempotency-Key or names a revision that is no longer current.',
+	422: 'The workspace or the resource is not in a state that can carry out the request.',
 	429: 'Too many requests; retry after the `Retry-After` header.',
 	500: 'The server failed to complete the request.',
 };
@@ -112,6 +113,33 @@ function successBody(operation: PublicOperation): JsonObject {
  * open to fields a later release adds.
  */
 const REASON_DATA: Partial<Record<ApiErrorReason, JsonObject>> = {
+	invalid_content: {
+		field: {
+			type: 'string',
+			description: 'The request field at fault: `blocks` on an `invalid_content` refusal.',
+		},
+		blockId: {
+			type: 'string',
+			description: 'The id of the first block at fault.',
+		},
+		issues: {
+			type: 'array',
+			items: ref('ContentIssue'),
+			description: 'Everything the content check found, each error with the id of its block.',
+		},
+	},
+	revision_mismatch: {
+		currentRevision: {
+			type: 'integer',
+			description: "The email's current revision, on a `revision_mismatch` refusal.",
+		},
+	},
+	content_blocked: {
+		scanScore: {
+			type: 'integer',
+			description: "The content scan's score out of 100, on a `content_blocked` refusal.",
+		},
+	},
 	invalid_variables: {
 		field: {
 			type: 'string',
@@ -219,6 +247,18 @@ function operationObject(operation: PublicOperation): JsonObject {
 			description: parameter.description,
 			schema: parameter.schema,
 		})),
+		...(operation.conditional && operation.method !== 'GET'
+			? [
+					{
+						name: 'If-Match',
+						in: 'header',
+						required: false,
+						description:
+							'The revision the request was built on, as the `ETag` of a read sent it (`"3"`). A resource that has moved on since is refused with `revision_mismatch`.',
+						schema: { type: 'string' },
+					},
+				]
+			: []),
 		...(operation.idempotent
 			? [
 					{
@@ -234,6 +274,14 @@ function operationObject(operation: PublicOperation): JsonObject {
 	];
 	const successHeaders: JsonObject = {
 		...(keyed ? RATE_LIMIT_HEADERS : {}),
+		...(operation.conditional
+			? {
+					ETag: {
+						description: 'The revision of the resource in the body, quoted, for an `If-Match`.',
+						schema: { type: 'string' },
+					},
+				}
+			: {}),
 		...(operation.idempotent
 			? {
 					'Idempotent-Replayed': {
@@ -329,6 +377,9 @@ export function buildOpenApiDocument(
 	const responses = componentSchemas(
 		[
 			['ApiErrorResponse', apiErrorResponseSchema],
+			['ContentIssue', contentIssueSchema],
+			['EmailBlock', emailBlockSchema],
+			['EmailTranslation', emailTranslationSchema],
 			['CursorPaginationMeta', cursorPaginationMetaSchema],
 			['PaginationMeta', paginationMetaSchema],
 			['SendingDomainSetup', sendingDomainSetupSchema],
@@ -353,9 +404,16 @@ export function buildOpenApiDocument(
 				'The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand. Every instance serves its own copy at `/api/v1/openapi.json`, with its own API address as the server.',
 		},
 		servers: [options.serverUrl ? { url: options.serverUrl } : TEMPLATE_SERVER],
-		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Status', 'Domains', 'Health'].map(
-			(name) => ({ name })
-		),
+		tags: [
+			'Contacts',
+			'Events',
+			'Transactional',
+			'Templates',
+			'Topics',
+			'Status',
+			'Domains',
+			'Health',
+		].map((name) => ({ name })),
 		paths,
 		components: {
 			securitySchemes: {

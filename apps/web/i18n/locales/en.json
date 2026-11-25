@@ -10828,11 +10828,17 @@
 							"health": "Health probe",
 							"limits": "This key's send limits and what is left",
 							"openapi": "This instance's OpenAPI document, for API clients and AI agents",
+							"savedBlock": "Read or replace a saved block",
+							"savedBlocks": "List or create saved blocks",
 							"status": "Whether this instance can send, and why not",
 							"topicContactAdd": "Add a contact to a topic",
 							"topicContactRemove": "Remove a contact from a topic",
 							"topics": "List topics",
 							"transactional": "Send a transactional email (slug in body), or list sends",
+							"transactionalEmail": "Read a transactional email, or create or replace it by slug",
+							"transactionalEmailPublish": "Publish a transactional email",
+							"transactionalEmailUnpublish": "Return a transactional email to draft",
+							"transactionalEmails": "List or create transactional emails",
 							"transactionalSend": "Delivery status of one send"
 						},
 						"fullReference": "Full API reference",
@@ -10936,6 +10942,14 @@
 							"statusRead": {
 								"description": "See whether this instance can send, why not, and which DNS records each sending domain still needs.",
 								"label": "Status — read"
+							},
+							"templatesRead": {
+								"description": "Read transactional emails and saved blocks: content, translations and variable schema.",
+								"label": "Templates — read"
+							},
+							"templatesWrite": {
+								"description": "Create and change transactional emails and saved blocks, and publish or unpublish them.",
+								"label": "Templates — write"
 							},
 							"topicsRead": {
 								"description": "List topics and the IDs used to add contacts to them.",

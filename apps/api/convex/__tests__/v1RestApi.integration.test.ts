@@ -36,6 +36,8 @@ import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
 import { listDomains } from '../publicApi/domainsHttp';
 import { getLimits } from '../publicApi/limitsHttp';
+import * as transactionalEmailsApi from '../publicApi/transactionalEmailsHttp';
+import * as savedBlocksApi from '../publicApi/savedBlocksHttp';
 import { rateLimiter } from '../lib/rateLimiter';
 import { PER_API_KEY_DAILY_BUCKET, PER_API_KEY_DAILY_CONFIG } from '../transactional/sendCaps';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
@@ -118,6 +120,8 @@ const ALL_SCOPES = [
 	'topics:write',
 	'topics:read',
 	'status:read',
+	'templates:read',
+	'templates:write',
 ];
 
 function setupTest() {
@@ -3183,6 +3187,16 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	getStatus,
 	listDomains,
 	getLimits,
+	listTransactionalEmails: transactionalEmailsApi.listTransactionalEmails,
+	createTransactionalEmail: transactionalEmailsApi.createTransactionalEmail,
+	getTransactionalEmail: transactionalEmailsApi.getTransactionalEmail,
+	putTransactionalEmail: transactionalEmailsApi.putTransactionalEmail,
+	publishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	unpublishTransactionalEmail: transactionalEmailsApi.transitionTransactionalEmail,
+	listSavedBlocks: savedBlocksApi.listSavedBlocks,
+	createSavedBlock: savedBlocksApi.createSavedBlock,
+	getSavedBlock: savedBlocksApi.getSavedBlock,
+	updateSavedBlock: savedBlocksApi.updateSavedBlock,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */

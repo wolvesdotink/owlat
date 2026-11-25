@@ -10828,11 +10828,17 @@
 							"health": "Statusprüfung",
 							"limits": "Die Sendelimits dieses Schlüssels und was davon übrig ist",
 							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
+							"savedBlock": "Einen gespeicherten Block lesen oder ersetzen",
+							"savedBlocks": "Gespeicherte Blöcke auflisten oder anlegen",
 							"status": "Ob diese Instanz senden kann, und wenn nicht, warum",
 							"topicContactAdd": "Einen Kontakt zu einem Thema hinzufügen",
 							"topicContactRemove": "Einen Kontakt aus einem Thema entfernen",
 							"topics": "Themen auflisten",
 							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body) oder Sendungen auflisten",
+							"transactionalEmail": "Eine Transaktions-E-Mail lesen oder per Slug anlegen oder ersetzen",
+							"transactionalEmailPublish": "Eine Transaktions-E-Mail veröffentlichen",
+							"transactionalEmailUnpublish": "Eine Transaktions-E-Mail zurück in den Entwurf setzen",
+							"transactionalEmails": "Transaktions-E-Mails auflisten oder anlegen",
 							"transactionalSend": "Zustellstatus einer Sendung"
 						},
 						"fullReference": "Vollständige API-Referenz",
@@ -10936,6 +10942,14 @@
 							"statusRead": {
 								"description": "Sehen, ob diese Instanz senden kann, warum nicht und welche DNS-Einträge jede Absenderdomain noch braucht.",
 								"label": "Status — lesen"
+							},
+							"templatesRead": {
+								"description": "Transaktions-E-Mails und gespeicherte Blöcke lesen: Inhalt, Übersetzungen und Variablenschema.",
+								"label": "Vorlagen — lesen"
+							},
+							"templatesWrite": {
+								"description": "Transaktions-E-Mails und gespeicherte Blöcke anlegen und ändern und sie veröffentlichen oder zurückziehen.",
+								"label": "Vorlagen — schreiben"
 							},
 							"topicsRead": {
 								"description": "Themen und die IDs auflisten, mit denen du Kontakte hinzufügst.",
