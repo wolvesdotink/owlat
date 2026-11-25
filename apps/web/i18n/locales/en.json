@@ -12036,7 +12036,7 @@
 					"toasts": {
 						"activated": "Automation activated",
 						"draftSaved": "Draft saved",
-						"paused": "Automation paused",
+						"paused": "Automation paused. Emails it had queued won't be sent, even if you resume it.",
 						"resumeBlocked": "Your step changes couldn't be saved, so the automation wasn't resumed.",
 						"resumed": "Automation resumed",
 						"stepSaveFailed": "Your step changes couldn't be saved."
@@ -12089,6 +12089,7 @@
 						"cancelled": "Cancelled",
 						"completed": "Completed",
 						"emailSkip": {
+							"automationPaused": "Not sent: the automation was paused before this email went out.",
 							"leftDeletedTopic": "Emails skipped: this contact is not subscribed to the automation's topic.",
 							"leftTopic": "Emails skipped: this contact is not subscribed to the topic {name}.",
 							"unsubscribed": "Emails skipped: this contact unsubscribed from all emails."
@@ -12203,7 +12204,7 @@
 					"activated": "\"{name}\" is now active",
 					"draftNotToggleable": "Please complete and activate this automation from the builder",
 					"duplicated": "Automation duplicated successfully",
-					"paused": "\"{name}\" has been paused"
+					"paused": "\"{name}\" has been paused. Emails it had queued won't be sent, even if you resume it."
 				},
 				"noStatusResults": {
 					"title": "No automations with the status “{status}”",
@@ -18222,6 +18223,7 @@
 			"hideProviderText": "Hide error details",
 			"labels": {
 				"addressUnsupported": "Address not supported",
+				"automationPaused": "Automation paused",
 				"blocklisted": "On the blocklist",
 				"contactDeleted": "Contact deleted",
 				"content": "Content refused",
@@ -18244,6 +18246,7 @@
 			},
 			"reasons": {
 				"addressUnsupported": "The mail server used for this send cannot handle addresses with characters outside plain ASCII, such as ü, in the sender or the recipient.",
+				"automationPaused": "Not sent because its automation was paused before the message went out. Resuming the automation does not send it.",
 				"blocklisted": "Skipped because the address is on the blocklist. Owlat does this on its own, so there is nothing to do.",
 				"contactDeleted": "Skipped because the contact was deleted before the message went out.",
 				"content": "The provider refused the content of the message, for example as spam. Change the content before you send it again.",

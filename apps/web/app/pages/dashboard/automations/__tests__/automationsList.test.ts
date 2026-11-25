@@ -445,7 +445,9 @@ describe('automations list — active switch', () => {
 		expect(pauseAutomation).toHaveBeenCalledWith({ automationId: 'au_welcome' });
 
 		const [message, , options] = showToast.mock.calls.at(-1)!;
-		expect(message).toBe('"Welcome sequence" has been paused');
+		expect(message).toBe(
+			'"Welcome sequence" has been paused. Emails it had queued won\'t be sent, even if you resume it.'
+		);
 		options!.action!.onAction();
 		options!.action!.onAction();
 		await flushPromises();
@@ -482,7 +484,9 @@ describe('automations list — active switch', () => {
 		await switchOf(wrapper, 'Welcome sequence').trigger('click');
 		await flushPromises();
 		const [message, , options] = showToast.mock.calls.at(-1)!;
-		expect(message).toBe('"Welcome sequence" has been paused');
+		expect(message).toBe(
+			'"Welcome sequence" has been paused. Emails it had queued won\'t be sent, even if you resume it.'
+		);
 		expect(options?.action).toBeUndefined();
 	});
 });

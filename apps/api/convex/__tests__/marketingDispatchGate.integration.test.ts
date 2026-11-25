@@ -158,6 +158,90 @@ describe('worker — marketing dispatch gate', () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
+	describe('the automation that queued the Send', () => {
+		async function linkAutomation(
+			t: ReturnType<typeof convexTest>,
+			sendId: Id<'transactionalSends'>,
+			automation: (queuedAt: number) => Record<string, unknown>
+		): Promise<Id<'automations'>> {
+			return await t.run(async (ctx) => {
+				const send = await ctx.db.get(sendId);
+				const automationId = await ctx.db.insert(
+					'automations',
+					createTestAutomation(automation(send!._creationTime))
+				);
+				await ctx.db.patch(sendId, { automationId });
+				return automationId;
+			});
+		}
+
+		it.each([
+			['was paused', (at: number) => ({ status: 'paused', statusChangedAt: at + 1 })],
+			[
+				'was paused and resumed',
+				(at: number) => ({ status: 'active', statusChangedAt: at + 2, pausedAt: undefined }),
+			],
+			['was reverted to draft', (at: number) => ({ status: 'draft', statusChangedAt: at + 2 })],
+			[
+				'was deleted',
+				(at: number) => ({ status: 'paused', statusChangedAt: at + 1, deletedAt: at + 2 }),
+			],
+		] as const)(
+			'%s after the Send was queued: the email is withdrawn, never dispatched',
+			async (_label, automation) => {
+				const t = convexTest(schema, modules);
+				const { sendId, contactId } = await seedQueuedAutomationSend(t);
+				await linkAutomation(t, sendId, automation);
+				const fetchSpy = vi.fn();
+				global.fetch = fetchSpy as unknown as typeof fetch;
+
+				const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+					envelopeInput: automationEnvelope(sendId, contactId),
+				});
+
+				expect(result).toEqual({ kind: 'suppressed', reason: 'automation_paused' });
+				expect(fetchSpy).not.toHaveBeenCalled();
+			}
+		);
+
+		it('was purged after its deletion: the email is withdrawn', async () => {
+			const t = convexTest(schema, modules);
+			const { sendId, contactId } = await seedQueuedAutomationSend(t);
+			const automationId = await linkAutomation(t, sendId, () => ({ status: 'paused' }));
+			await t.run(async (ctx) => ctx.db.delete(automationId));
+			const fetchSpy = vi.fn();
+			global.fetch = fetchSpy as unknown as typeof fetch;
+
+			const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+				envelopeInput: automationEnvelope(sendId, contactId),
+			});
+
+			expect(result).toEqual({ kind: 'suppressed', reason: 'automation_paused' });
+			expect(fetchSpy).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			['active since before the Send was queued', (at: number) => ({ statusChangedAt: at - 1 })],
+			['active and never transitioned since the stamp existed', () => ({})],
+		] as const)('is %s: the email goes out', async (_label, stamp) => {
+			const t = convexTest(schema, modules);
+			const { sendId, contactId } = await seedQueuedAutomationSend(t);
+			await linkAutomation(t, sendId, (at) => ({ status: 'active', ...stamp(at) }));
+			const fetchSpy = vi
+				.fn()
+				.mockResolvedValueOnce(decisionResponse())
+				.mockResolvedValueOnce(acceptedResponse('mta-receipt-active'));
+			global.fetch = fetchSpy as unknown as typeof fetch;
+
+			const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+				envelopeInput: automationEnvelope(sendId, contactId),
+			});
+
+			expect(result.kind).toBe('accepted');
+			expect(fetchSpy).toHaveBeenCalled();
+		});
+	});
+
 	it('a Send whose contact row was erased is never dispatched', async () => {
 		const t = convexTest(schema, modules);
 		const { sendId, contactId } = await seedQueuedAutomationSend(t);
@@ -488,6 +572,7 @@ describe('worker — marketing dispatch gate', () => {
 	it.each([
 		['contact_unsubscribed', 'RECIPIENT_UNSUBSCRIBED'],
 		['contact_deleted', 'CONTACT_DELETED'],
+		['automation_paused', 'AUTOMATION_PAUSED'],
 	] as const)(
 		'completion records a %s refusal as a terminal non-delivery with code %s',
 		async (reason, errorCode) => {
