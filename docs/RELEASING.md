@@ -284,8 +284,9 @@ a partial publish completes it.
 One-time setup, done by a maintainer with owner rights on npm:
 
 1. Create the `owlat` organization on npmjs.com if it does not exist.
-2. Create a granular access token with **Read and write** for the `@owlat`
-   scope under **Packages and scopes**, and turn on **Bypass two-factor
+2. Create a granular access token with **Read and write (publish and stage)**
+   for the `@owlat` scope under **Packages and scopes** (a stage-only token
+   cannot publish), and turn on **Bypass two-factor
    authentication**: the job publishes unattended, and npm refuses a publish
    that asks for a one-time password. Store it as the repository secret
    `NPM_TOKEN`.
