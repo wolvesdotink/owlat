@@ -180,7 +180,7 @@ export async function evaluateSourceCheckout(
 	return {
 		check: 'version.source',
 		ok: false,
-		message: doctorText`The source tree in the install directory is ${at}, but ${tag} runs: updates replace docker-compose.yml and .env, not the checkout. Read the running source at https://github.com/wolvesdotink/owlat/tree/${tag}, or move the checkout with \`git fetch --depth 1 origin tag ${tag} && git checkout ${tag}\` in the install directory (git keeps local edits, and stops if one would be overwritten).`,
+		message: doctorText`The source tree in the install directory is ${at}, but ${tag} runs: updates replace docker-compose.yml and .env, not the checkout. Read the running source at https://github.com/wolvesdotink/owlat/tree/${tag}.`,
 	};
 }
 

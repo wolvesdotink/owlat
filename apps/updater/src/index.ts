@@ -10,6 +10,7 @@ import {
 	SHUTDOWN_DEADLINE_MS,
 } from './lifecycle.js';
 import { reconcileInterruptedUpdate } from './update.js';
+import { syncVersionRecord } from './versionRecord.js';
 
 const log = (message: string, detail?: unknown) => {
 	if (detail === undefined) console.info(`[updater] ${message}`);
@@ -30,6 +31,12 @@ const metrics = startNodeMetrics({
 // else is served: its record says so in words, and a template it had only
 // staged is removed.
 await reconcileInterruptedUpdate();
+
+// After the rollout is settled, so `.env` says what the host is configured to
+// run. Logged, never fatal.
+const versionRecord = await syncVersionRecord();
+if (versionRecord?.ok) log(versionRecord.stdout);
+else if (versionRecord) log('could not write VERSION:', versionRecord.stderr);
 
 const server = createServer(buildRequestListener({ metrics: metrics.registry }));
 

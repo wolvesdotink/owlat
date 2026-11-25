@@ -111,6 +111,15 @@ describe('owlat status', () => {
 		expect(result.stderr).not.toContain('[warn]');
 	});
 
+	it('still lists the containers without a .env', async () => {
+		await checkoutOf(['v0.4.19']);
+
+		const result = await status();
+
+		expect(result.code).toBe(0);
+		expect(result.stdout).toContain('NAME  SERVICE  STATUS');
+	});
+
 	it('says nothing about versions on a stack built from the tree it runs in', async () => {
 		await checkoutOf(['v0.4.19']);
 		await writeFile(join(dir, '.env'), 'OWLAT_VERSION=dev\n');

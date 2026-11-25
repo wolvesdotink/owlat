@@ -2,8 +2,16 @@
  * The install directory's VERSION file, rewritten as a step of a rollout once
  * the release it names is the one the host is configured to run.
  */
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
-import { writeVersionRecord } from '@owlat/shared/installVersionRecord';
+import { parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
+import {
+	isReleaseVersion,
+	parseVersionRecordVersion,
+	VERSION_RECORD_FILE,
+	writeVersionRecord,
+} from '@owlat/shared/installVersionRecord';
 import { OWLAT_DIR } from './http.js';
 
 type Step = { step: string; ok?: boolean; stdout: string; stderr: string };
@@ -24,4 +32,20 @@ export async function recordRunningVersion(
 			stderr: `Cannot write VERSION: ${errorMessage(err)}`,
 		};
 	}
+}
+
+/**
+ * Bring VERSION in line with the release `.env` pins, when it is missing or
+ * names another. Run once at startup: the updater is recreated after every
+ * update, and on the first update of an install that predates VERSION it is
+ * the previous release's updater that applies it, which never writes the
+ * file. Nothing to do on a `dev` stack or an unreadable `.env`.
+ */
+export async function syncVersionRecord(): Promise<Step | null> {
+	const env = await readFile(join(OWLAT_DIR, '.env'), 'utf-8').catch(() => '');
+	const pinned = parseConfiguredVersionFromEnv(env) ?? '';
+	if (!isReleaseVersion(pinned)) return null;
+	const record = await readFile(join(OWLAT_DIR, VERSION_RECORD_FILE), 'utf-8').catch(() => null);
+	if (record !== null && parseVersionRecordVersion(record) === pinned) return null;
+	return recordRunningVersion(pinned, 'updater');
 }
