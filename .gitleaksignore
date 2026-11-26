@@ -15,3 +15,8 @@ f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/mtaScenario.ts:gener
 f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/compose.yml:generic-api-key:63
 f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/compose.yml:generic-api-key:64
 f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/compose.yml:generic-api-key:65
+#
+# The Ed25519 DKIM key's Redis field names. The flagged line maps a property to
+# the name of a hash field and holds no key material. In the tree the line
+# carries an inline allow mark.
+c306822985e3cce741ff777a36756e6f2f0e347c:apps/mta/src/smtp/dkimStore.ts:generic-api-key:55

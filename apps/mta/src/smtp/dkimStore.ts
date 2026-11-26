@@ -52,7 +52,9 @@ const AWAITING_DNS_FIELD = 'awaitingDnsSince';
  */
 export const ED25519_FIELDS = {
 	selector: 'ed25519Selector',
-	privateKey: 'ed25519PrivateKey',
+	// A field name, not key material. The secret scan reads this line as a key
+	// being assigned.
+	privateKey: 'ed25519PrivateKey', // gitleaks:allow
 	awaitingDnsSince: 'ed25519AwaitingDnsSince',
 	addedAt: 'ed25519AddedAt',
 } as const;
