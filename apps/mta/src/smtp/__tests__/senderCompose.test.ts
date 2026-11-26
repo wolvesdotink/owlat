@@ -51,6 +51,7 @@ import { clearCache, ED25519_FIELDS, setDkimKey } from '../dkimStore.js';
 import {
 	clearEd25519PublicationCache,
 	createEd25519Key,
+	ed25519PublicationProbesSettled,
 	resolveOptionalEd25519Key,
 } from '../dkimEd25519.js';
 import { prepareSignedMessage } from '../send/compose.js';
@@ -504,6 +505,7 @@ describe('sendToMx message composition', () => {
 		it('sends with the RSA signature alone while the record is not published', async () => {
 			// Prime the negative cache the way a first lookup with no record would.
 			await resolveOptionalEd25519Key(redis, DOMAIN, 'org-1', async () => []);
+			await ed25519PublicationProbesSettled();
 
 			const result = await sendToMx(
 				createJob({ requireDkimSignature: true }),

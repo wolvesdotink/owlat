@@ -104,7 +104,9 @@ export const removeKey = authedAction({
 	handler: async (ctx, args): Promise<null> => {
 		const target = await ctx.runQuery(internal.domains.dkimEd25519.loadForKeyChange, args);
 		assertChangeable(target);
-		await callMta(() => createMtaIdentityManager().removeEd25519Key(target.domain));
+		await callMta(() =>
+			createMtaIdentityManager().removeEd25519Key(target.domain, target.organizationId)
+		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycleDkim.setOptionalDkimRecord, {
 			domainId: args.domainId,
 			record: null,

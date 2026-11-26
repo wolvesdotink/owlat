@@ -192,11 +192,18 @@ export class MtaIdentityManager {
 		return { selector: decoded.value.selector, dnsRecord: decoded.value.dnsRecord };
 	}
 
-	/** Remove the domain's Ed25519 key; the RSA key stays. Idempotent on the MTA. */
-	async removeEd25519Key(domain: string): Promise<void> {
+	/**
+	 * Remove the domain's Ed25519 key; the RSA key stays. Idempotent on the MTA,
+	 * which refuses a domain owned by another organization with a 409.
+	 */
+	async removeEd25519Key(domain: string, organizationId: string): Promise<void> {
 		const response = await fetch(`${this.baseUrl}/dkim/${encodeURIComponent(domain)}/ed25519`, {
 			method: 'DELETE',
-			headers: { Authorization: `Bearer ${this.apiKey}` },
+			headers: {
+				Authorization: `Bearer ${this.apiKey}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ organizationId }),
 		});
 		if (!response.ok) {
 			const body = await response.text().catch(() => 'Unknown error');

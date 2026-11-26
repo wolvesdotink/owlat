@@ -8,6 +8,7 @@ import {
 	createEd25519Key,
 	describeEd25519Key,
 	ed25519DnsRecordFromPrivateKey,
+	ed25519PublicationProbesSettled,
 	removeEd25519Key,
 	resolveOptionalEd25519Key,
 } from '../dkimEd25519.js';
@@ -23,6 +24,10 @@ const DOMAIN = 'example.com';
 const HASH = `mta:dkim:${DOMAIN}`;
 const RSA_PEM = generateKeyPairSync('rsa', {
 	modulusLength: 1024,
+	publicKeyEncoding: { type: 'spki', format: 'pem' },
+	privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+}).privateKey;
+const ED_PEM = generateKeyPairSync('ed25519', {
 	publicKeyEncoding: { type: 'spki', format: 'pem' },
 	privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 }).privateKey;
@@ -97,8 +102,8 @@ describe('dkimEd25519', () => {
 		it('removes only the Ed25519 fields and is idempotent', async () => {
 			await createEd25519Key(redis, DOMAIN);
 
-			expect(await removeEd25519Key(redis, DOMAIN)).toBe(true);
-			expect(await removeEd25519Key(redis, DOMAIN)).toBe(false);
+			expect(await removeEd25519Key(redis, DOMAIN)).toEqual({ kind: 'ok', removed: true });
+			expect(await removeEd25519Key(redis, DOMAIN)).toEqual({ kind: 'ok', removed: false });
 
 			const config = await getDkimConfig(redis, DOMAIN);
 			expect(config).toMatchObject({
@@ -109,6 +114,32 @@ describe('dkimEd25519', () => {
 			expect(config?.ed25519).toBeUndefined();
 			expect(await describeEd25519Key(redis, DOMAIN)).toBeUndefined();
 		});
+	});
+
+	it('keeps the key of a domain owned by another organization', async () => {
+		const created = await createEd25519Key(redis, DOMAIN, 'org_a');
+		if (created.kind !== 'ok') throw new Error(created.kind);
+
+		expect(await removeEd25519Key(redis, DOMAIN, 'org_b')).toEqual({ kind: 'org_mismatch' });
+		expect((await describeEd25519Key(redis, DOMAIN))?.selector).toBe(created.selector);
+		expect(await removeEd25519Key(redis, DOMAIN, 'org_a')).toEqual({ kind: 'ok', removed: true });
+	});
+
+	it('describes the key Redis holds, not a cached copy of the domain', async () => {
+		// Fill this process's signing cache, then change Redis the way another
+		// replica would: without invalidating that cache.
+		await getDkimConfig(redis, DOMAIN);
+		const sealed = getMtaSecretBox().seal(ED_PEM);
+		await redis.hset(HASH, ED25519_FIELDS.selector, 'e9', ED25519_FIELDS.privateKey, sealed);
+		expect((await getDkimConfig(redis, DOMAIN))?.ed25519).toBeUndefined();
+
+		expect(await describeEd25519Key(redis, DOMAIN)).toEqual({
+			selector: 'e9',
+			dnsRecord: ed25519DnsRecordFromPrivateKey(ED_PEM),
+		});
+
+		await redis.hdel(HASH, ED25519_FIELDS.selector, ED25519_FIELDS.privateKey);
+		expect(await describeEd25519Key(redis, DOMAIN)).toBeUndefined();
 	});
 
 	it('an RSA rotation leaves the Ed25519 key alone', async () => {
@@ -139,39 +170,88 @@ describe('dkimEd25519', () => {
 			});
 		});
 
-		it('signs nothing until the record is published, then clears the mark', async () => {
+		it('signs nothing until a background check sees the record, then clears the mark', async () => {
 			const created = await createEd25519Key(redis, DOMAIN);
 			if (created.kind !== 'ok') throw new Error(created.kind);
+			const unpublished = { kind: 'skipped', reason: 'unpublished' };
 
 			const missing = txtAnswering([]);
-			expect(await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', missing)).toEqual({
-				kind: 'skipped',
-				reason: 'unpublished',
-			});
+			expect(await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', missing)).toEqual(unpublished);
+			await ed25519PublicationProbesSettled();
 			// The negative cache answers the next message without asking DNS again.
-			expect(await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', missing)).toEqual({
-				kind: 'skipped',
-				reason: 'unpublished',
-			});
+			expect(await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', missing)).toEqual(unpublished);
+			await ed25519PublicationProbesSettled();
 			expect(missing).toHaveBeenCalledTimes(1);
 			expect(missing).toHaveBeenCalledWith(`${created.selector}._domainkey.${DOMAIN}`);
 
+			// The message that starts the successful check is not held for it.
 			clearEd25519PublicationCache();
-			const published = await resolveOptionalEd25519Key(
-				redis,
-				DOMAIN,
-				'org_a',
-				txtAnswering([[created.dnsRecord]])
+			const published = txtAnswering([[created.dnsRecord]]);
+			expect(await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', published)).toEqual(
+				unpublished
 			);
-			expect(published).toMatchObject({
+			await ed25519PublicationProbesSettled();
+			expect(await redis.hget(HASH, ED25519_FIELDS.awaitingDnsSince)).toBeNull();
+
+			// Once published, the key signs and DNS is not asked again.
+			const unused = txtAnswering([]);
+			expect(await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', unused)).toMatchObject({
 				kind: 'key',
 				key: { domainName: DOMAIN, keySelector: created.selector, algorithm: 'ed25519-sha256' },
 			});
-			expect(await redis.hget(HASH, ED25519_FIELDS.awaitingDnsSince)).toBeNull();
-			// Once published, DNS is not asked again.
-			const unused = txtAnswering([]);
-			expect((await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', unused)).kind).toBe('key');
 			expect(unused).not.toHaveBeenCalled();
+		});
+
+		it('does not wait for a resolver that never answers', async () => {
+			const created = await createEd25519Key(redis, DOMAIN);
+			if (created.kind !== 'ok') throw new Error(created.kind);
+			let answer: (records: string[][]) => void = () => {};
+			const hanging = vi.fn(() => new Promise<string[][]>((resolve) => void (answer = resolve)));
+
+			expect(await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', hanging)).toEqual({
+				kind: 'skipped',
+				reason: 'unpublished',
+			});
+			// A second message neither waits nor starts a second lookup.
+			expect((await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', hanging)).kind).toBe(
+				'skipped'
+			);
+			expect(hanging).toHaveBeenCalledTimes(1);
+
+			answer([[created.dnsRecord]]);
+			await ed25519PublicationProbesSettled();
+			expect((await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a')).kind).toBe('key');
+		});
+
+		it.each([
+			['without a key type, which reads as RSA', (p: string) => `v=DKIM1; p=${p}`],
+			['with the RSA key type', (p: string) => `v=DKIM1; k=rsa; p=${p}`],
+			['with another key', () => ed25519DnsRecordFromPrivateKey(ED_PEM)],
+		])('keeps the mark for a record %s', async (_case, recordFor) => {
+			const created = await createEd25519Key(redis, DOMAIN);
+			if (created.kind !== 'ok') throw new Error(created.kind);
+			const p = /p=([A-Za-z0-9+/=]+)/.exec(created.dnsRecord)![1]!;
+
+			await resolveOptionalEd25519Key(redis, DOMAIN, 'org_a', txtAnswering([[recordFor(p)]]));
+			await ed25519PublicationProbesSettled();
+
+			expect(await redis.hget(HASH, ED25519_FIELDS.awaitingDnsSince)).not.toBeNull();
+		});
+
+		it('accepts the record split into TXT chunks with spaces', async () => {
+			const created = await createEd25519Key(redis, DOMAIN);
+			if (created.kind !== 'ok') throw new Error(created.kind);
+			const p = /p=([A-Za-z0-9+/=]+)/.exec(created.dnsRecord)![1]!;
+
+			await resolveOptionalEd25519Key(
+				redis,
+				DOMAIN,
+				'org_a',
+				txtAnswering([['v=DKIM1;k=ed25519; ', `p=${p.slice(0, 20)}`, p.slice(20)]])
+			);
+			await ed25519PublicationProbesSettled();
+
+			expect(await redis.hget(HASH, ED25519_FIELDS.awaitingDnsSince)).toBeNull();
 		});
 
 		it('skips a key that does not open', async () => {

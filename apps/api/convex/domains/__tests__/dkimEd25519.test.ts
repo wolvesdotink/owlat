@@ -128,6 +128,10 @@ describe('domains.dkimEd25519', () => {
 		await t.action(api.domains.dkimEd25519.removeKey, { domainId });
 
 		expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('DELETE');
+		// The MTA checks the owner again before it deletes.
+		expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+			organizationId: 'org-a',
+		});
 		const domain = await row(t, domainId);
 		expect(domain!.status).toBe('verified');
 		expect(domain!.dnsRecords.dkim).toEqual([RSA_RECORD]);

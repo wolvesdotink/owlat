@@ -374,5 +374,16 @@ describe('DKIM rotation routes (PR-29)', () => {
 			expect(rsaAfter?.privateKey).toBe(rsaBefore?.privateKey);
 			expect(rsaAfter?.ed25519).toBeUndefined();
 		});
+
+		it('DELETE answers 409 for another organization and keeps the key', async () => {
+			await authedRequest(app, 'POST', '/example.com/ed25519', { organizationId: 'org_a' });
+
+			const res = await authedRequest(app, 'DELETE', '/example.com/ed25519', {
+				organizationId: 'org_b',
+			});
+
+			expect(res.status).toBe(409);
+			expect((await dkimStore.getDkimConfig(redis, 'example.com'))?.ed25519).toBeDefined();
+		});
 	});
 });

@@ -213,11 +213,17 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 		});
 	});
 
-	// Remove the domain's Ed25519 key; the RSA key stays. Idempotent.
+	// Remove the domain's Ed25519 key; the RSA key stays. Idempotent. A request
+	// that names an organization is refused for a domain bound to another one.
 	app.delete('/:domain/ed25519', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const removed = await dkimEd25519.removeEd25519Key(redis, domain);
-		return c.json({ success: true, domain, removed });
+		const read = await readJsonBody(c, ownerBody, BODY_LESS);
+		if (!read.ok) return read.response;
+		const result = await dkimEd25519.removeEd25519Key(redis, domain, read.value.organizationId);
+		if (result.kind === 'org_mismatch') {
+			return c.json({ error: `Domain ${domain} is registered to a different organization` }, 409);
+		}
+		return c.json({ success: true, domain, removed: result.removed });
 	});
 
 	// Rotate key.
