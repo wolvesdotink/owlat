@@ -87,4 +87,45 @@ describe('systemSenderDomain.dnsStatus', () => {
 			],
 		});
 	});
+
+	it('leaves the optional Ed25519 record out of what doctor reports', async () => {
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.org');
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'mail.example.org',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {
+					dkim: [
+						{
+							type: 'TXT',
+							hostname: 's1._domainkey.mail.example.org',
+							value: 'v=DKIM1; k=rsa; p=AAAA',
+						},
+						{
+							type: 'TXT',
+							hostname: 'e1._domainkey.mail.example.org',
+							value: 'v=DKIM1; k=ed25519; p=BBBB',
+							optional: true,
+						},
+					],
+				},
+				verificationResults: {
+					dkim: [
+						{ verified: true, lastChecked: 1 },
+						{ verified: false, lastChecked: 1, optional: true },
+					],
+				},
+				createdAt: 1,
+				updatedAt: 1,
+			});
+		});
+
+		const status = await t.query(internal.domains.systemSenderDomain.dnsStatus, {});
+		expect(status).toMatchObject({
+			state: 'verified',
+			records: [{ label: 'DKIM', name: 's1._domainkey.mail.example.org', verified: true }],
+		});
+	});
 });

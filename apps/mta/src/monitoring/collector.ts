@@ -216,6 +216,19 @@ export const dkimSignatureWithheldTotal = new Counter({
 });
 
 /**
+ * Messages from a domain with an Ed25519 key, by what happened to the second
+ * signature: `signed`, or why it was left off (`unpublished`, `unreadable`,
+ * `unusable`, `org_mismatch`, `sign_failed`). Every outcome but `signed` sends
+ * with the RSA signature alone; none of them holds a send.
+ */
+export const dkimEd25519SignaturesTotal = new Counter({
+	name: 'mta_dkim_ed25519_signatures_total',
+	help: 'Optional Ed25519 DKIM signatures on outbound mail, by outcome',
+	labelNames: ['outcome'] as const,
+	registers: [registry],
+});
+
+/**
  * Record a delivery outcome in both Redis (persistent) and Prometheus (in-memory)
  */
 export async function record(

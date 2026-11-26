@@ -51,7 +51,12 @@ import { dkimVerify } from 'mailauth';
 // scans `src/**` only) is unaffected.
 import { verifyDkim } from '@owlat/mail-auth';
 import { composeMessage } from '../src/compose/compose';
-import { signMessage, buildDkimSignatureLine, type DkimSigningKey } from '../src/compose/dkim';
+import {
+	signMessage,
+	signMessageWithKeys,
+	buildDkimSignatureLine,
+	type DkimSigningKey,
+} from '../src/compose/dkim';
 
 /* -------------------------------------------------------------------------- */
 /*  mailauth internals — the oracle for the bit-for-bit reference signer.      */
@@ -504,5 +509,123 @@ describe('signMessage — deterministic given a fixed sign time', () => {
 		const a = signMessage(raw, signingKey, SIGN_TIME_MS);
 		const b = signMessage(raw, signingKey, SIGN_TIME_MS);
 		expect(a.equals(b)).toBe(true);
+	});
+});
+
+/* -------------------------------------------------------------------------- */
+/*  RSA + Ed25519 (RFC 8463): two independent signatures over one message.    */
+/* -------------------------------------------------------------------------- */
+
+describe('signMessageWithKeys — RSA first, Ed25519 second', () => {
+	const ED_SELECTOR = 'e2026';
+	let edKey: DkimSigningKey;
+	let bothResolver: (name: string, rrtype: string) => Promise<string[][]>;
+
+	beforeAll(() => {
+		const ed = generateKeyPairSync('ed25519', {
+			publicKeyEncoding: { type: 'spki', format: 'der' },
+			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+		});
+		edKey = {
+			domainName: DOMAIN,
+			keySelector: ED_SELECTOR,
+			privateKey: ed.privateKey,
+			algorithm: 'ed25519-sha256',
+		};
+		// RFC 8463 §4.2: the record carries the raw 32-byte key, not the SPKI.
+		const edRecord = `v=DKIM1; k=ed25519; p=${ed.publicKey.subarray(12).toString('base64')}`;
+		const edName = `${ED_SELECTOR}._domainkey.${DOMAIN}`;
+		bothResolver = async (name, rrtype) =>
+			rrtype === 'TXT' && name === edName ? [[edRecord]] : resolver(name, rrtype);
+	});
+
+	function headerLines(signed: Buffer): string[] {
+		return signed
+			.toString('utf8')
+			.split('\r\n\r\n')[0]!
+			.replace(/\r\n[ \t]+/g, ' ')
+			.split('\r\n')
+			.filter((line) => line.startsWith('DKIM-Signature:'));
+	}
+
+	it('both signatures verify under our verifyDkim and mailauth', async () => {
+		for (const { name, raw } of corpus()) {
+			const signed = signMessageWithKeys(raw, [signingKey, edKey], SIGN_TIME_MS);
+			expect(signed.subarray(signed.length - raw.length)).toEqual(raw);
+
+			const ours = await verifyDkim(signed, { resolver: bothResolver });
+			expect(
+				ours.signatures.map((s) => [s.algorithm, s.selector, s.verdict]),
+				`verifyDkim for "${name}"`
+			).toEqual([
+				['rsa-sha256', SELECTOR, 'pass'],
+				['ed25519-sha256', ED_SELECTOR, 'pass'],
+			]);
+
+			const oracle = (await dkimVerify(signed.toString('binary'), {
+				resolver: bothResolver,
+			})) as unknown as MailauthVerifyResult;
+			expect(
+				oracle.results.map((r) => [r.selector, r.status.result]),
+				`mailauth for "${name}"`
+			).toEqual([
+				[SELECTOR, 'pass'],
+				[ED_SELECTOR, 'pass'],
+			]);
+		}
+	});
+
+	it('keeps the RSA line byte-for-byte and on top', () => {
+		for (const { raw } of corpus()) {
+			const signed = signMessageWithKeys(raw, [signingKey, edKey], SIGN_TIME_MS).toString('utf8');
+			const rsaLine = referenceSign(raw, signingKey, SIGN_TIME_MS);
+			expect(signed.startsWith(`${rsaLine}\r\nDKIM-Signature: v=1; a=ed25519-sha256;`)).toBe(true);
+		}
+	});
+
+	it('a single key gives exactly signMessage', () => {
+		const { raw } = corpus()[0]!;
+		expect(
+			signMessageWithKeys(raw, [signingKey], SIGN_TIME_MS).equals(
+				signMessage(raw, signingKey, SIGN_TIME_MS)
+			)
+		).toBe(true);
+	});
+
+	it('the Ed25519 line is deterministic', () => {
+		const { raw } = corpus()[1]!;
+		const a = buildDkimSignatureLine(raw, edKey, SIGN_TIME_MS);
+		const b = buildDkimSignatureLine(raw, edKey, SIGN_TIME_MS);
+		expect(a).toBe(b);
+		expect(headerLines(signMessageWithKeys(raw, [signingKey, edKey], SIGN_TIME_MS))).toHaveLength(
+			2
+		);
+	});
+
+	it('a tampered body fails both signatures', async () => {
+		const raw = Buffer.from(
+			'From: a@example.com\r\nTo: r@elsewhere.test\r\nSubject: Integrity\r\n\r\noriginal body content\r\n',
+			'utf8'
+		);
+		const signed = signMessageWithKeys(raw, [signingKey, edKey], SIGN_TIME_MS);
+		const tampered = Buffer.from(
+			signed.toString('binary').replace('original body content', 'modified body content'),
+			'binary'
+		);
+		const ours = await verifyDkim(tampered, { resolver: bothResolver });
+		expect(ours.signatures.map((s) => s.verdict)).not.toContain('pass');
+	});
+
+	it('an Ed25519 signature checked against another Ed25519 key fails', async () => {
+		const { raw } = corpus()[0]!;
+		const signed = signMessageWithKeys(raw, [signingKey, edKey], SIGN_TIME_MS);
+		const other = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'der' });
+		const wrongRecord = `v=DKIM1; k=ed25519; p=${other.subarray(12).toString('base64')}`;
+		const wrongResolver = async (name: string, rrtype: string): Promise<string[][]> =>
+			name === `${ED_SELECTOR}._domainkey.${DOMAIN}` ? [[wrongRecord]] : resolver(name, rrtype);
+		const ours = await verifyDkim(signed, { resolver: wrongResolver });
+		expect(ours.signatures.map((s) => s.verdict)).toEqual(['pass', 'fail']);
+		// One passing signature still authenticates the message (RFC 6376 §6.1).
+		expect(ours.result).toBe('pass');
 	});
 });

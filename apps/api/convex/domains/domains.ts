@@ -18,6 +18,7 @@ import {
 } from '../lib/convexValidators';
 import { dmarcPolicyValidator } from './dmarc';
 import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from './providers';
 import type {
 	dnsRecordValidator,
 	dnsRecordsValidator,
@@ -42,11 +43,15 @@ type DomainRow = Doc<'domains'>;
 function serializeDomainRow(domain: DomainRow): DomainRow & {
 	dnsRecords: DnsRecords;
 	verificationResults: VerificationResults | undefined;
+	canCarryEd25519Key: boolean;
 } {
 	return {
 		...domain,
 		dnsRecords: domain.dnsRecords as DnsRecords,
 		verificationResults: domain.verificationResults as VerificationResults | undefined,
+		// The optional Ed25519 DKIM key lives in the built-in MTA, so only its
+		// domains offer one (`dkimEd25519.addKey` refuses the rest).
+		canCarryEd25519Key: domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND,
 	};
 }
 

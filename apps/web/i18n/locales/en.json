@@ -4227,6 +4227,22 @@
 				"saveOperation": "Set return-path host",
 				"syncError": "Couldn't update the bounce host on the mail server — edit and retry."
 			},
+			"dkimEd25519": {
+				"rowLabel": "{label} (optional)",
+				"absent": "Optional: also sign this domain's mail with an Ed25519 key (RFC 8463). Receivers that support it check that signature as well; the others ignore it, and the RSA signature stays as it is.",
+				"present": "Mail from this domain also carries an Ed25519 signature once the record above is published. Receivers that don't support Ed25519 ignore it; the RSA signature always stays.",
+				"add": "Add Ed25519 key",
+				"remove": "Remove Ed25519 key",
+				"confirmRemove": {
+					"title": "Remove the Ed25519 key?",
+					"description": "Mail from {domain} stops carrying the Ed25519 signature; the RSA signature is unchanged. Delete the record from your DNS afterwards. Adding a key again creates a new one with a new record.",
+					"confirm": "Remove key"
+				},
+				"operations": {
+					"add": "Add Ed25519 DKIM key",
+					"remove": "Remove Ed25519 DKIM key"
+				}
+			},
 			"sendingDnsSection": {
 				"authentication": {
 					"description": "SPF and DKIM prove Owlat may send as this domain; DMARC tells receivers what to do when a message fails those checks.",

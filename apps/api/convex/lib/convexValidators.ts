@@ -257,6 +257,11 @@ export const dnsRecordValidator = v.object({
 	// with yet. It switches only once this record is in DNS, so until then the
 	// record is the operator's to-do and never decides the domain's verdict.
 	rotationPending: v.optional(v.boolean()),
+	// DKIM only: the domain's optional second key (Ed25519, RFC 8463). The MTA
+	// adds its signature next to the RSA one once this record is in DNS, and
+	// receivers that do not know Ed25519 ignore it, so the record is verified
+	// and shown but never decides the domain's verdict or a readiness check.
+	optional: v.optional(v.boolean()),
 });
 export const dnsRecordsValidator = v.object({
 	spf: v.optional(dnsRecordValidator),
@@ -280,6 +285,8 @@ export const verificationResultValidator = v.object({
 	inconclusive: v.optional(v.boolean()),
 	// Copied from the checked record's `rotationPending`.
 	rotationPending: v.optional(v.boolean()),
+	// Copied from the checked record's `optional`.
+	optional: v.optional(v.boolean()),
 });
 export const verificationResultsValidator = v.object({
 	spf: v.optional(verificationResultValidator),

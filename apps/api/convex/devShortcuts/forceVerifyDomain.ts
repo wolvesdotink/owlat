@@ -52,7 +52,10 @@ function synthesiseVerificationResults(domain: DomainDoc, at: number): Verificat
 	const results: VerificationResults = {};
 	if (dns.spf) results.spf = { ...ok };
 	if (dns.dkim?.length) {
-		results.dkim = dns.dkim.map(() => ({ ...ok }));
+		results.dkim = dns.dkim.map((record) => ({
+			...ok,
+			...(record.optional ? { optional: true } : {}),
+		}));
 	}
 	if (dns.dmarc) results.dmarc = { ...ok };
 	if (dns.mailFrom?.length) {

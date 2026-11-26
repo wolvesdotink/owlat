@@ -115,6 +115,48 @@ describe('summarizeChecklist', () => {
 	});
 });
 
+describe('the optional Ed25519 DKIM record', () => {
+	const mtaDomain = (verificationResults?: Record<string, unknown>) => ({
+		dnsRecords: {
+			dkim: [
+				{ type: 'TXT' as const, host: 's1._domainkey', value: 'v=DKIM1; k=rsa; p=KEY' },
+				{
+					type: 'TXT' as const,
+					host: 'e1._domainkey',
+					value: 'v=DKIM1; k=ed25519; p=KEY',
+					optional: true,
+				},
+			],
+			dmarc: { type: 'TXT' as const, host: '_dmarc', value: 'v=DMARC1; p=none' },
+		},
+		verificationResults,
+	});
+
+	it('is its own row, named by its algorithm, and numbers no RSA selector', () => {
+		const entries = buildSendingChecklist(mtaDomain());
+		expect(entries.map((e) => [e.label, e.optional])).toEqual([
+			['DKIM', false],
+			['DKIM Ed25519', true],
+			['DMARC', false],
+		]);
+	});
+
+	it('shows its own state from the result at its index', () => {
+		const entries = buildSendingChecklist(mtaDomain({ dkim: [ok, missing], dmarc: ok }));
+		expect(entries.find((e) => e.optional)?.status).toBe('failed');
+		expect(entries.find((e) => e.label === 'DKIM')?.status).toBe('verified');
+	});
+
+	it('is never counted or listed as outstanding', () => {
+		const summary = summarizeChecklist(
+			buildSendingChecklist(mtaDomain({ dkim: [ok, missing], dmarc: ok }))
+		);
+		expect(summary).toMatchObject({ total: 2, verified: 2, allVerified: true, outstanding: [] });
+		const unchecked = summarizeChecklist(buildSendingChecklist(mtaDomain()));
+		expect(unchecked.outstanding.map((e) => e.label)).toEqual(['DKIM', 'DMARC']);
+	});
+});
+
 describe('recordFqdn', () => {
 	it('resolves the apex, a relative host and an absolute host', () => {
 		expect(recordFqdn({ host: '@' }, 'example.com')).toBe('example.com');

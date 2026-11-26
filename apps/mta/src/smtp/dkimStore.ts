@@ -44,6 +44,22 @@ const RETURN_PATH_FIELD = 'returnPathHost';
 const AWAITING_DNS_FIELD = 'awaitingDnsSince';
 
 /**
+ * Hash fields of the optional second (Ed25519) key on the same
+ * `mta:dkim:{domain}` hash, so `removeDkimKey`, ownership and the key cache
+ * cover it. `setDkimKey` writes field by field and never names these, so an RSA
+ * rotation leaves the Ed25519 key alone. Written and removed only by
+ * `dkimEd25519.ts`.
+ */
+export const ED25519_FIELDS = {
+	selector: 'ed25519Selector',
+	// A field name, not key material. The secret scan reads this line as a key
+	// being assigned.
+	privateKey: 'ed25519PrivateKey', // gitleaks:allow
+	awaitingDnsSince: 'ed25519AwaitingDnsSince',
+	addedAt: 'ed25519AddedAt',
+} as const;
+
+/**
  * Unseal a stored DKIM private-key value, migrating a legacy plaintext value in
  * place. Private keys are sealed at rest (secretBox) so a Redis dump never
  * exposes a PEM. Pre-sealing installs — and keys written by an older MTA — hold
@@ -104,16 +120,35 @@ export async function getDkimConfig(redis: Redis, domain: string): Promise<DkimK
 	const data = await redis.hgetall(`${DKIM_PREFIX}${domain}`);
 	if (!data || !data['selector'] || !data['privateKey']) return null;
 
+	const edSelector = data[ED25519_FIELDS.selector];
+	const edSealed = data[ED25519_FIELDS.privateKey];
+	const edAwaiting = data[ED25519_FIELDS.awaitingDnsSince];
 	const config: DkimKeyConfig = {
 		selector: data['selector'],
 		privateKey: await unsealPrivateKey(redis, domain, data['privateKey']),
 		...(data['organizationId'] ? { organizationId: data['organizationId'] } : {}),
 		...(data[AWAITING_DNS_FIELD] ? { awaitingDnsSince: Number(data[AWAITING_DNS_FIELD]) } : {}),
+		// Kept sealed: an Ed25519 key that does not open must never make the RSA
+		// lookup throw, so only the best-effort Ed25519 resolver opens it.
+		...(edSelector && edSealed
+			? {
+					ed25519: {
+						selector: edSelector,
+						sealedPrivateKey: edSealed,
+						...(edAwaiting ? { awaitingDnsSince: Number(edAwaiting) } : {}),
+					},
+				}
+			: {}),
 	};
 
 	// Update cache
 	cache.set(domain, { config, cachedAt: Date.now() });
 	return config;
+}
+
+/** Drop this replica's cached key for a domain after a write elsewhere in the hash. */
+export function invalidateDkimCache(domain: string): void {
+	cache.delete(domain);
 }
 
 /**

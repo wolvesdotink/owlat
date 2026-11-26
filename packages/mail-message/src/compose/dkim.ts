@@ -50,7 +50,7 @@
  * `mail-auth → shared → mail-message` would otherwise close a build cycle.
  */
 
-import { createHash, createSign } from 'node:crypto';
+import { createHash, createSign, sign as cryptoSign } from 'node:crypto';
 import {
 	canonicalizeBodyRelaxed,
 	canonicalizeHeaderField,
@@ -61,11 +61,17 @@ import {
 } from '@owlat/mail-canon';
 import { SIGNED_HEADERS } from './signedHeaders';
 
+/** The two DKIM signing algorithms this signer emits (RFC 8301, RFC 8463). */
+export type DkimSigningAlgorithm = 'rsa-sha256' | 'ed25519-sha256';
+
 /** Resolved per-domain signing material (shape shared with the MTA signer). */
 export interface DkimSigningKey {
 	readonly domainName: string;
 	readonly keySelector: string;
+	/** PEM private key: PKCS#1 or PKCS#8 RSA, or PKCS#8 Ed25519. */
 	readonly privateKey: string;
+	/** Defaults to `rsa-sha256`, so every RSA caller keeps its exact bytes. */
+	readonly algorithm?: DkimSigningAlgorithm;
 }
 
 // The signed-header contract lives in `./signedHeaders.ts` — a crypto-free
@@ -276,8 +282,9 @@ export function buildDkimSignatureLine(
 		if (inst) canonChunks.push(canonHeaderLine(inst));
 	}
 
+	const algorithm = key.algorithm ?? 'rsa-sha256';
 	const tags: Record<string, string | number> = {
-		a: 'rsa-sha256',
+		a: algorithm,
 		c: 'relaxed/relaxed',
 		s: key.keySelector,
 		d: key.domainName,
@@ -294,9 +301,18 @@ export function buildDkimSignatureLine(
 	const dkimCanon = stripSignatureValue(canonicalizeHeaderField(placeholderLine, 'relaxed'));
 	canonChunks.push(Buffer.from(dkimCanon, 'binary'));
 
-	const signature = createSign('RSA-SHA256')
-		.update(Buffer.concat(canonChunks))
-		.sign(key.privateKey, 'base64');
+	const headerHashInput = Buffer.concat(canonChunks);
+	// RFC 8463 §3: Ed25519 signs the SHA-256 digest of the header hash input
+	// (PureEdDSA over the hash), not the input itself. `createSign` cannot do
+	// Ed25519, so that branch goes through the one-shot `sign(null, …)`.
+	const signature =
+		algorithm === 'ed25519-sha256'
+			? cryptoSign(
+					null,
+					createHash('sha256').update(headerHashInput).digest(),
+					key.privateKey
+				).toString('base64')
+			: createSign('RSA-SHA256').update(headerHashInput).sign(key.privateKey, 'base64');
 
 	return formatDkimSignatureLine({ b: signature, ...tags }, true);
 }
@@ -316,4 +332,24 @@ export function signMessage(
 ): Buffer {
 	const sigLine = buildDkimSignatureLine(raw, key, signTimeMs);
 	return Buffer.concat([Buffer.from(`${sigLine}\r\n`, 'utf8'), raw]);
+}
+
+/**
+ * Sign `raw` once per key and prepend every signature, in the order given.
+ *
+ * Each signature is built from the same unsigned bytes. `SIGNED_HEADERS` never
+ * lists `dkim-signature`, so no signature covers another and each verifies on
+ * its own: a receiver that does not know one algorithm ignores that signature
+ * and evaluates the rest (RFC 6376 §6.1, RFC 8463 §4). The first key's line is
+ * the topmost header, so callers put the key that must always verify (RSA)
+ * first. Throws on the first key that fails; a caller that treats a later key
+ * as optional signs it separately (see {@link buildDkimSignatureLine}).
+ */
+export function signMessageWithKeys(
+	raw: Buffer,
+	keys: readonly DkimSigningKey[],
+	signTimeMs: number = Date.now()
+): Buffer {
+	const lines = keys.map((key) => `${buildDkimSignatureLine(raw, key, signTimeMs)}\r\n`);
+	return Buffer.concat([Buffer.from(lines.join(''), 'utf8'), raw]);
 }

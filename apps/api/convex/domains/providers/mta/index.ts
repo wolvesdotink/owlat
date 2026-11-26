@@ -25,6 +25,7 @@ import {
 import type { DnsRecord, DnsRecords } from '../../domains';
 import type { MtaIdentity, SendingDomainProviderModule } from '../types';
 import { mtaReturnPath } from './returnPath';
+import { ed25519DkimRecord } from '../../dkimRecords';
 
 export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 	kind: 'mta',
@@ -51,18 +52,22 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		// (unchanged behaviour); the register action supplies the deployment's
 		// singleton org.
 		const mta = createMtaIdentityManager();
-		const { selector, dnsRecord } = await mta.registerDomain(
+		const { selector, dnsRecord, ed25519 } = await mta.registerDomain(
 			domain,
 			customReturnPathHost,
 			options?.organizationId
 		);
 
+		// The RSA record first: every reader that takes one DKIM selector takes the
+		// first record. The optional Ed25519 record is listed whenever the MTA
+		// still holds that key, because this bundle replaces the stored one.
 		const dkimRecords: DnsRecord[] = [
 			{
 				type: 'TXT',
 				host: `${selector}._domainkey`,
 				value: dnsRecord,
 			},
+			...(ed25519 ? [ed25519DkimRecord(ed25519)] : []),
 		];
 
 		const dnsRecords: DnsRecords = {

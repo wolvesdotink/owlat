@@ -648,6 +648,8 @@ import type * as devShortcuts_forceVerifyDomain from "../devShortcuts/forceVerif
 import type * as devShortcuts_reset from "../devShortcuts/reset.js";
 import type * as devShortcuts_resetHttp from "../devShortcuts/resetHttp.js";
 import type * as domains_bimi from "../domains/bimi.js";
+import type * as domains_dkimEd25519 from "../domains/dkimEd25519.js";
+import type * as domains_dkimRecords from "../domains/dkimRecords.js";
 import type * as domains_dmarc from "../domains/dmarc.js";
 import type * as domains_dmarcReports from "../domains/dmarcReports.js";
 import type * as domains_dmarcReportsHttp from "../domains/dmarcReportsHttp.js";
@@ -2835,6 +2837,8 @@ declare const fullApi: ApiFromModules<{
 	"devShortcuts/resetHttp": typeof devShortcuts_resetHttp;
 }> & ApiFromModules<{
 	"domains/bimi": typeof domains_bimi;
+	"domains/dkimEd25519": typeof domains_dkimEd25519;
+	"domains/dkimRecords": typeof domains_dkimRecords;
 	"domains/dmarc": typeof domains_dmarc;
 	"domains/dmarcReports": typeof domains_dmarcReports;
 	"domains/dmarcReportsHttp": typeof domains_dmarcReportsHttp;

@@ -8,6 +8,7 @@
 
 import type { Doc } from '../_generated/dataModel';
 import type { SendingDomainTransitionInput, VerificationResults } from './lifecycleReducer';
+import { isDecidingDkim } from './dkimRecords';
 
 type ProviderCheckResult = { verified: boolean; lastError?: string };
 
@@ -20,7 +21,9 @@ export type VerificationVerdict = 'verified' | 'failed' | 'pending' | 'inconclus
  * Rules:
  *   - DKIM: every selector the MTA signs with must verify. A selector a key
  *     rotation added (`rotationPending`) is left out: the MTA switches to it
- *     only once its record is in DNS, so it cannot break signing.
+ *     only once its record is in DNS, so it cannot break signing. So is the
+ *     optional Ed25519 record (`optional`): the MTA adds that signature only
+ *     once the record is in DNS, and the RSA one is there either way.
  *   - MAIL FROM: when present, every record must verify (absent ⇒ satisfied).
  *   - SPF: optional — an absent SPF record counts as verified; a present one
  *     must report `verified === true`.
@@ -39,7 +42,7 @@ export function deriveVerificationVerdict(
 	dns: VerificationResults,
 	providerCheck: ProviderCheckResult
 ): VerificationVerdict {
-	const signingDkim = dns.dkim?.filter((r) => r.rotationPending !== true);
+	const signingDkim = dns.dkim?.filter(isDecidingDkim);
 	const gating = [
 		...(dns.spf ? [dns.spf] : []),
 		...(signingDkim ?? []),

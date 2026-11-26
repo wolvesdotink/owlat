@@ -114,7 +114,8 @@ export function domainSetupValuesForItem(
 			break;
 		}
 		case 'domain.dkim':
-			records = domain.dnsRecords.dkim ?? [];
+			// The optional Ed25519 record is not part of the DKIM check.
+			records = (domain.dnsRecords.dkim ?? []).filter((record) => record.optional !== true);
 			break;
 		case 'domain.dmarc':
 			records = domain.dnsRecords.dmarc ? [domain.dnsRecords.dmarc] : [];

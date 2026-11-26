@@ -13,6 +13,7 @@ public class SendingDomainRecord {
     private final Integer priority;
     private final String state;
     private final String foundValue;
+    private final boolean optional;
 
     @JsonCreator
     public SendingDomainRecord(
@@ -22,7 +23,8 @@ public class SendingDomainRecord {
             @JsonProperty("value") String value,
             @JsonProperty("priority") Integer priority,
             @JsonProperty("state") String state,
-            @JsonProperty("foundValue") String foundValue) {
+            @JsonProperty("foundValue") String foundValue,
+            @JsonProperty("optional") Boolean optional) {
         this.purpose = purpose;
         this.type = type;
         this.host = host;
@@ -30,6 +32,7 @@ public class SendingDomainRecord {
         this.priority = priority;
         this.state = state;
         this.foundValue = foundValue;
+        this.optional = Boolean.TRUE.equals(optional);
     }
 
     /** {@code spf}, {@code dkim}, {@code dmarc} or {@code mail_from} (the return-path host). */
@@ -69,5 +72,15 @@ public class SendingDomainRecord {
     /** The value the last check found instead, while the state is {@code wrong}; otherwise {@code null}. */
     public String getFoundValue() {
         return foundValue;
+    }
+
+    /**
+     * {@code true} for a record the domain does not need, whose state never
+     * decides whether the domain is verified: the optional second DKIM key
+     * (Ed25519). {@code false} for every other record.
+     */
+    @JsonProperty("optional")
+    public boolean isOptional() {
+        return optional;
     }
 }

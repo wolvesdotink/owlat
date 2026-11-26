@@ -2,7 +2,9 @@
  * Sending domain lifecycle — DKIM rotation editor.
  *
  * `recordDkimRotation` is the MTA's callback when it rotates a domain's DKIM
- * key. It rewrites the published DKIM records and never moves `domains.status`.
+ * key, and `setOptionalDkimRecord` adds or removes the optional Ed25519
+ * record. Both rewrite the published DKIM records and never move
+ * `domains.status`.
  * Writes only through `patchDomainRecords` (see the module map in
  * `lifecycle.ts`).
  */
@@ -11,6 +13,8 @@ import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { patchDomainRecords } from './lifecycle';
 import type { DnsRecords, VerificationResults } from './lifecycleReducer';
+import { ed25519DkimRecord, withOptionalDkimRecord } from './dkimRecords';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from './providers';
 
 type DkimRotationPhase = 'pending' | 'activated' | 'cancelled';
 
@@ -33,7 +37,8 @@ type SendingDomainDkimRotationOutcome =
  *                   verification results are cleared so the UI prompts a
  *                   publish + re-verify of the new selector.
  *   - `'activated'` (signing switched): the old selector is retired and only
- *                   the new selector's record remains.
+ *                   the new selector's record remains, with the optional
+ *                   Ed25519 record: rotation never touches that key.
  *   - `'cancelled'` (pending key discarded): the selector's record is removed
  *                   if it is still flagged `rotationPending`. A selector that
  *                   signs is never removed by a cancel.
@@ -79,18 +84,21 @@ export const recordDkimRotation = internalMutation({
 		// or a record that drifted into the bundle already).
 		const existingIndexOfNew = existingDkim.findIndex((r) => r.host === newHost);
 
+		// The optional Ed25519 record stays last in every phase.
+		const optionalDkim = existingDkim.filter((r) => r.optional === true);
+		const rsaDkim = existingDkim.filter((r) => r.optional !== true);
 		let nextDkim: NonNullable<DnsRecords['dkim']>;
 		if (args.phase === 'pending') {
 			// Overlap: keep the active selector(s), add (or refresh) the new one.
 			nextDkim =
 				existingIndexOfNew >= 0
 					? existingDkim.map((r, i) => (i === existingIndexOfNew ? newRecord : r))
-					: [...existingDkim, newRecord];
+					: [...rsaDkim, newRecord, ...optionalDkim];
 		} else if (args.phase === 'cancelled') {
 			nextDkim = existingDkim.filter((r) => !(r.host === newHost && r.rotationPending === true));
 		} else {
-			// Activated: retire every other selector, keep only the new one.
-			nextDkim = [newRecord];
+			// Activated: retire every other RSA selector, keep only the new one.
+			nextDkim = [newRecord, ...optionalDkim];
 		}
 
 		// No-op when the bundle already reads exactly as it would after the patch.
@@ -101,7 +109,8 @@ export const recordDkimRotation = internalMutation({
 					r.host === nextDkim[i]!.host &&
 					r.value === nextDkim[i]!.value &&
 					r.type === nextDkim[i]!.type &&
-					r.rotationPending === nextDkim[i]!.rotationPending
+					r.rotationPending === nextDkim[i]!.rotationPending &&
+					r.optional === nextDkim[i]!.optional
 			);
 		if (unchanged) {
 			return { ok: true, phase: args.phase, selector: args.selector, changed: false };
@@ -149,5 +158,72 @@ export const recordDkimRotation = internalMutation({
 		);
 
 		return { ok: true, phase: args.phase, selector: args.selector, changed: true };
+	},
+});
+
+type OptionalDkimRecordOutcome =
+	| { ok: true; changed: boolean }
+	| { ok: false; reason: 'domain_not_found' | 'not_mta' | 'registering' };
+
+/**
+ * Commit of `dkimEd25519.addKey` / `removeKey`: put the domain's optional
+ * Ed25519 record in its DKIM list (`record`), or take it out (`null`). Never
+ * moves `domains.status`: the record decides nothing, so a verified domain
+ * keeps sending.
+ *
+ * Re-checks what the action read before its MTA call. A domain mid-registration
+ * is refused because the registration commit replaces the whole record list
+ * with what the MTA answered at its start.
+ */
+export const setOptionalDkimRecord = internalMutation({
+	args: {
+		domainId: v.id('domains'),
+		record: v.union(v.null(), v.object({ selector: v.string(), dnsRecord: v.string() })),
+		userId: v.string(),
+	},
+	handler: async (ctx, args): Promise<OptionalDkimRecordOutcome> => {
+		const domain = await ctx.db.get(args.domainId);
+		if (!domain) return { ok: false, reason: 'domain_not_found' };
+		if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) {
+			return { ok: false, reason: 'not_mta' };
+		}
+		if (domain.status === 'registering') return { ok: false, reason: 'registering' };
+
+		const dnsRecords = domain.dnsRecords as DnsRecords;
+		const verificationResults = domain.verificationResults as VerificationResults | undefined;
+		const existingDkim = dnsRecords.dkim ?? [];
+		const next = withOptionalDkimRecord(
+			existingDkim,
+			verificationResults?.dkim,
+			args.record ? ed25519DkimRecord(args.record) : null
+		);
+		const changed =
+			next.dkim.length !== existingDkim.length ||
+			next.dkim.some(
+				(r, i) => r.host !== existingDkim[i]!.host || r.value !== existingDkim[i]!.value
+			);
+		if (!changed) return { ok: true, changed: false };
+
+		await patchDomainRecords(
+			ctx,
+			domain,
+			{
+				dnsRecords: { ...dnsRecords, dkim: next.dkim },
+				...(verificationResults
+					? { verificationResults: { ...verificationResults, dkim: next.results } }
+					: {}),
+				updatedAt: Date.now(),
+			},
+			{
+				userId: args.userId,
+				action: args.record ? 'sending_domain.dkim_key_added' : 'sending_domain.dkim_key_removed',
+				details: {
+					domain: domain.domain,
+					algorithm: 'ed25519-sha256',
+					...(args.record ? { selector: args.record.selector } : {}),
+				},
+			}
+		);
+		return { ok: true, changed: true };
 	},
 });

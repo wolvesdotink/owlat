@@ -31,6 +31,10 @@ const sendingDomainRecordSchema = z.strictObject({
 	foundValue: z.string().nullable().meta({
 		description: 'The value the last check found instead, while state is wrong; otherwise null.',
 	}),
+	optional: z.boolean().meta({
+		description:
+			'True for a record the domain does not need, whose state never decides whether the domain is verified: the optional second DKIM key (Ed25519, k=ed25519). False for every other record.',
+	}),
 });
 
 export const sendingDomainSetupSchema = z.strictObject({

@@ -116,6 +116,21 @@ describe('domainAuthState', () => {
 	it('reports SPF missing when neither an apex SPF nor a MAIL FROM record exists', () => {
 		expect(domainAuthState({}, { dkim, dmarc }).spf).toBe(false);
 	});
+
+	it('does not report DKIM missing for an unpublished optional Ed25519 record', () => {
+		const withEd = [{ verified: true }, { verified: false, optional: true }];
+		expect(domainAuthState({ spf: {} }, { spf: { verified: true }, dkim: withEd, dmarc })).toEqual({
+			spf: true,
+			dkim: true,
+			dmarc: true,
+		});
+		expect(
+			domainAuthState(
+				{},
+				{ dkim: [{ verified: false }, { verified: true, optional: true }], dmarc }
+			).dkim
+		).toBe(false);
+	});
 });
 
 describe('getSendingOverview', () => {

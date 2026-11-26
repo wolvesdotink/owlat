@@ -3308,6 +3308,7 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: null,
 						state: 'found',
 						foundValue: null,
+						optional: false,
 					},
 					{
 						purpose: 'dkim',
@@ -3317,6 +3318,7 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: null,
 						state: 'found',
 						foundValue: null,
+						optional: false,
 					},
 					{
 						purpose: 'dmarc',
@@ -3326,6 +3328,7 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: null,
 						state: 'found',
 						foundValue: null,
+						optional: false,
 					},
 				],
 			},
@@ -3343,6 +3346,7 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: null,
 						state: 'found',
 						foundValue: null,
+						optional: false,
 					},
 					{
 						purpose: 'dkim',
@@ -3352,6 +3356,7 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: null,
 						state: 'wrong',
 						foundValue: 'old.dkim.example.net',
+						optional: false,
 					},
 					{
 						purpose: 'dmarc',
@@ -3361,6 +3366,7 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: null,
 						state: 'missing',
 						foundValue: null,
+						optional: false,
 					},
 					{
 						purpose: 'mail_from',
@@ -3370,6 +3376,7 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: 10,
 						state: 'unchecked',
 						foundValue: null,
+						optional: false,
 					},
 					{
 						purpose: 'mail_from',
@@ -3379,9 +3386,64 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 						priority: null,
 						state: 'unchecked',
 						foundValue: null,
+						optional: false,
 					},
 				],
 			},
+		]);
+	});
+
+	it('lists the optional Ed25519 record as optional and keeps a verified domain verified', async () => {
+		const t = setupTest();
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {
+					dkim: [
+						{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; k=rsa; p=PUBKEY' },
+						{
+							type: 'TXT',
+							host: 'e1._domainkey',
+							value: 'v=DKIM1; k=ed25519; p=EDKEY',
+							optional: true,
+						},
+					],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+				},
+				verificationResults: {
+					dkim: [
+						checked({ verified: true }),
+						checked({ verified: false, error: 'No matching TXT record found', optional: true }),
+					],
+					dmarc: checked({ verified: true }),
+				},
+				lastVerifiedAt: CHECKED_AT,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		const res = await fetchDomains(t);
+		await expectContractSuccess('listDomains', res);
+		const [domain] = (await res.json()).data;
+		expect(domain.status).toBe('verified');
+		expect(
+			domain.records.map((r: { host: string; state: string; optional: boolean }) => r)
+		).toEqual([
+			expect.objectContaining({
+				host: 's1._domainkey.mail.example.com',
+				state: 'found',
+				optional: false,
+			}),
+			expect.objectContaining({
+				host: 'e1._domainkey.mail.example.com',
+				value: 'v=DKIM1; k=ed25519; p=EDKEY',
+				state: 'missing',
+				optional: true,
+			}),
+			expect.objectContaining({ purpose: 'dmarc', optional: false }),
 		]);
 	});
 

@@ -210,11 +210,15 @@ function record(
 export function systemSenderDnsRecords(row: Doc<'domains'>): SystemSenderDnsRecord[] {
 	const records = row.dnsRecords;
 	const results = row.verificationResults;
-	const dkim = records.dkim ?? [];
+	// The optional Ed25519 record is left out: system mail is DKIM-signed by
+	// the RSA key alone, so a terminal check has nothing to report about it.
+	const dkim = (records.dkim ?? []).flatMap((stored, i) =>
+		stored.optional === true ? [] : [{ stored, result: results?.dkim?.[i] }]
+	);
 	return [
 		...record('SPF', 'TXT', records.spf, results?.spf),
-		...dkim.flatMap((stored, i) =>
-			record(dkim.length > 1 ? `DKIM ${i + 1}` : 'DKIM', 'CNAME', stored, results?.dkim?.[i])
+		...dkim.flatMap(({ stored, result }, i) =>
+			record(dkim.length > 1 ? `DKIM ${i + 1}` : 'DKIM', 'CNAME', stored, result)
 		),
 		...record('DMARC', 'TXT', records.dmarc, results?.dmarc),
 		...(records.mailFrom ?? []).flatMap((stored, i) =>

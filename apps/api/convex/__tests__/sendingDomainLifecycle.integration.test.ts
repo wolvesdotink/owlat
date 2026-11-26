@@ -1024,6 +1024,49 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		});
 	});
 
+	it('keeps the optional Ed25519 record last through a rotation', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedRotatedDomain(t, 'keeped.com');
+		const edRecord = {
+			type: 'TXT' as const,
+			host: 'e1._domainkey',
+			value: 'v=DKIM1; k=ed25519; p=EDKEY',
+			optional: true,
+		};
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			await ctx.db.patch(domainId, {
+				dnsRecords: { ...domain!.dnsRecords, dkim: [...domain!.dnsRecords.dkim!, edRecord] },
+			});
+		});
+		const rotate = (phase: 'pending' | 'activated') =>
+			t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
+				domain: 'keeped.com',
+				selector: 's2',
+				dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
+				phase,
+				userId: 'system:dkim_rotation',
+			});
+
+		await rotate('pending');
+		const hostsDuring = await t.run(async (ctx) =>
+			(await ctx.db.get(domainId))!.dnsRecords.dkim!.map((r) => r.host)
+		);
+		expect(hostsDuring).toEqual(['s1._domainkey', 's2._domainkey', 'e1._domainkey']);
+
+		await rotate('activated');
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			expect(domain!.dnsRecords.dkim).toEqual([
+				{ type: 'TXT', host: 's2._domainkey', value: 'v=DKIM1; k=rsa; p=NEWKEY' },
+				edRecord,
+			]);
+			// Results are cleared, so none of them can sit on the wrong record.
+			expect(domain!.verificationResults?.dkim).toBeUndefined();
+			expect(domain!.status).toBe('verified');
+		});
+	});
+
 	it('is a no-op when the new selector record is already present (idempotent re-delivery)', async () => {
 		const t = convexTest(schema, modules);
 		await seedRotatedDomain(t, 'idem.com');

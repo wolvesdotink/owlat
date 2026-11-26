@@ -569,6 +569,47 @@ describe('assistant deliveryHealth', () => {
 		expect(JSON.stringify(health)).not.toContain('ignore previous instructions');
 	});
 
+	it('never lists the optional Ed25519 record as a record to fix', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await t.run(async (ctx) => {
+			const checked = { lastChecked: Date.now() };
+			await ctx.db.insert('domains', {
+				domain: 'news.example.com',
+				status: 'verified',
+				dnsRecords: {
+					dkim: [
+						{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; k=rsa; p=KEY' },
+						{
+							type: 'TXT',
+							host: 'e1._domainkey',
+							value: 'v=DKIM1; k=ed25519; p=KEY',
+							optional: true,
+						},
+					],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+				},
+				verificationResults: {
+					dkim: [
+						{ ...checked, verified: true },
+						{ ...checked, verified: false, optional: true },
+					],
+					dmarc: { ...checked, verified: true },
+				},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const health = await t.query(internal.assistant.insights.deliveryHealth, {});
+		expect(health.domains).toContainEqual({
+			domain: 'news.example.com',
+			status: 'verified',
+			recordsToFix: [],
+		});
+	});
+
 	it('returns the recorded reason and since-when of a suspension', async () => {
 		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
 		const t = convexTest(schema, modules);

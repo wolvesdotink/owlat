@@ -25,6 +25,17 @@ export const DOMAIN_AND_LIMIT_EXAMPLES = {
 							priority: null,
 							state: 'wrong',
 							foundValue: 'old.dkim.example.net',
+							optional: false,
+						},
+						{
+							purpose: 'dkim',
+							type: 'TXT',
+							host: 'e1763700000000._domainkey.news.example.com',
+							value: 'v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=',
+							priority: null,
+							state: 'missing',
+							foundValue: null,
+							optional: true,
 						},
 						{
 							purpose: 'dmarc',
@@ -34,6 +45,7 @@ export const DOMAIN_AND_LIMIT_EXAMPLES = {
 							priority: null,
 							state: 'missing',
 							foundValue: null,
+							optional: false,
 						},
 						{
 							purpose: 'mail_from',
@@ -43,6 +55,7 @@ export const DOMAIN_AND_LIMIT_EXAMPLES = {
 							priority: 10,
 							state: 'found',
 							foundValue: null,
+							optional: false,
 						},
 					],
 				},

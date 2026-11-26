@@ -61,6 +61,7 @@ function recordOf(
 		priority: type === 'MX' ? (record.priority ?? null) : null,
 		state,
 		foundValue: state === 'wrong' ? (result?.foundValue ?? null) : null,
+		optional: record.optional === true,
 	};
 }
 

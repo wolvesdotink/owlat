@@ -84,6 +84,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.domains.addDomainForm.returnPathOptional',
 	'components.domains.addDomainForm.returnPathPlaceholder',
 	'components.domains.addDomainForm.subdomainPlaceholder',
+	'components.domains.dkimEd25519.rowLabel',
 	'components.domains.dnsRecordPanel.rfc.dkim',
 	'components.domains.dnsRecordPanel.rfc.dmarc',
 	'components.domains.dnsRecordPanel.rfc.mtaSts',

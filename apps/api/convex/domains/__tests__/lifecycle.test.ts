@@ -87,6 +87,20 @@ describe('deriveVerificationVerdict', () => {
 	});
 });
 
+describe('deriveVerificationVerdict with the optional Ed25519 record', () => {
+	it('verifies a domain whose Ed25519 record is not published', () => {
+		const ed = { verified: false, lastChecked: 0, optional: true } as const;
+		const dns: VerificationResults = { spf: ok, dkim: [ok, ed], dmarc: ok };
+		expect(deriveVerificationVerdict(dns, { verified: true })).toBe('verified');
+	});
+
+	it('fails when the RSA selector is gone, whatever the Ed25519 one says', () => {
+		const ed = { verified: true, lastChecked: 0, optional: true } as const;
+		const dns: VerificationResults = { spf: ok, dkim: [bad, ed], dmarc: ok };
+		expect(deriveVerificationVerdict(dns, { verified: true })).toBe('failed');
+	});
+});
+
 describe('deriveVerificationVerdict during a DKIM rotation', () => {
 	it('ignores a pending selector that is not published yet', () => {
 		const pending = { verified: false, lastChecked: 0, rotationPending: true } as const;

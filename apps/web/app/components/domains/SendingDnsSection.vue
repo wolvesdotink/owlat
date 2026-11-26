@@ -4,8 +4,8 @@
  * records the operator has to publish for it as one checklist — a summary that
  * names each record still missing, then the records grouped into sender
  * authentication (SPF, DKIM, DMARC) and bounce handling (MAIL FROM) — plus the
- * DMARC enforcement selector, where the domain's DMARC reports go, and the
- * return-path editor.
+ * control for the optional Ed25519 DKIM key, the DMARC enforcement selector,
+ * where the domain's DMARC reports go, and the return-path editor.
  *
  * Extracted from `RecordRow.vue`, which carries the collapsed header, the
  * registering/failed states and the receiving (inbound MX) section and was over
@@ -30,6 +30,7 @@ import type { DmarcPolicy } from '~/utils/domainStatus';
 // groups in the row's component tests, which stub only the leaf panels.
 import DnsChecklistSummary from './DnsChecklistSummary.vue';
 import DnsRecordGroup from './DnsRecordGroup.vue';
+import DkimEd25519Control from './DkimEd25519Control.vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type DomainRow = FunctionReturnType<typeof api.domains.domains.listByOrganization>[number];
@@ -67,6 +68,13 @@ const returnPath = computed(() => checklist.value.filter((entry) => entry.group 
 const authSummary = computed(() => summarizeChecklist(authentication.value));
 const returnPathSummary = computed(() => summarizeChecklist(returnPath.value));
 const hasDmarc = computed(() => checklist.value.some((entry) => entry.id === 'dmarc'));
+// The backend says which domains can carry the optional second DKIM key.
+const offersEd25519 = computed(() => props.domain.canCarryEd25519Key === true);
+const hasEd25519 = computed(() => checklist.value.some((entry) => entry.optional));
+const labelOf = (entry: ChecklistEntry) =>
+	entry.optional
+		? t('components.domains.dkimEd25519.rowLabel', { label: entry.label })
+		: entry.label;
 
 const anchorFor = (entry: ChecklistEntry) => `dns-${props.domain._id}-${entry.id}`;
 
@@ -211,7 +219,7 @@ function onPolicyDialogOpen(open: boolean) {
 					:key="entry.id"
 					:anchor-id="anchorFor(entry)"
 					:record="entry.record"
-					:label="entry.label"
+					:label="labelOf(entry)"
 					:domain="domain.domain"
 					:verification="entry.verification"
 					:coexistence="
@@ -219,6 +227,13 @@ function onPolicyDialogOpen(open: boolean) {
 					"
 				/>
 			</DnsRecordGroup>
+
+			<DkimEd25519Control
+				v-if="offersEd25519 && canManageDomains"
+				:domain-id="domain._id"
+				:domain="domain.domain"
+				:has-key="hasEd25519"
+			/>
 
 			<!-- DMARC enforcement policy selector -->
 			<div v-if="hasDmarc" class="mt-3 p-4 bg-bg-surface rounded-xl border border-border-subtle">

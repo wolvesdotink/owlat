@@ -192,6 +192,9 @@ export const AUDIT_ACTION_LITERALS = [
 	action('sending_domain.receiving_mode_changed'),
 	action('sending_domain.return_path_changed'),
 	action('sending_domain.dkim_rotated'),
+	// The optional second DKIM key (Ed25519) added to or removed from a domain.
+	action('sending_domain.dkim_key_added'),
+	action('sending_domain.dkim_key_removed'),
 	action('sending_domain.deleted'),
 	// Deliverability seed mailbox — the placement probe's operator-visible
 	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only.

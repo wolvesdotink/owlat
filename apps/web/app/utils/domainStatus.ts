@@ -55,6 +55,8 @@ export type DnsRecord = {
 	usage?: number;
 	selector?: number;
 	matchingType?: number;
+	/** DKIM only: the optional second key (Ed25519), which decides nothing. */
+	optional?: boolean;
 };
 
 export type DnsRecordPanelRecord = {
