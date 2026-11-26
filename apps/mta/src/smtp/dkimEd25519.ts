@@ -15,7 +15,7 @@
 import { createPublicKey, generateKeyPairSync } from 'crypto';
 import { resolveTxt } from 'dns/promises';
 import type Redis from 'ioredis';
-import { isKeyRecordError, parseDkimKeyRecord } from '@owlat/mail-auth';
+import { isKeyRecordError, parseDkimKeyRecord, resolveDkimKey } from '@owlat/mail-auth';
 import type { DkimSigningKey } from '@owlat/mail-message';
 import { getMtaSecretBox } from '../lib/secretBox.js';
 import { logger } from '../monitoring/logger.js';
@@ -213,11 +213,13 @@ export async function markEd25519KeyPublished(
 }
 
 /**
- * Whether the selector's TXT record is the key's record: a parseable DKIM key
- * record with `k=ed25519` and exactly this public key. The key bytes alone are
- * not enough. A record without `k=` reads as an RSA key to a verifier, so a
- * signature made once such a record appeared would fail everywhere. Any lookup
- * error reads as not published.
+ * Whether the selector's TXT record is one a verifier accepts for an
+ * `ed25519-sha256` signature and carries exactly this public key. The check is
+ * the verifier's own (`resolveDkimKey`): key type, a hash list that allows
+ * SHA-256, a service type that allows email, not revoked. The key bytes alone
+ * are not enough: a record without `k=` reads as an RSA key, and a signature
+ * made once such a record appeared would fail everywhere. Any lookup error
+ * reads as not published.
  */
 export async function isEd25519RecordPublished(
 	domain: string,
@@ -227,19 +229,11 @@ export async function isEd25519RecordPublished(
 ): Promise<boolean> {
 	const expected = parseDkimKeyRecord(expectedDnsRecord);
 	if (isKeyRecordError(expected)) return false;
-	try {
-		const records = await resolveTxtFn(`${selector}._domainkey.${domain}`);
-		return records.some((chunks) => {
-			const published = parseDkimKeyRecord(chunks.join(''));
-			return (
-				!isKeyRecordError(published) &&
-				published.keyType === 'ed25519' &&
-				published.publicKey === expected.publicKey
-			);
-		});
-	} catch {
-		return false;
-	}
+	const published = await resolveDkimKey((name) => resolveTxtFn(name), selector, domain, {
+		keyType: 'ed25519',
+		hash: 'sha256',
+	});
+	return published.ok && published.record.publicKey === expected.publicKey;
 }
 
 /**

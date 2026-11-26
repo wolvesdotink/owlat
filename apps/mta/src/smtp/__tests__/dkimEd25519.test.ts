@@ -227,6 +227,8 @@ describe('dkimEd25519', () => {
 			['without a key type, which reads as RSA', (p: string) => `v=DKIM1; p=${p}`],
 			['with the RSA key type', (p: string) => `v=DKIM1; k=rsa; p=${p}`],
 			['with another key', () => ed25519DnsRecordFromPrivateKey(ED_PEM)],
+			['whose hash list leaves out SHA-256', (p: string) => `v=DKIM1; k=ed25519; h=sha1; p=${p}`],
+			['whose service type leaves out email', (p: string) => `v=DKIM1; k=ed25519; s=other; p=${p}`],
 		])('keeps the mark for a record %s', async (_case, recordFor) => {
 			const created = await createEd25519Key(redis, DOMAIN);
 			if (created.kind !== 'ok') throw new Error(created.kind);

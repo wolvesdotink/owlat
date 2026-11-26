@@ -62,7 +62,7 @@ export type {
 	VerifyDkimOptions,
 } from './dkim/verify.js';
 
-export { isKeyRecordError, parseDkimKeyRecord } from './dkim/keyRecord.js';
+export { isKeyRecordError, parseDkimKeyRecord, resolveDkimKey } from './dkim/keyRecord.js';
 export type { DkimKeyRecord, DkimKeyRecordError, ParsedKeyRecord } from './dkim/keyRecord.js';
 
 export { verifyArc } from './arc/verify.js';
