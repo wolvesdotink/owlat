@@ -4316,7 +4316,7 @@
 				},
 				"loading": "Loading tracking domains...",
 				"note": {
-					"body": "{note} DNS changes can take up to 48 hours to propagate. Your reverse proxy must also serve this subdomain over HTTPS. After adding both, click \"Verify\" to check the configuration.",
+					"body": "{note} DNS changes can take up to 48 hours to propagate. The bundled Caddy takes a certificate for this subdomain on its own; behind your own reverse proxy, serve it over HTTPS yourself. Then click \"Verify\" to check the configuration.",
 					"label": "Note:"
 				},
 				"operations": {
@@ -4346,7 +4346,7 @@
 				"rowLabel": "CNAME record for {domain}",
 				"lastCheck": {
 					"dnsMismatch": "Last check: the CNAME record is missing or points elsewhere. Point it at the value below.",
-					"httpsUnreachable": "Last check: DNS is correct, but this host does not answer over HTTPS with a valid certificate. Add a site for it to your reverse proxy.",
+					"httpsUnreachable": "Last check: DNS is correct, but this host does not answer over HTTPS with a valid certificate. The bundled Caddy takes one on the first request, which can take a minute, so check again. If it still fails, its Caddyfile predates tracking domains: copy the tracking part of Caddyfile.example into it and restart Caddy. Behind your own reverse proxy, add a site for it.",
 					"httpsWrongResponse": "Last check: this host answers over HTTPS, but not with Owlat's tracking handler. Proxy it to your Convex site URL.",
 					"inconclusive": "Last check: DNS could not be looked up. Try again in a few minutes."
 				},

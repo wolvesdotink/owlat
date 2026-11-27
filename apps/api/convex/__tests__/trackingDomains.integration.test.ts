@@ -318,3 +318,26 @@ describe('tracking domain verification', () => {
 		expect(names.filter((name) => name.includes('trackingDomainCheck'))).toHaveLength(1);
 	});
 });
+
+describe('the certificate ask route', () => {
+	const ask = (t: ReturnType<typeof convexTest>, domain: string) =>
+		t.fetch(`/t/tls-ask?domain=${encodeURIComponent(domain)}`, { method: 'GET' });
+
+	it('lets the proxy take a certificate for a tracking domain before it is verified', async () => {
+		const t = convexTest(schema, modules);
+		await insertTrackingDomain(t, 'links.example.com');
+
+		expect((await ask(t, 'links.example.com')).status).toBe(200);
+		expect((await ask(t, 'Links.Example.com.')).status).toBe(200);
+	});
+
+	it('refuses every other name', async () => {
+		const t = convexTest(schema, modules);
+		await insertTrackingDomain(t, 'links.example.com');
+
+		expect((await ask(t, 'other.example.com')).status).toBe(404);
+		expect((await ask(t, 'example.com')).status).toBe(404);
+		expect((await ask(t, '')).status).toBe(404);
+		expect((await t.fetch('/t/tls-ask', { method: 'GET' })).status).toBe(404);
+	});
+});

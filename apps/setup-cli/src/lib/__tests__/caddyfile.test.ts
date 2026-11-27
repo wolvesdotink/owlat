@@ -34,3 +34,21 @@ describe('buildCaddyfile', () => {
 		expect(cf).toContain('Strict-Transport-Security');
 	});
 });
+
+describe('buildCaddyfile tracking domains', () => {
+	const cf = buildCaddyfile({
+		webHost: 'owlat.example.com',
+		convexHost: 'convex.example.com',
+		convexSiteHost: 'convex-site.example.com',
+		email: 'admin@example.com',
+	});
+
+	it('asks the backend before taking a certificate for a name it does not list', () => {
+		expect(cf).toMatch(/on_demand_tls \{\s+ask http:\/\/convex:3211\/t\/tls-ask\s+\}/);
+	});
+
+	it('serves any approved name from the tracking routes', () => {
+		const block = cf.slice(cf.indexOf('https:// {'));
+		expect(block).toMatch(/^https:\/\/ \{\s+tls \{\s+on_demand\s+\}\s+reverse_proxy convex:3211/);
+	});
+});

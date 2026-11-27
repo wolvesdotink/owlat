@@ -4,7 +4,11 @@
  * copy naming the half that failed, in both locales.
  */
 import { describe, expect, it } from 'vitest';
-import { trackingDomainCheckMessageKey, trackingDomainStatus } from '../trackingDomainStatus';
+import {
+	trackingDomainCheckMessageKey,
+	trackingDomainCnameFound,
+	trackingDomainStatus,
+} from '../trackingDomainStatus';
 import type { TrackingDomainCheckOutcome } from '../trackingDomainStatus';
 import en from '../../../i18n/locales/en.json';
 import de from '../../../i18n/locales/de.json';
@@ -62,5 +66,30 @@ describe('trackingDomainCheckMessageKey', () => {
 				expect(typeof copy).toBe('string');
 			}
 		}
+	});
+});
+
+describe('trackingDomainCnameFound', () => {
+	const after = (outcome: TrackingDomainCheckOutcome, isVerified = false) =>
+		trackingDomainCnameFound({ isVerified, verifiedAt: AT, lastCheck: { at: AT, outcome } });
+
+	it('counts the CNAME as found when only the HTTPS half failed', () => {
+		expect(after('https_unreachable')).toBe(true);
+		expect(after('https_wrong_response')).toBe(true);
+		expect(after('verified', true)).toBe(true);
+	});
+
+	it('counts it as missing when the lookup found another target, even on a verified row', () => {
+		expect(after('dns_mismatch')).toBe(false);
+		expect(after('dns_mismatch', true)).toBe(false);
+	});
+
+	it('makes no claim after an inconclusive lookup', () => {
+		expect(after('inconclusive')).toBeNull();
+	});
+
+	it('falls back to the verified flag before the first recorded check', () => {
+		expect(trackingDomainCnameFound({ isVerified: false })).toBe(false);
+		expect(trackingDomainCnameFound({ isVerified: true, verifiedAt: AT })).toBe(true);
 	});
 });
