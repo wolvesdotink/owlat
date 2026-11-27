@@ -195,7 +195,22 @@ describe('deployment checklist validator freshness', () => {
 		await expect(observeDeploymentCheck('deployment.dnsbl', mixed, false)).resolves.toMatchObject({
 			status: 'warn',
 			diagnostic: expect.stringContaining('unknown standing'),
+			isInconclusive: true,
 		});
+	});
+
+	it('marks a stale DNSBL snapshot inconclusive and a listing conclusive', async () => {
+		const stale = context(Date.now());
+		stale.warming!.ips[0]!.dnsblCheckedAt = Date.now() - 31 * 60_000;
+		await expect(observeDeploymentCheck('deployment.dnsbl', stale, false)).resolves.toMatchObject({
+			status: 'warn',
+			isInconclusive: true,
+		});
+		const listed = context(Date.now());
+		listed.warming!.ips[0]!.dnsbl = 'critical';
+		await expect(
+			observeDeploymentCheck('deployment.dnsbl', listed, false)
+		).resolves.not.toHaveProperty('isInconclusive');
 	});
 
 	it('evaluates the IPv4 port-25 proof independently from a failing IPv6 probe', async () => {

@@ -21,6 +21,7 @@ import { checklistTraits } from './checklistTraits';
 import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
 import {
 	checklistObservation,
+	inconclusiveObservation,
 	pendingDnsStatus,
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
@@ -243,27 +244,41 @@ export async function observeDeploymentCheck(
 			);
 		}
 		case 'deployment.dnsbl': {
-			const pass = dnsblFresh && selectedAddresses.every((entry) => entry.dnsbl === 'clean');
+			const observedValues = selectedAddresses.flatMap((entry) => [
+				`${entry.ip}=${entry.dnsbl ?? 'unknown'}`,
+				`${entry.ip}:checked-at=${entry.dnsblCheckedAt ?? 'missing'}`,
+			]);
+			if (!dnsblFresh) {
+				return inconclusiveObservation(
+					'mta.dnsbl',
+					'The MTA blocklist snapshot is missing or too old to verify this check.',
+					observedValues
+				);
+			}
 			// A listing is asked first: one address's unknown standing must not
 			// soften another address that is known to be listed.
-			const isListed = selectedAddresses.some(
-				(entry) => entry.dnsbl === 'critical' || entry.dnsbl === 'degraded'
-			);
-			const status = !dnsblFresh ? 'warn' : pass ? 'pass' : isListed ? 'fail' : 'warn';
-			return checklistObservation(
+			if (
+				selectedAddresses.some((entry) => entry.dnsbl === 'critical' || entry.dnsbl === 'degraded')
+			) {
+				return checklistObservation(
+					'mta.dnsbl',
+					'fail',
+					'At least one outbound address is listed on a monitored DNS blocklist.',
+					observedValues
+				);
+			}
+			if (selectedAddresses.every((entry) => entry.dnsbl === 'clean')) {
+				return checklistObservation(
+					'mta.dnsbl',
+					'pass',
+					'Every outbound address is clean on the monitored DNS blocklists.',
+					observedValues
+				);
+			}
+			return inconclusiveObservation(
 				'mta.dnsbl',
-				status,
-				pass
-					? 'Every outbound address is clean on the monitored DNS blocklists.'
-					: !dnsblFresh
-						? 'The MTA blocklist snapshot is missing or too old to verify this check.'
-						: isListed
-							? 'At least one outbound address is listed on a monitored DNS blocklist.'
-							: 'At least one outbound address has unknown standing on the monitored DNS blocklists.',
-				selectedAddresses.flatMap((entry) => [
-					`${entry.ip}=${entry.dnsbl ?? 'unknown'}`,
-					`${entry.ip}:checked-at=${entry.dnsblCheckedAt ?? 'missing'}`,
-				])
+				'At least one outbound address has unknown standing on the monitored DNS blocklists.',
+				observedValues
 			);
 		}
 		case 'deployment.warmup':

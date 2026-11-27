@@ -1309,6 +1309,7 @@ describe('domain blocklist check', () => {
 		const result = await observe(blocklistContext());
 
 		expect(result.status).toBe('fail');
+		expect(result.isInconclusive).toBeUndefined();
 		expect(result.diagnostic).toContain('Spamhaus DBL');
 		expect(result.diagnostic).toContain('https://check.spamhaus.org/');
 	});
@@ -1327,6 +1328,7 @@ describe('domain blocklist check', () => {
 		const result = await observe(blocklistContext());
 
 		expect(result.status).toBe('warn');
+		expect(result.isInconclusive).toBe(true);
 		expect(result.diagnostic).toContain('DNSBL_RESOLVER');
 		expect(result.diagnostic).not.toContain('is listed');
 	});

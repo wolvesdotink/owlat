@@ -198,6 +198,7 @@ interface RecordEvidenceArgs {
 	status: DeliverabilityChecklistStatus;
 	observedValues: string[];
 	diagnostic: string;
+	isInconclusive?: boolean;
 	observedAt: number;
 }
 
@@ -306,6 +307,7 @@ export const recordEvidence = internalMutation({
 		status: deliverabilityStatusValidator,
 		observedValues: v.array(v.string()),
 		diagnostic: v.string(),
+		isInconclusive: v.optional(v.boolean()),
 		observedAt: v.number(),
 	},
 	handler: async (ctx, args) => {
@@ -383,6 +385,7 @@ export const recordEvidence = internalMutation({
 			!isHiddenIpv6Check &&
 			baselinePass &&
 			(args.status === 'fail' || args.status === 'warn') &&
+			!args.isInconclusive &&
 			args.validator !== 'checklist.orchestrator'
 		) {
 			await insertRegressionAlert(ctx, args, targetKey, baselinePass._id, evidenceId);

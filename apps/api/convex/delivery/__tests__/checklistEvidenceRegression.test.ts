@@ -250,6 +250,60 @@ describe('Deliverability Center regression evidence', () => {
 		).resolves.toEqual({ state: 'sent', retryScheduled: false });
 	});
 
+	it('raises no alert while a blocklist lookup is inconclusive, and still alerts on a listing', async () => {
+		const t = await newTest();
+		const organizationId = 'org-dnsbl-flap';
+		const record = async (
+			attemptId: string,
+			status: 'pass' | 'warn' | 'fail',
+			observedAt: number,
+			isInconclusive?: boolean
+		) => {
+			const leaseToken = `lease:${attemptId}`;
+			const claim = await t.mutation(internal.delivery.checklistEvidence.claimVerification, {
+				organizationId,
+				itemId: 'deployment.dnsbl',
+				attemptId,
+				leaseToken,
+				now: observedAt,
+			});
+			if (!claim.claimed) throw new Error('claim failed');
+			return t.mutation(internal.delivery.checklistEvidence.recordEvidence, {
+				organizationId,
+				itemId: 'deployment.dnsbl',
+				attemptId,
+				generation: claim.generation,
+				leaseToken,
+				validator: 'mta.dnsbl',
+				status,
+				observedValues: [],
+				diagnostic: status,
+				...(isInconclusive ? { isInconclusive } : {}),
+				observedAt,
+			});
+		};
+		const alerts = () => t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').collect());
+
+		// A rate-limited resolver flaps the lookup between clean and unknown.
+		await record('clean-1', 'pass', 1_000);
+		await record('unknown-1', 'warn', 2_000, true);
+		await record('clean-2', 'pass', 3_000);
+		await record('unknown-2', 'warn', 4_000, true);
+		expect(await alerts()).toEqual([]);
+		const scheduled = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		expect(scheduled.map((job) => job.name)).not.toContainEqual(
+			expect.stringContaining('deliverRegressionEmail')
+		);
+
+		await record('listed', 'fail', 5_000);
+		expect(await alerts()).toHaveLength(1);
+		// An unknown answer after the listing neither resolves nor duplicates it.
+		await record('unknown-3', 'warn', 6_000, true);
+		const [alert] = await alerts();
+		expect(alert?.resolvedAt).toBeUndefined();
+		expect(await alerts()).toHaveLength(1);
+	});
+
 	describe('IPv6 checks', () => {
 		const IPV6 = '2001:db8::10';
 		const warmingIp = (ip: string) => ({

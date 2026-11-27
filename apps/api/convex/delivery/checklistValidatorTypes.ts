@@ -26,6 +26,15 @@ export type ChecklistObservation = {
 	status: DeliverabilityChecklistStatus;
 	observedValues: string[];
 	diagnostic: string;
+	/**
+	 * The check could not look (a blocklist lookup timed out, was refused or
+	 * rate-limited, or its snapshot is too old), so the warning says nothing
+	 * about the deployment itself. Such a warning neither raises nor resolves
+	 * a regression alert: public resolvers answer blocklist zones only some of
+	 * the time, and alerting on that flapping would email every admin each
+	 * time a refused lookup follows a clean sweep.
+	 */
+	isInconclusive?: boolean;
 };
 
 export type ChecklistVerificationRequest = {
@@ -79,6 +88,15 @@ export function checklistObservation(
 	observedValues: string[] = []
 ): ChecklistObservation {
 	return { validator, status, observedValues, diagnostic };
+}
+
+/** A warning from a check that could not observe; see `ChecklistObservation.isInconclusive`. */
+export function inconclusiveObservation(
+	validator: string,
+	diagnostic: string,
+	observedValues: string[] = []
+): ChecklistObservation {
+	return { validator, status: 'warn', observedValues, diagnostic, isInconclusive: true };
 }
 
 export function pendingDnsStatus(isFinalRetry: boolean): DeliverabilityChecklistStatus {

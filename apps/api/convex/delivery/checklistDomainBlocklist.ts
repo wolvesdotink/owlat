@@ -25,6 +25,7 @@ import { getMtaConfig, mtaFetch } from '../mail/mtaClient';
 import { returnPathProviderFor } from '../domains/returnPathProviders';
 import {
 	checklistObservation,
+	inconclusiveObservation,
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
@@ -129,9 +130,8 @@ export async function observeDomainBlocklists(
 		results = null;
 	}
 	if (!results) {
-		return checklistObservation(
+		return inconclusiveObservation(
 			VALIDATOR,
-			'warn',
 			'The mail server did not answer the domain blocklist lookup. Owlat checks again on the next sweep.',
 			[...providerValues, 'lookup=unanswered']
 		);
@@ -160,9 +160,8 @@ export async function observeDomainBlocklists(
 	}
 	const unknown = results.filter((result) => result.status === 'unknown');
 	if (unknown.length > 0) {
-		return checklistObservation(
+		return inconclusiveObservation(
 			VALIDATOR,
-			'warn',
 			[
 				...new Set(
 					unknown.map(
