@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { useReadingComfort } from '~/composables/useReadingComfort';
 import { INBOX_TEXT_REM, READING_WIDTH_CSS } from '~/utils/readingComfort';
 
@@ -16,11 +17,14 @@ import { INBOX_TEXT_REM, READING_WIDTH_CSS } from '~/utils/readingComfort';
  * when there is no text part). If that fails the excerpt and its note stay: a
  * reader is never shown a cut message as whole.
  *
+ * A message with no text part whose HTML fit on its row (most notification
+ * mail) shows that HTML as plain text, the conversion the stored path uses.
+ *
  * Every message whose text fit on its row renders exactly as before.
  */
 export type InboxMessageText = Pick<
 	Doc<'inboundMessages'>,
-	'_id' | 'textBody' | 'bodyExcerpt' | 'textBodyStorageId' | 'htmlBodyStorageId'
+	'_id' | 'textBody' | 'htmlBody' | 'bodyExcerpt' | 'textBodyStorageId' | 'htmlBodyStorageId'
 >;
 
 const props = defineProps<{ message: InboxMessageText }>();
@@ -83,11 +87,15 @@ async function loadFullText(): Promise<void> {
 onMounted(loadFullText);
 watch(() => props.message._id, loadFullText);
 
-const displayText = computed(() =>
-	hasInlineText.value
-		? (props.message.textBody ?? '')
-		: (fullText.value ?? props.message.bodyExcerpt ?? props.message.textBody ?? '')
-);
+const displayText = computed(() => {
+	if (hasInlineText.value) return props.message.textBody ?? '';
+	if (fullText.value !== null) return fullText.value;
+	if (props.message.bodyExcerpt) return props.message.bodyExcerpt;
+	if (!isReadableStored.value && props.message.htmlBody) {
+		return htmlToPlainText(props.message.htmlBody);
+	}
+	return props.message.textBody ?? '';
+});
 const isShowingExcerpt = computed(
 	() => !hasInlineText.value && fullText.value === null && Boolean(props.message.bodyExcerpt)
 );

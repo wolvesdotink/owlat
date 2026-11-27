@@ -7,6 +7,7 @@
  *     a cut message as whole;
  *   - the same for a message with NO text part whose HTML is in storage (a
  *     large newsletter), and for one whose inline text part is blank;
+ *   - an HTML-only message whose HTML fit on its row shows it as text;
  *   - no text at all is the existing "no text content" line.
  */
 import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
@@ -133,6 +134,17 @@ describe('InboxMessageBody', () => {
 		expect(wrapper.text()).toContain('converted in full.');
 		expect(wrapper.find(EXCERPT_NOTE).exists()).toBe(false);
 		expect(action).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows an HTML-only message whose HTML fit on its row as text, without a fetch', async () => {
+		const wrapper = mountBody({
+			htmlBody: '<p>Your verification code is <b>4821</b>.</p>',
+		});
+		await flushPromises();
+		expect(wrapper.text()).toMatch(/Your verification code is 4821/);
+		expect(wrapper.text()).not.toContain('<b>');
+		expect(wrapper.text()).not.toContain('No text content');
+		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('reads past a blank inline text part to the stored HTML', async () => {
