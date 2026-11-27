@@ -170,7 +170,10 @@ const createdOn = computed(() =>
 </script>
 
 <template>
-	<div class="card !p-0 overflow-hidden">
+	<!-- No overflow clipping here: the ⋯ menu's panel is absolutely positioned
+	     and would be cut off at the card's edge. The tinted panels below round
+	     their own bottom corners instead. -->
+	<div class="card !p-0">
 		<div class="p-5">
 			<!-- The action group wraps under the name on narrow widths instead of
 			     squeezing the name/address block to nothing. -->
@@ -396,18 +399,27 @@ const createdOn = computed(() =>
 		</div>
 
 		<!-- Inline member management (same panel the Postbox settings page uses). -->
-		<div v-if="expanded" class="border-t border-border-subtle bg-bg-surface/40 p-5">
+		<div
+			v-if="expanded"
+			class="border-t border-border-subtle bg-bg-surface/40 p-5 last:rounded-b-(--radius-card)"
+		>
 			<PostboxTeamInboxMembersPanel :mailbox-id="inbox._id" />
 		</div>
 
 		<!-- Inline history import for this team inbox. -->
-		<div v-if="importing" class="border-t border-border-subtle bg-bg-surface/40 p-5">
+		<div
+			v-if="importing"
+			class="border-t border-border-subtle bg-bg-surface/40 p-5 last:rounded-b-(--radius-card)"
+		>
 			<PostboxTeamInboxImportCard :mailbox-id="inbox._id" :address="inbox.address" />
 		</div>
 
 		<!-- Inline credential repair: rotate the shared external account's
 		     password when its connection broke (auth_error). -->
-		<div v-if="reconnecting" class="border-t border-border-subtle bg-bg-surface/40 p-5 space-y-4">
+		<div
+			v-if="reconnecting"
+			class="border-t border-border-subtle bg-bg-surface/40 p-5 last:rounded-b-(--radius-card) space-y-4"
+		>
 			<div>
 				<h3 class="font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.inboxes.reconnectPanel.title') }}
