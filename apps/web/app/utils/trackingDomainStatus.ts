@@ -70,3 +70,15 @@ export function trackingDomainCnameFound(row: TrackingDomainRow): boolean | null
 			return row.isVerified;
 	}
 }
+
+/**
+ * The record card's verification prop: the DNS half of the last check only,
+ * since the HTTPS half has its own message in the row header. No status after
+ * an inconclusive lookup.
+ */
+export function trackingDomainCnameVerification(
+	row: TrackingDomainRow
+): { verified: boolean } | undefined {
+	const found = trackingDomainCnameFound(row);
+	return found === null ? undefined : { verified: found };
+}

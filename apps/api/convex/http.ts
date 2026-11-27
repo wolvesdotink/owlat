@@ -51,32 +51,16 @@ http.route({ path: '/storage/upload/abort', method: 'POST', handler: abortUpload
 
 // Email tracking routes
 // Open tracking pixel: GET /t/o/{emailSendId}
-http.route({
-	pathPrefix: '/t/o/',
-	method: 'GET',
-	handler: trackOpen,
-});
+http.route({ pathPrefix: '/t/o/', method: 'GET', handler: trackOpen });
 
 // Click tracking redirect: GET /t/c/{emailSendId}/{encodedUrl}
-http.route({
-	pathPrefix: '/t/c/',
-	method: 'GET',
-	handler: trackClick,
-});
+http.route({ pathPrefix: '/t/c/', method: 'GET', handler: trackClick });
 
 // Tracking-domain probe: GET /t/probe/{nonce}
-http.route({
-	pathPrefix: '/t/probe/',
-	method: 'GET',
-	handler: trackProbe,
-});
+http.route({ pathPrefix: '/t/probe/', method: 'GET', handler: trackProbe });
 
 // The bundled proxy's certificate gate for tracking domains: GET /t/tls-ask?domain=
-http.route({
-	path: '/t/tls-ask',
-	method: 'GET',
-	handler: trackingTlsAsk,
-});
+http.route({ path: '/t/tls-ask', method: 'GET', handler: trackingTlsAsk });
 
 // ============ UNSUBSCRIBE ROUTES ============
 

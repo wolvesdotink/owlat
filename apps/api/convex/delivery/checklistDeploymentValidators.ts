@@ -17,11 +17,11 @@ import {
 	observeSourceAddress,
 	STALE_MTA_HEALTH,
 } from './checklistSmtpProbe';
+import { observeDnsbl } from './checklistDnsblObservation';
 import { checklistTraits } from './checklistTraits';
 import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
 import {
 	checklistObservation,
-	inconclusiveObservation,
 	pendingDnsStatus,
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
@@ -243,44 +243,8 @@ export async function observeDeploymentCheck(
 				tls ? [`hostname=${tls.hostname}`, ...(tls.validTo ? [`valid-to=${tls.validTo}`] : [])] : []
 			);
 		}
-		case 'deployment.dnsbl': {
-			const observedValues = selectedAddresses.flatMap((entry) => [
-				`${entry.ip}=${entry.dnsbl ?? 'unknown'}`,
-				`${entry.ip}:checked-at=${entry.dnsblCheckedAt ?? 'missing'}`,
-			]);
-			if (!dnsblFresh) {
-				return inconclusiveObservation(
-					'mta.dnsbl',
-					'The MTA blocklist snapshot is missing or too old to verify this check.',
-					observedValues
-				);
-			}
-			// A listing is asked first: one address's unknown standing must not
-			// soften another address that is known to be listed.
-			if (
-				selectedAddresses.some((entry) => entry.dnsbl === 'critical' || entry.dnsbl === 'degraded')
-			) {
-				return checklistObservation(
-					'mta.dnsbl',
-					'fail',
-					'At least one outbound address is listed on a monitored DNS blocklist.',
-					observedValues
-				);
-			}
-			if (selectedAddresses.every((entry) => entry.dnsbl === 'clean')) {
-				return checklistObservation(
-					'mta.dnsbl',
-					'pass',
-					'Every outbound address is clean on the monitored DNS blocklists.',
-					observedValues
-				);
-			}
-			return inconclusiveObservation(
-				'mta.dnsbl',
-				'At least one outbound address has unknown standing on the monitored DNS blocklists.',
-				observedValues
-			);
-		}
+		case 'deployment.dnsbl':
+			return observeDnsbl(selectedAddresses, dnsblFresh);
 		case 'deployment.warmup':
 			return context.warming && warmingFresh
 				? observeWarmup(context.warming)
