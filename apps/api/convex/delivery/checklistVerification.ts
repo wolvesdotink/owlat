@@ -35,6 +35,7 @@ export function isFinalDnsPropagationAttempt(
 const UNCONFIRMED_OBSERVATION: ChecklistObservation = {
 	validator: 'checklist.orchestrator',
 	status: 'warn',
+	isInconclusive: true,
 	observedValues: [],
 	diagnostic:
 		'The live check is temporarily unconfirmed, so its status is warning while Owlat retries.',
@@ -109,6 +110,7 @@ async function executeVerification(
 			status: result.status,
 			observedValues: result.observedValues,
 			diagnostic: result.diagnostic,
+			...(result.isInconclusive ? { isInconclusive: true } : {}),
 		};
 	} catch {
 		observation = UNCONFIRMED_OBSERVATION;
