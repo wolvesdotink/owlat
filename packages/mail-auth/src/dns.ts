@@ -19,7 +19,7 @@
 
 import type { SpfDnsResolver } from './spf.js';
 
-export type DnsRecordType = 'A' | 'AAAA' | 'MX' | 'TXT';
+export type DnsRecordType = 'A' | 'AAAA' | 'MX' | 'TXT' | 'PTR';
 
 /** A resolved DNS answer plus the TTL (seconds) to cache it for. */
 export interface CachedDnsAnswer {

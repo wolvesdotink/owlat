@@ -338,30 +338,135 @@ describe('checkSpf — a:/mx: macro expansion (RFC 7208 §7)', () => {
 	});
 });
 
-describe('checkSpf — ptr mechanism (RFC 7208 §5.5, deprecated)', () => {
-	it('treats `ptr` as a non-match and continues — never an unknown-mechanism permerror', async () => {
-		// A domain that still publishes `ptr ~all` must not have its whole record
-		// discarded as permerror: `ptr` is a recognized (if deprecated) mechanism.
-		// We do not evaluate it, so it is a non-match and evaluation falls through
-		// to the `-all`, yielding `fail` — exactly what a resolver that ignores the
-		// deprecated ptr result would produce, and NOT `permerror`.
+describe('checkSpf — ptr mechanism (RFC 7208 §5.5)', () => {
+	type Answer = unknown[] | 'servfail';
+
+	/** A resolver over a `"<TYPE> <name>"` table that records every query it answers. */
+	function tableResolver(table: Record<string, Answer>): {
+		resolver: SpfDnsResolver;
+		queries: string[];
+	} {
+		const queries: string[] = [];
 		const resolver: SpfDnsResolver = async (name, type) => {
-			if (type === 'TXT' && name === 'ptr.com') return [['v=spf1 ptr -all']] as unknown[];
-			return [] as unknown[];
+			const key = `${type} ${name}`;
+			queries.push(key);
+			const answer = table[key];
+			if (answer === 'servfail') return servfail();
+			return answer ?? [];
 		};
-		const result = await checkSpf('1.2.3.4', 'user@ptr.com', 'ehlo.host', resolver);
-		expect(result.result).toBe('fail');
-		expect(result.result).not.toBe('permerror');
+		return { resolver, queries };
+	}
+
+	const SENDER_IP = '203.0.113.165';
+	const SENDER_PTR = 'PTR 165.113.0.203.in-addr.arpa';
+
+	it('passes a sender that only a forward-confirmed `ptr:domain` authorizes', async () => {
+		// The shape of a large provider's record: its own ranges and includes do
+		// not cover every outbound server, and `ptr:` vouches for the rest.
+		const { resolver } = tableResolver({
+			'TXT provider.example': [
+				['v=spf1 include:_spf.esp.example ip4:192.0.2.0/24 ptr:mail.provider.example -all'],
+			],
+			'TXT _spf.esp.example': [['v=spf1 ip4:198.51.100.0/24 -all']],
+			[SENDER_PTR]: ['out-0166.east.mail.provider.example.'],
+			'A out-0166.east.mail.provider.example': [SENDER_IP],
+		});
+		const result = await checkSpf(SENDER_IP, 'verify@provider.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
 	});
 
-	it('accepts the `ptr:domain` form without permerror', async () => {
-		const resolver: SpfDnsResolver = async (name, type) => {
-			if (type === 'TXT' && name === 'ptrd.com') {
-				return [['v=spf1 ptr:ptrd.com ~all']] as unknown[];
-			}
-			return [] as unknown[];
-		};
-		const result = await checkSpf('1.2.3.4', 'user@ptrd.com', 'ehlo.host', resolver);
+	it('matches a bare `ptr` against the domain of the record being evaluated', async () => {
+		const { resolver } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr -all']],
+			[SENDER_PTR]: ['MAIL.PTR.EXAMPLE'],
+			'A mail.ptr.example': [SENDER_IP],
+		});
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('accepts a validated name equal to the target domain', async () => {
+		const { resolver } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr:ptr.example -all']],
+			[SENDER_PTR]: ['ptr.example'],
+			'A ptr.example': [SENDER_IP],
+		});
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('does not match a PTR name whose forward lookup does not return the sender', async () => {
+		// Anyone who controls the reverse zone of an address can claim any name;
+		// only the forward lookup in the claimed domain proves it.
+		const { resolver } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr -all']],
+			[SENDER_PTR]: ['mail.ptr.example'],
+			'A mail.ptr.example': ['192.0.2.7'],
+		});
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('fail');
+	});
+
+	it('does not match a name that only ends in the target text without a label boundary', async () => {
+		const { resolver, queries } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr -all']],
+			[SENDER_PTR]: ['mail.notptr.example'],
+			'A mail.notptr.example': [SENDER_IP],
+		});
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('fail');
+		// A name outside the target domain is never worth a forward lookup.
+		expect(queries).not.toContain('A mail.notptr.example');
+	});
+
+	it('does not match when the sender has no PTR record, and is not a permerror', async () => {
+		const { resolver } = tableResolver({ 'TXT ptr.example': [['v=spf1 ptr ~all']] });
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
 		expect(result.result).toBe('softfail');
+	});
+
+	it('treats a failed PTR lookup as no match rather than a temperror', async () => {
+		const { resolver } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr ip4:203.0.113.0/24 -all']],
+			[SENDER_PTR]: 'servfail',
+		});
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('skips a name whose forward lookup fails and validates the next one', async () => {
+		const { resolver } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr -all']],
+			[SENDER_PTR]: ['a.ptr.example', 'b.ptr.example'],
+			'A a.ptr.example': 'servfail',
+			'A b.ptr.example': [SENDER_IP],
+		});
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('forward-confirms an IPv6 sender through its ip6.arpa name and AAAA records', async () => {
+		const ip6Ptr = 'PTR 5.2.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa';
+		const { resolver } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr -all']],
+			[ip6Ptr]: ['mail.ptr.example'],
+			'AAAA mail.ptr.example': ['2001:0db8:0000:0000:0000:0000:0000:0025'],
+		});
+		const result = await checkSpf('2001:db8::25', 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('forward-checks at most ten PTR names', async () => {
+		const names = Array.from({ length: 11 }, (_, i) => `h${i}.ptr.example`);
+		const { resolver, queries } = tableResolver({
+			'TXT ptr.example': [['v=spf1 ptr -all']],
+			[SENDER_PTR]: names,
+			// Only the eleventh name would validate, and RFC 7208 §4.6.4 says to
+			// ignore every PTR record after the first ten.
+			[`A ${names[10]}`]: [SENDER_IP],
+		});
+		const result = await checkSpf(SENDER_IP, 'user@ptr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('fail');
+		expect(queries.filter((query) => query.startsWith('A ')).length).toBe(10);
 	});
 });

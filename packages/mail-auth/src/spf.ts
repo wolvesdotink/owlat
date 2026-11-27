@@ -35,6 +35,7 @@ import {
 	SpfAbort,
 	type SpfBudget,
 } from './spfBudget.js';
+import { ptrMatches } from './spfPtr.js';
 
 /** RFC 7208 §2.6 / RFC 8601 SPF result keyword. */
 export type SpfVerdict =
@@ -53,14 +54,14 @@ export interface SpfResult {
 
 /**
  * The DNS surface SPF evaluation needs. Returns the raw record payload for the
- * requested type (TXT: `string[][]`, A/AAAA: `string[]`, MX: `{exchange,
+ * requested type (TXT: `string[][]`, A/AAAA/PTR: `string[]`, MX: `{exchange,
  * priority}[]`). Throws on a transient DNS error (SERVFAIL etc.) and either
  * throws ENOTFOUND/ENODATA or returns an empty array for NXDOMAIN/NODATA —
  * `resolveCounted` treats both as a void lookup.
  */
 export type SpfDnsResolver = (
 	name: string,
-	type: 'A' | 'AAAA' | 'MX' | 'TXT'
+	type: 'A' | 'AAAA' | 'MX' | 'TXT' | 'PTR'
 ) => Promise<unknown[]>;
 
 /** Default resolver: Node's `dns/promises` resolve (the production path). */
@@ -104,6 +105,7 @@ function joinTxtRecords(records: readonly (readonly string[])[]): string[] {
  * - ip4/ip6 mechanisms
  * - include mechanisms (recursive, RFC 7208 10-lookup budget + cycle detection)
  * - a/mx mechanisms
+ * - ptr mechanism (forward-confirmed reverse DNS)
  * - all mechanism
  */
 export async function checkSpf(
@@ -238,16 +240,18 @@ async function evaluateSpf(
 			continue;
 		}
 
-		// ptr mechanism (RFC 7208 §5.5). Implementations MUST recognize it, but its
-		// use is deprecated (SHOULD NOT). We do not perform the reverse-DNS +
-		// forward-confirmation lookup, so we treat it as a NON-MATCH and continue to
-		// the next mechanism — never as an unknown-mechanism permerror, which would
-		// discard the whole (otherwise valid) record and fail a `ptr ~all` sender.
-		// One DNS lookup is still consumed so the §4.6.4 lookup budget stays aligned
-		// with a resolver that would have performed the PTR query.
+		// ptr / ptr:<domain-spec> (RFC 7208 §5.5): see `spfPtr.ts`.
 		if (lowerMech === 'ptr' || lowerMech.startsWith('ptr:')) {
+			const domainSpec = lowerMech === 'ptr' ? domain : mech.slice(4);
+			if (!domainSpec) {
+				return { result: 'permerror', explanation: `Invalid SPF ptr mechanism: ${mech}` };
+			}
 			if (!consumeLookup(budget)) {
 				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
+			}
+			const target = expandMacros(domainSpec, normalizedIp, domain, macroContext);
+			if (await ptrMatches(normalizedIp, target, resolver)) {
+				return { result: qualifierResult };
 			}
 			continue;
 		}

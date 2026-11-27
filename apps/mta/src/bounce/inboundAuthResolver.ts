@@ -40,7 +40,7 @@ const POSITIVE_TTL_SECONDS = 3600;
 
 /** A low-level DNS answer: the type-specific records plus an optional TTL. */
 export interface RawDnsAnswer {
-	/** `TXT: string[][]`, `A/AAAA: string[]`, `MX: {exchange, priority}[]`. */
+	/** `TXT: string[][]`, `A/AAAA/PTR: string[]`, `MX: {exchange, priority}[]`. */
 	readonly records: unknown[];
 	/**
 	 * The answer's TTL in seconds when the RR type surfaces one (A/AAAA), else
@@ -52,14 +52,14 @@ export interface RawDnsAnswer {
 /** The low-level DNS query the base resolver issues (Node's `dns.resolve*`). */
 export type DnsResolveFn = (
 	name: string,
-	type: 'A' | 'AAAA' | 'MX' | 'TXT'
+	type: 'A' | 'AAAA' | 'MX' | 'TXT' | 'PTR'
 ) => Promise<RawDnsAnswer>;
 
 /**
  * Production low-level resolver. A/AAAA are queried with `{ ttl: true }` so the
  * cache can honour a short SPF `a`/`mx`-target TTL instead of pinning it at the
  * 1-hour cap (the cache design says "respect the record TTL, capped at 1 hour").
- * TXT/MX cannot surface a TTL in Node, so they omit it and take the cap.
+ * TXT/MX/PTR cannot surface a TTL in Node, so they omit it and take the cap.
  */
 const nodeDnsResolve: DnsResolveFn = async (name, type) => {
 	switch (type) {
