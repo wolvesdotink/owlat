@@ -35,6 +35,7 @@ interface Zone {
 	A?: string[];
 	AAAA?: string[];
 	MX?: { exchange: string; priority: number }[];
+	PTR?: string[];
 }
 
 /** SPF include chain: resolving `u@parent.com` costs THREE TXT lookups cold. */

@@ -33,6 +33,7 @@ interface Zone {
 	A?: string[];
 	AAAA?: string[];
 	MX?: { exchange: string; priority: number }[];
+	PTR?: string[];
 }
 
 /** A hermetic base resolver over a static zone map; every answer carries `ttl`. */
