@@ -6,9 +6,8 @@ import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
 import {
 	trackingDomainCheckMessageKey,
-	trackingDomainCnameFound,
+	trackingDomainCnameVerification,
 	trackingDomainStatus,
-	type TrackingDomainRow,
 	type TrackingDomainStatus,
 } from '~/utils/trackingDomainStatus';
 import {
@@ -101,13 +100,6 @@ const STATUS_BADGE: Record<
 		icon: ClockIcon,
 		labelKey: 'components.domains.trackingDomainsSection.status.pending',
 	},
-};
-
-// The record card shows the DNS half of the last check only; the HTTPS half
-// has its own message in the row header.
-const cnameVerification = (td: TrackingDomainRow) => {
-	const found = trackingDomainCnameFound(td);
-	return found === null ? undefined : { verified: found };
 };
 
 const toggleExpansion = (id: Id<'trackingDomains'>) => {
@@ -402,7 +394,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 									:record="{ type: 'CNAME', host: '@', value: td.cnameTarget }"
 									:label="t('components.domains.trackingDomainsSection.recordLabel')"
 									:domain="td.domain"
-									:verification="cnameVerification(td)"
+									:verification="trackingDomainCnameVerification(td)"
 								/>
 								<div class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle">
 									<I18nT

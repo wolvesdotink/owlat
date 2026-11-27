@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	trackingDomainCheckMessageKey,
 	trackingDomainCnameFound,
+	trackingDomainCnameVerification,
 	trackingDomainStatus,
 } from '../trackingDomainStatus';
 import type { TrackingDomainCheckOutcome } from '../trackingDomainStatus';
@@ -91,5 +92,17 @@ describe('trackingDomainCnameFound', () => {
 	it('falls back to the verified flag before the first recorded check', () => {
 		expect(trackingDomainCnameFound({ isVerified: false })).toBe(false);
 		expect(trackingDomainCnameFound({ isVerified: true, verifiedAt: AT })).toBe(true);
+	});
+});
+
+describe('trackingDomainCnameVerification', () => {
+	it('gives the record card the DNS half, and no status after an inconclusive lookup', () => {
+		const row = (outcome: TrackingDomainCheckOutcome) => ({
+			isVerified: false,
+			lastCheck: { at: AT, outcome },
+		});
+		expect(trackingDomainCnameVerification(row('https_unreachable'))).toEqual({ verified: true });
+		expect(trackingDomainCnameVerification(row('dns_mismatch'))).toEqual({ verified: false });
+		expect(trackingDomainCnameVerification(row('inconclusive'))).toBeUndefined();
 	});
 });
