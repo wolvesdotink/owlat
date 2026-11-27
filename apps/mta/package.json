@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mta",
-	"version": "0.6.26",
+	"version": "0.6.27",
 	"private": true,
 	"description": "Owlat custom MTA - direct SMTP delivery with intelligent rate control",
 	"homepage": "https://owlat.app",
