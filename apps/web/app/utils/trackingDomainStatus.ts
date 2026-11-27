@@ -45,3 +45,28 @@ export function trackingDomainCheckMessageKey(row: TrackingDomainRow): string | 
 	if (outcome === undefined || outcome === 'verified') return null;
 	return CHECK_MESSAGE_KEYS[outcome];
 }
+
+/**
+ * Whether the row's CNAME record was found, for the record card's status.
+ *
+ * The row's verified flag needs both halves of the check, so it cannot stand
+ * in for the DNS half: a domain whose CNAME is right but whose reverse proxy
+ * has no site for it would show its record as missing and send the operator
+ * to fix DNS that is already correct. The check only probes HTTPS after the
+ * CNAME matched, so any HTTPS outcome proves the record. `null` after an
+ * inconclusive lookup, which proves nothing either way.
+ */
+export function trackingDomainCnameFound(row: TrackingDomainRow): boolean | null {
+	switch (row.lastCheck?.outcome) {
+		case 'verified':
+		case 'https_unreachable':
+		case 'https_wrong_response':
+			return true;
+		case 'dns_mismatch':
+			return false;
+		case 'inconclusive':
+			return null;
+		case undefined:
+			return row.isVerified;
+	}
+}

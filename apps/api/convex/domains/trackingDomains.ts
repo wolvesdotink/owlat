@@ -163,6 +163,23 @@ export const getTrackingDomainForSender = internalQuery({
 // A deployment holds a handful; the bound keeps every whole-table read finite.
 const TRACKING_DOMAIN_LIMIT = 100;
 
+/**
+ * Whether `domain` is a tracking domain of this deployment, verified or not.
+ * The bundled proxy asks this before taking a certificate for a name
+ * (`delivery/trackingHttp.ts:trackingTlsAsk`); a pending domain has to pass,
+ * because its verification needs that certificate.
+ */
+export const isTrackingDomainHost = internalQuery({
+	args: { domain: v.string() },
+	handler: async (ctx, args): Promise<boolean> => {
+		const row = await ctx.db
+			.query('trackingDomains')
+			.withIndex('by_domain', (q) => q.eq('domain', args.domain))
+			.first();
+		return row !== null;
+	},
+});
+
 /** The row a check runs against, read in the check's first phase. */
 export const getTrackingDomainForCheck = internalQuery({
 	args: { trackingDomainId: v.id('trackingDomains') },

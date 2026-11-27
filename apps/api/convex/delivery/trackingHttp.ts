@@ -6,6 +6,7 @@ import { isValidConvexId, isSafeRedirectUrl } from '../lib/inputGuards';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
 import { isSeedProbeId } from '@owlat/shared/seedPlacement';
+import { isValidDomain } from '@owlat/shared';
 import { constantTimeEqual, hmacSignature } from '../webhooks/security';
 import { decodeTrackedTarget, trackedLinkSigningInput } from './sendComposition/trackingUrl';
 import { classifyOpenRequest } from './automatedOpens';
@@ -258,4 +259,24 @@ export const trackProbe = httpAction(async (ctx, request) => {
 	const secret = getOptional('UNSUBSCRIBE_SECRET');
 	if (!secret) return new Response('Tracking is not configured', { status: 503, headers });
 	return new Response(await trackingProbeAnswer(secret, nonce), { status: 200, headers });
+});
+
+// HTTP action for the bundled Caddy's on-demand TLS: GET /t/tls-ask?domain=<name>.
+// Caddy asks it before taking a certificate for a name no site block lists, and
+// takes one only on a 2xx. Only tracking domains pass, so a stray name pointed
+// at the server cannot spend the ACME account's rate limit. The answer says no
+// more than whether a host is a tracking domain, which every tracked link in a
+// sent mail shows anyway.
+export const trackingTlsAsk = httpAction(async (ctx, request) => {
+	const headers = { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
+	const domain = (new URL(request.url).searchParams.get('domain') ?? '')
+		.trim()
+		.toLowerCase()
+		.replace(/\.$/, '');
+	const known =
+		isValidDomain(domain) &&
+		(await ctx.runQuery(internal.domains.trackingDomains.isTrackingDomainHost, { domain }));
+	return known
+		? new Response('ok', { status: 200, headers })
+		: new Response('Not found', { status: 404, headers });
 });

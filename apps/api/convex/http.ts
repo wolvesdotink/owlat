@@ -2,7 +2,7 @@ import { httpRouter } from 'convex/server';
 import { beginUpload, finishUpload, abortUpload } from './storage/uploadsHttp';
 import { authComponent, createAuth } from './auth/auth';
 import { withVerifiedClientIp } from './auth/ipAddress';
-import { trackOpen, trackClick, trackProbe } from './delivery/trackingHttp';
+import { trackOpen, trackClick, trackProbe, trackingTlsAsk } from './delivery/trackingHttp';
 import { seedAdmin } from './auth/seedAdminHttp';
 import { registerSeedDemoRoutes } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
@@ -69,6 +69,13 @@ http.route({
 	pathPrefix: '/t/probe/',
 	method: 'GET',
 	handler: trackProbe,
+});
+
+// The bundled proxy's certificate gate for tracking domains: GET /t/tls-ask?domain=
+http.route({
+	path: '/t/tls-ask',
+	method: 'GET',
+	handler: trackingTlsAsk,
 });
 
 // ============ UNSUBSCRIBE ROUTES ============
